@@ -1,0 +1,128 @@
+// See Schema.md for the full rationale behind these models.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  name        String
+  slug        String           @unique
+  description String
+  category    Category
+  price       Int // paise
+  status      ProductStatus    @default(DRAFT)
+  images      ProductImage[]
+  variants    ProductVariant[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  url       String
+  position  Int     @default(0)
+}
+
+model ProductVariant {
+  id        String  @id @default(cuid())
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  size      Size
+  stock     Int     @default(0)
+
+  @@unique([productId, size])
+}
+
+enum Category {
+  SHIRTS
+  OVERSHIRTS
+  POLOS
+  TROUSERS
+}
+
+enum Size {
+  S
+  M
+  L
+  XL
+  XXL
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Order {
+  id                String      @id @default(cuid())
+  displayId         String      @unique
+  user              User        @relation(fields: [userId], references: [id])
+  userId            String
+  customerName      String
+  customerPhone     String
+  customerEmail     String?
+  shippingAddress   Json
+  items             OrderItem[]
+  subtotal          Int
+  shippingFee       Int         @default(0)
+  total             Int
+  status            OrderStatus @default(PENDING)
+  razorpayOrderId   String?     @unique
+  razorpayPaymentId String?
+  paidAt            DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   String
+  productId String
+  variantId String
+  name      String
+  size      Size
+  unitPrice Int
+  qty       Int
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  FAILED
+}
+
+// Single table for everyone who can log in. Customers get role CUSTOMER at
+// signup; STAFF/OWNER accounts are created manually (seed script or by an
+// OWNER) — there's no public "become an admin" path. Login is required to
+// buy, and the same /login page authenticates both — the header decides
+// whether to show the Admin link based on `role`.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role     @default(CUSTOMER)
+  orders       Order[]
+  createdAt    DateTime @default(now())
+}
+
+enum Role {
+  CUSTOMER
+  STAFF
+  OWNER
+}
