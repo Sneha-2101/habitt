@@ -15,7 +15,15 @@ export async function POST(req: Request) {
     .update(rawBody)
     .digest("hex");
 
-  if (signature !== expected) return new Response("invalid signature", { status: 400 });
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+
+  if (
+    signatureBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+  ) {
+    return new Response("invalid signature", { status: 400 });
+  }
 
   const event = JSON.parse(rawBody);
 
@@ -28,18 +36,21 @@ export async function POST(req: Request) {
       include: { items: true },
     });
 
-    // Idempotent: skip if /api/checkout/verify already processed this order.
-    if (order && order.status !== "PAID") {
+    if (order) {
+      // Atomic conditional update inside transaction to prevent double-decrement stock race conditions
       await prisma.$transaction(async (tx) => {
-        await tx.order.update({
-          where: { id: order.id },
+        const result = await tx.order.updateMany({
+          where: { id: order.id, status: { not: "PAID" } },
           data: { status: "PAID", razorpayPaymentId, paidAt: new Date() },
         });
-        for (const item of order.items) {
-          await tx.productVariant.update({
-            where: { id: item.variantId },
-            data: { stock: { decrement: item.qty } },
-          });
+
+        if (result.count > 0) {
+          for (const item of order.items) {
+            await tx.productVariant.update({
+              where: { id: item.variantId },
+              data: { stock: { decrement: item.qty } },
+            });
+          }
         }
       });
     }

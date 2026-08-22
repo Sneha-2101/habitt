@@ -16,7 +16,13 @@ export async function POST(req: Request) {
     .update(`${razorpay_order_id}|${razorpay_payment_id}`)
     .digest("hex");
 
-  if (expected !== razorpay_signature) {
+  const signatureBuffer = Buffer.from(razorpay_signature || "");
+  const expectedBuffer = Buffer.from(expected);
+
+  if (
+    signatureBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+  ) {
     return NextResponse.json({ verified: false }, { status: 400 });
   }
 
@@ -26,26 +32,29 @@ export async function POST(req: Request) {
   });
   if (!order) return NextResponse.json({ verified: false, error: "Order not found" }, { status: 404 });
 
-  // Idempotent: if the webhook already marked this PAID, don't double-decrement stock.
-  if (order.status === "PAID") {
-    return NextResponse.json({ verified: true, orderId: order.id, alreadyProcessed: true });
-  }
+  let updated = false;
 
+  // Atomic conditional update inside transaction to prevent double-decrement stock race conditions
   await prisma.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id: order.id },
+    const result = await tx.order.updateMany({
+      where: { id: order.id, status: { not: "PAID" } },
       data: { status: "PAID", razorpayPaymentId: razorpay_payment_id, paidAt: new Date() },
     });
 
-    for (const item of order.items) {
-      await tx.productVariant.update({
-        where: { id: item.variantId },
-        data: { stock: { decrement: item.qty } },
-      });
+    if (result.count > 0) {
+      updated = true;
+      for (const item of order.items) {
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stock: { decrement: item.qty } },
+        });
+      }
     }
   });
 
-  // TODO: send order confirmation email via Resend here.
-
-  return NextResponse.json({ verified: true, orderId: order.id });
+  return NextResponse.json({
+    verified: true,
+    orderId: order.id,
+    alreadyProcessed: !updated,
+  });
 }
