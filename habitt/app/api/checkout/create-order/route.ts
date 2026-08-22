@@ -30,8 +30,26 @@ export async function POST(req: Request) {
 
     const body = (await req.json()) as CreateOrderBody;
 
+    if (!userId) {
+      return NextResponse.json({ error: "Invalid session user id" }, { status: 401 });
+    }
+
     if (!body.items?.length) {
       return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
+    }
+
+    if (
+      !body.customerName?.trim() ||
+      !body.customerPhone?.trim() ||
+      !body.shippingAddress?.line1?.trim() ||
+      !body.shippingAddress?.city?.trim() ||
+      !body.shippingAddress?.state?.trim() ||
+      !body.shippingAddress?.pincode?.trim()
+    ) {
+      return NextResponse.json(
+        { error: "Please fill out all required name, phone, and shipping address fields." },
+        { status: 400 }
+      );
     }
 
     // Re-price every item from the database. Never trust amounts sent by the client.
@@ -130,7 +148,18 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[create-order Error]:", err);
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message, debug: true }, { status: 400 });
+    const rawMessage = err instanceof Error ? err.message : "";
+    const isUserSafeError =
+      rawMessage.startsWith("Product or variant not found") ||
+      rawMessage.startsWith("Insufficient stock") ||
+      rawMessage.startsWith("Cart is empty") ||
+      rawMessage.startsWith("Sign in required") ||
+      rawMessage.startsWith("Please fill out all required");
+
+    const clientMessage = isUserSafeError
+      ? rawMessage
+      : "Something went wrong creating your order. Please try again.";
+
+    return NextResponse.json({ error: clientMessage }, { status: 400 });
   }
 }
