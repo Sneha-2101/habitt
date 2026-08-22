@@ -69,12 +69,17 @@ export default function CheckoutPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(response),
           });
-          const verifyData = await verifyRes.json();
-          if (verifyData.verified) {
+          let verifyData;
+          try {
+            verifyData = await verifyRes.json();
+          } catch {
+            throw new Error(`Server response error (${verifyRes.status}). Please check API logs.`);
+          }
+          if (verifyRes.ok && verifyData.verified) {
             clear();
             router.push(`/order/${data.orderId}/success`);
           } else {
-            setError("Payment could not be verified. Please contact support with your order id.");
+            setError(verifyData?.error || "Payment could not be verified. Please contact support with your order id.");
           }
         },
         modal: { ondismiss: () => setLoading(false) },
