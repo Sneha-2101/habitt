@@ -130,17 +130,7 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[create-order Error]:", err);
-    const rawMessage = err instanceof Error ? err.message : "";
-    const isUserSafeError =
-      rawMessage.startsWith("Product or variant not found") ||
-      rawMessage.startsWith("Insufficient stock") ||
-      rawMessage.startsWith("Cart is empty") ||
-      rawMessage.startsWith("Sign in required");
-
-    const clientMessage = isUserSafeError
-      ? rawMessage
-      : "Something went wrong creating your order. Please try again.";
-
-    return NextResponse.json({ error: clientMessage }, { status: 400 });
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message, debug: true }, { status: 400 });
   }
 }
