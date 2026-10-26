@@ -1,0 +1,21 @@
+{
+  "name": "Habitt — Considered Basics",
+  "short_name": "Habitt",
+  "description": "Heavier fabrics, honest fits. Habitt makes considered minimalist apparel with a quiet weight to them.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F6F4F1",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
