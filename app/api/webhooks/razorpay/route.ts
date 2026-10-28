@@ -42,8 +42,9 @@ export async function POST(req: Request) {
   const eventId = req.headers.get("x-razorpay-event-id") || event?.id;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      // Deduplicate webhook events via ProcessedWebhook
+    await prisma.$transaction(
+      async (tx) => {
+        // Deduplicate webhook events via ProcessedWebhook
       if (eventId) {
         await tx.processedWebhook.create({
           data: {
@@ -87,7 +88,9 @@ export async function POST(req: Request) {
           }
         }
       }
-    });
+    },
+    { maxWait: 15000, timeout: 20000 }
+  );
   } catch (err: any) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       // Event already processed

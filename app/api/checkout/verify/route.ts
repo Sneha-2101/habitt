@@ -47,9 +47,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ verified: false, error: "Order not found" }, { status: 404 });
   }
 
-  await prisma.$transaction(async (tx) => {
-    await markOrderPaid(tx, order.id, razorpay_payment_id);
-  });
+  await prisma.$transaction(
+    async (tx) => {
+      await markOrderPaid(tx, order.id, razorpay_payment_id);
+    },
+    { maxWait: 15000, timeout: 20000 }
+  );
 
   return NextResponse.json({ verified: true, orderId: order.id });
 }
