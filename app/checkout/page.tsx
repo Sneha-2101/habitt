@@ -34,6 +34,12 @@ export default function CheckoutPage() {
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return "00000000-0000-4000-8000-000000000000";
+  });
 
   // Collapsed Coupon state
   const [showCoupon, setShowCoupon] = useState(false);
@@ -91,17 +97,7 @@ export default function CheckoutPage() {
       });
     });
 
-    // Fetch site settings dynamically
-    import("@/lib/settings")
-      .then(({ getSettings }) => getSettings())
-      .then((s) => setSiteSettings({
-        shippingFee: s.shippingFee,
-        freeShippingThreshold: s.freeShippingThreshold,
-        codFeeEnabled: s.codFeeEnabled,
-        codFee: s.codFee,
-      }))
-      .catch(() => {});
-
+    // Site settings and COD eligibility checks are performed server-side on checkout/create-order
     if (session?.user) {
       const userId = (session.user as { id?: string }).id;
       setForm((f) => ({ ...f, name: session.user?.name || f.name, email: session.user?.email || f.email }));
@@ -132,14 +128,6 @@ export default function CheckoutPage() {
           }
         })
         .catch(() => {});
-
-      // Check COD eligibility
-      if (userId && subtotal > 0) {
-        import("@/lib/actions/cod-eligibility")
-          .then(({ isEligibleForCod }) => isEligibleForCod(userId, subtotal))
-          .then((result) => setCodEligibility(result))
-          .catch(() => setCodEligibility({ eligible: false }));
-      }
     }
   }, [session, subtotal]);
 
@@ -168,6 +156,7 @@ export default function CheckoutPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          idempotencyKey,
           orderId: pendingOrderId || undefined,
           paymentMethod,
           useStoreCredit,
@@ -186,7 +175,18 @@ export default function CheckoutPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not create order");
+      if (!res.ok) {
+        if (data?.retry && typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+          setIdempotencyKey(crypto.randomUUID());
+        }
+        throw new Error(data.error || "Could not create order");
+      }
+
+      if (data.alreadyPaid) {
+        clear();
+        router.push(`/order/${data.orderId}/success`);
+        return;
+      }
 
       setPendingOrderId(data.orderId);
 

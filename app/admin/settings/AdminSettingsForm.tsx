@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateSettings } from "@/lib/settings";
+import { updateSettings } from "@/lib/actions/settings";
 
 interface SettingsFormProps {
   initialSettings: {

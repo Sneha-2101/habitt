@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { requestOtpAction } from "@/lib/actions/otp";
+import { safeRedirect } from "@/lib/safe-redirect";
 
 type TabType = "phone" | "emailCode" | "password";
 
@@ -126,7 +127,7 @@ function LoginForm() {
   async function handleLoginSuccess() {
     const target = searchParams.get("redirect");
     if (target) {
-      router.push(target);
+      router.push(safeRedirect(target));
     } else {
       const sessionRes = await fetch("/api/auth/session");
       const sessionData = await sessionRes.json();

@@ -1,15 +1,13 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { requireStaff } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
+import { releaseStock } from "@/lib/stock";
+import { canTransition } from "@/lib/orders/transitions";
 import { revalidatePath } from "next/cache";
 
 export async function markCodRefused(orderId: string, note?: string) {
-  const session = await auth();
-  const userRole = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user?.id || (userRole !== "STAFF" && userRole !== "OWNER")) {
-    throw new Error("Unauthorized: Only store staff or admins can mark COD refusal");
-  }
+  await requireStaff();
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -24,33 +22,65 @@ export async function markCodRefused(orderId: string, note?: string) {
     throw new Error("Only COD orders can be marked as Refused / RTO");
   }
 
-  if (order.status !== "SHIPPED" && order.status !== "PENDING") {
+  if (!canTransition("COD", order.status, "CANCELLED") || order.status === "DELIVERED") {
     throw new Error(`Order cannot be marked refused from status ${order.status}`);
   }
 
   const refusalNote = `[COD REFUSED / RTO] ${note?.trim() || "Delivery refused by customer at doorstep / Return to Origin"}`;
+  const priorStatus = order.status;
 
   await prisma.$transaction(async (tx) => {
-    // 1. Update order status to CANCELLED
-    await tx.order.update({
-      where: { id: orderId },
+    // 1. Update order status to CANCELLED atomically
+    const updateRes = await tx.order.updateMany({
+      where: { id: orderId, status: priorStatus },
       data: {
         status: "CANCELLED",
         cancellationReason: refusalNote,
       },
     });
 
-    // 2. Restock all variant items
-    for (const item of order.items) {
-      if (item.variantId) {
-        await tx.productVariant.update({
-          where: { id: item.variantId },
-          data: { stock: { increment: item.qty } },
-        });
-      }
+    if (updateRes.count === 0) {
+      throw new Error("Order already changed");
     }
 
-    // 3. Log status event
+    // 2. Release stock ONLY if stock was deducted
+    if (order.stockDeducted && order.items && order.items.length > 0) {
+      await releaseStock(tx, order.items, "RTO", {
+        refType: "Order",
+        refId: order.id,
+      });
+      await tx.order.update({
+        where: { id: order.id },
+        data: { stockDeducted: false },
+      });
+    }
+
+    // 3. Restore any storeCreditApplied
+    if (order.storeCreditApplied > 0 && order.userId) {
+      await tx.user.update({
+        where: { id: order.userId },
+        data: { storeCreditBalance: { increment: order.storeCreditApplied } },
+      });
+
+      await tx.storeCreditTransaction.create({
+        data: {
+          userId: order.userId,
+          amount: order.storeCreditApplied,
+          reason: `Restored store credit for refused COD Order #${order.displayId}`,
+          relatedOrderId: order.id,
+        },
+      });
+    }
+
+    // 4. Release coupon usage
+    if (order.couponCode) {
+      await tx.coupon.updateMany({
+        where: { code: order.couponCode, timesUsed: { gt: 0 } },
+        data: { timesUsed: { decrement: 1 } },
+      });
+    }
+
+    // 5. Log status event
     await tx.orderStatusEvent.create({
       data: {
         orderId,

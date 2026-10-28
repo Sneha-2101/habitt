@@ -1,86 +1,160 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
-import { generateDisplayId } from "@/lib/money";
 import { auth } from "@/lib/auth";
 import { validateCoupon } from "@/lib/actions/coupons";
 import { isEligibleForCod } from "@/lib/actions/cod-eligibility";
 import { getSettings } from "@/lib/settings";
+import { reserveStock, InsufficientStockError } from "@/lib/stock";
+import { failOrder } from "@/lib/orders/fail-order";
+import { z } from "zod";
 
-interface CartItemInput {
-  productId: string;
-  variantId: string;
-  size: string;
-  qty: number;
+class StoreCreditConflictError extends Error {
+  constructor(message = "Store credit changed, please retry") {
+    super(message);
+    this.name = "StoreCreditConflictError";
+  }
 }
 
-interface CreateOrderBody {
-  orderId?: string;
-  paymentMethod?: "RAZORPAY" | "COD";
-  useStoreCredit?: boolean;
-  items: CartItemInput[];
-  customerName: string;
-  customerPhone: string;
-  customerEmail?: string;
-  couponCode?: string;
-  giftMessage?: string;
-  shippingAddress: { line1: string; line2?: string; city: string; state: string; pincode: string };
+class CouponConflictError extends Error {
+  constructor(message = "Coupon no longer available") {
+    super(message);
+    this.name = "CouponConflictError";
+  }
 }
+
+function generateDisplayId(): string {
+  return "HB-" + crypto.randomInt(100000, 999999);
+}
+
+const phoneSchema = z.string().transform((val) => {
+  let clean = val.replace(/\s+/g, "").replace(/-/g, "");
+  if (clean.startsWith("+91")) clean = clean.substring(3);
+  else if (clean.startsWith("91") && clean.length === 12) clean = clean.substring(2);
+  else if (clean.startsWith("0") && clean.length === 11) clean = clean.substring(1);
+  return clean;
+}).pipe(z.string().regex(/^\d{10}$/, "Please enter a valid 10-digit mobile number"));
+
+const createOrderSchema = z.object({
+  idempotencyKey: z.string().uuid("Invalid idempotency key"),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().min(1, "Product ID required"),
+        variantId: z.string().min(1, "Variant ID required"),
+        qty: z.number().int("Quantity must be an integer").min(1, "Minimum quantity is 1").max(10, "Maximum quantity is 10"),
+      })
+    )
+    .min(1, "Cart cannot be empty")
+    .max(20, "Cannot purchase more than 20 distinct items at once"),
+  customerName: z.string().trim().min(1, "Name is required"),
+  customerPhone: phoneSchema,
+  customerEmail: z.string().email("Invalid email address").optional(),
+  shippingAddress: z.object({
+    line1: z.string().trim().min(1, "Address line 1 is required"),
+    line2: z.string().trim().optional(),
+    city: z.string().trim().min(1, "City is required"),
+    state: z.string().trim().min(1, "State is required"),
+    pincode: z.string().trim().regex(/^\d{6}$/, "Pincode must be 6 digits"),
+  }),
+  giftMessage: z.string().max(200, "Gift message cannot exceed 200 characters").optional(),
+  couponCode: z.string().trim().optional(),
+  paymentMethod: z.enum(["RAZORPAY", "COD"]),
+  useStoreCredit: z.boolean().default(false),
+});
 
 export async function POST(req: Request) {
   const session = await auth();
-  if (!session?.user) {
+  const userId = session?.user?.id;
+  if (!userId) {
     return NextResponse.json({ error: "Sign in required to check out" }, { status: 401 });
   }
-  const userId = (session.user as { id: string }).id;
 
-  const body = (await req.json()) as CreateOrderBody;
-
-  if (!userId) {
-    return NextResponse.json({ error: "Invalid session user id" }, { status: 401 });
+  let bodyJson: any;
+  try {
+    bodyJson = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON request body" }, { status: 400 });
   }
 
-  if (!body.items?.length) {
-    return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
+  const parseResult = createOrderSchema.safeParse(bodyJson);
+  if (!parseResult.success) {
+    const errorMsg = parseResult.error.errors.map((e) => e.message).join(", ");
+    return NextResponse.json({ error: errorMsg }, { status: 400 });
   }
 
-  // Fetch current user details for store credit verification
-  const currentUser = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { storeCreditBalance: true },
-  });
+  const data = parseResult.data;
 
-  const availableCredit = currentUser?.storeCreditBalance || 0;
+  // 1. Merge duplicate variantIds (sum qty; merged qty must still be <= 10) BEFORE any stock check
+  const mergedMap = new Map<string, { productId: string; variantId: string; qty: number }>();
+  for (const item of data.items) {
+    const existing = mergedMap.get(item.variantId);
+    if (existing) {
+      existing.qty += item.qty;
+      if (existing.qty > 10) {
+        return NextResponse.json({ error: "Maximum quantity per item is 10" }, { status: 400 });
+      }
+    } else {
+      mergedMap.set(item.variantId, { ...item });
+    }
+  }
+  const mergedItems = Array.from(mergedMap.values());
 
-  // Re-price every item from the database. Never trust amounts sent by the client.
+  // 2. Load products with status "ACTIVE" only; verify variant belongs to product & check stock
+  const productIds = Array.from(new Set(mergedItems.map((i) => i.productId)));
   const products = await prisma.product.findMany({
-    where: { id: { in: body.items.map((i) => i.productId) } },
+    where: {
+      id: { in: productIds },
+      status: "ACTIVE",
+    },
     include: { variants: true },
   });
 
   let subtotal = 0;
-  const orderItemsData = body.items.map((item) => {
+  const orderItemsData: Array<{
+    productId: string;
+    variantId: string;
+    name: string;
+    size: any;
+    unitPrice: number;
+    qty: number;
+  }> = [];
+
+  for (const item of mergedItems) {
     const product = products.find((p) => p.id === item.productId);
     const variant = product?.variants.find((v) => v.id === item.variantId);
-    if (!product || !variant) throw new Error(`Product/variant not found: ${item.productId}`);
-    if (variant.stock < item.qty) throw new Error(`Insufficient stock for ${product.name} (${item.size})`);
+
+    if (!product || !variant) {
+      return NextResponse.json(
+        { error: `Item is no longer available` },
+        { status: 409 }
+      );
+    }
+
+    if (variant.stock < item.qty) {
+      return NextResponse.json(
+        { error: `${product.name} (${variant.size}) is no longer available` },
+        { status: 409 }
+      );
+    }
 
     subtotal += product.price * item.qty;
-    return {
+    orderItemsData.push({
       productId: product.id,
       variantId: variant.id,
       name: product.name,
       size: variant.size,
       unitPrice: product.price,
       qty: item.qty,
-    };
-  });
+    });
+  }
 
+  // Calculate fees and coupon discount
   const settings = await getSettings();
+  const isCod = data.paymentMethod === "COD";
 
-  const isCod = body.paymentMethod === "COD";
-
-  // Re-verify COD eligibility server-side if client requested COD
   if (isCod) {
     const eligibility = await isEligibleForCod(userId, subtotal);
     if (!eligibility.eligible) {
@@ -94,142 +168,320 @@ export async function POST(req: Request) {
   let discountAmount = 0;
   let appliedCouponCode: string | undefined = undefined;
 
-  if (body.couponCode?.trim()) {
+  if (data.couponCode?.trim()) {
     try {
-      const res = await validateCoupon(body.couponCode, subtotal);
-      if (res.valid) {
-        discountAmount = res.discountAmount;
-        appliedCouponCode = res.code;
-        await prisma.coupon.update({
-          where: { code: res.code },
-          data: { timesUsed: { increment: 1 } },
-        });
+      const couponRes = await validateCoupon(data.couponCode, subtotal);
+      if (couponRes.valid) {
+        discountAmount = couponRes.discountAmount;
+        appliedCouponCode = couponRes.code;
       }
-    } catch (err) {
-      console.warn("Coupon application skipped:", err);
+    } catch (couponErr: any) {
+      return NextResponse.json({ error: couponErr?.message || "Invalid coupon" }, { status: 400 });
     }
   }
 
   const total = Math.max(0, subtotal - discountAmount + shippingFee + codSurcharge);
-  const giftMessage = body.giftMessage?.trim() || undefined;
 
-  // Calculate store credit application
-  let storeCreditApplied = 0;
-  if (body.useStoreCredit && availableCredit > 0) {
-    storeCreditApplied = Math.min(availableCredit, total);
-  }
-
-  const payable = total - storeCreditApplied;
-  const isZeroTotal = payable === 0;
-
-  let order;
-  const displayId = generateDisplayId();
-  const selectedPaymentMethod = isZeroTotal ? "STORE_CREDIT" : isCod ? "COD" : "RAZORPAY";
-  const initialOrderStatus = isZeroTotal ? "PAID" : "PENDING";
-
-  order = await prisma.$transaction(async (tx) => {
-    const newOrder = await tx.order.create({
-      data: {
-        displayId,
-        userId,
-        customerName: body.customerName,
-        customerPhone: body.customerPhone,
-        customerEmail: body.customerEmail,
-        shippingAddress: body.shippingAddress,
-        subtotal,
-        shippingFee,
-        total,
-        storeCreditApplied,
-        couponCode: appliedCouponCode,
-        discountAmount: discountAmount || null,
-        giftMessage,
-        status: initialOrderStatus,
-        paymentMethod: selectedPaymentMethod,
-        items: { create: orderItemsData },
-      },
-    });
-
-    // Debit store credit if applied
-    if (storeCreditApplied > 0) {
-      await tx.user.update({
-        where: { id: userId },
-        data: { storeCreditBalance: { decrement: storeCreditApplied } },
-      });
-
-      await tx.storeCreditTransaction.create({
-        data: {
-          userId,
-          amount: -storeCreditApplied,
-          reason: isZeroTotal
-            ? `Full payment for Order #${displayId}`
-            : `Partial store credit applied to Order #${displayId}`,
-          relatedOrderId: newOrder.id,
-        },
-      });
+  // 3. Idempotency Check: look up the order by idempotencyKey
+  const checkExistingOrder = async (existing: any) => {
+    if (existing.userId !== userId) {
+      return NextResponse.json({ error: "Idempotency key belongs to another user" }, { status: 409 });
     }
-
-    // Decrement stock immediately for COD or zero-total paid with store credit
-    if (isCod || isZeroTotal) {
-      for (const item of orderItemsData) {
-        await tx.productVariant.update({
-          where: { id: item.variantId },
-          data: { stock: { decrement: item.qty } },
+    if (existing.status === "PAID") {
+      return NextResponse.json({ alreadyPaid: true, orderId: existing.id });
+    }
+    if (existing.status === "PENDING") {
+      const existingPayable = Math.max(0, existing.total - (existing.storeCreditApplied || 0));
+      // Same payable amount with existing razorpayOrderId -> return the same Razorpay order
+      if (existingPayable === (total - (existing.storeCreditApplied || 0)) && existing.razorpayOrderId) {
+        return NextResponse.json({
+          orderId: existing.id,
+          razorpayOrderId: existing.razorpayOrderId,
+          amount: existingPayable,
+          currency: "INR",
+        });
+      }
+      // Different payable amount: create new Razorpay order and store it
+      if (existing.paymentMethod === "RAZORPAY") {
+        const razorpay = getRazorpay();
+        const payableAmount = Math.max(0, total - (existing.storeCreditApplied || 0));
+        const newRzpOrder = await razorpay.orders.create({
+          amount: payableAmount,
+          currency: "INR",
+          receipt: existing.displayId,
+        });
+        await prisma.order.update({
+          where: { id: existing.id },
+          data: { razorpayOrderId: newRzpOrder.id },
+        });
+        return NextResponse.json({
+          orderId: existing.id,
+          razorpayOrderId: newRzpOrder.id,
+          amount: payableAmount,
+          currency: "INR",
         });
       }
     }
-
-    if (isZeroTotal) {
-      await tx.orderStatusEvent.create({
-        data: {
-          orderId: newOrder.id,
-          status: "PAID",
-          note: `Paid in full using Store Credit (₹${(storeCreditApplied / 100).toFixed(2)})`,
-        },
-      });
+    if (existing.status === "FAILED" || existing.status === "CANCELLED") {
+      return NextResponse.json({ error: "This checkout expired", retry: true }, { status: 409 });
     }
+    return null;
+  };
 
-    return newOrder;
+  const existingOrder = await prisma.order.findUnique({
+    where: { idempotencyKey: data.idempotencyKey },
+    include: { items: true },
   });
 
-  // Zero-total order paid completely with store credit
+  if (existingOrder) {
+    const res = await checkExistingOrder(existingOrder);
+    if (res) return res;
+  }
+
+  // 4. Create Order inside Transaction with guarded coupon increment, store credit debit, and strict stock reservation
+  let createdOrder: any;
+  let payable = total;
+  let storeCreditApplied = 0;
+  let isZeroTotal = false;
+
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      const displayId = generateDisplayId();
+
+      createdOrder = await prisma.$transaction(async (tx) => {
+        // 4a. Check coupon user reuse inside transaction
+        if (appliedCouponCode) {
+          const priorUserOrder = await tx.order.findFirst({
+            where: {
+              userId,
+              couponCode: appliedCouponCode,
+              status: { notIn: ["CANCELLED", "FAILED"] },
+            },
+          });
+          if (priorUserOrder) {
+            throw new CouponConflictError("You have already used this coupon code.");
+          }
+
+          const coupon = await tx.coupon.findUnique({
+            where: { code: appliedCouponCode },
+          });
+
+          if (!coupon) {
+            throw new CouponConflictError("Coupon no longer available");
+          }
+
+          if (coupon.expiresAt && coupon.expiresAt < new Date()) {
+            throw new CouponConflictError("Coupon has expired");
+          }
+
+          if (coupon.usageLimit !== null) {
+            const inc = await tx.coupon.updateMany({
+              where: {
+                id: coupon.id,
+                timesUsed: { lt: coupon.usageLimit },
+              },
+              data: { timesUsed: { increment: 1 } },
+            });
+            if (inc.count === 0) {
+              throw new CouponConflictError("Coupon usage limit has been reached");
+            }
+          } else {
+            await tx.coupon.update({
+              where: { id: coupon.id },
+              data: { timesUsed: { increment: 1 } },
+            });
+          }
+        }
+
+        // 4b. Store credit debit inside transaction (never read outside)
+        if (data.useStoreCredit) {
+          const userRecord = await tx.user.findUnique({
+            where: { id: userId },
+            select: { storeCreditBalance: true },
+          });
+          const available = userRecord?.storeCreditBalance || 0;
+          if (available > 0) {
+            storeCreditApplied = Math.min(available, total);
+            payable = total - storeCreditApplied;
+
+            const debit = await tx.user.updateMany({
+              where: {
+                id: userId,
+                storeCreditBalance: { gte: storeCreditApplied },
+              },
+              data: {
+                storeCreditBalance: { decrement: storeCreditApplied },
+              },
+            });
+
+            if (debit.count === 0) {
+              throw new StoreCreditConflictError("Store credit changed, please retry");
+            }
+          }
+        }
+
+        isZeroTotal = payable === 0;
+        const selectedPaymentMethod = isZeroTotal ? "STORE_CREDIT" : isCod ? "COD" : "RAZORPAY";
+        const initialStatus = isZeroTotal ? "PAID" : "PENDING";
+
+        // Create Order
+        const newOrder = await tx.order.create({
+          data: {
+            displayId,
+            idempotencyKey: data.idempotencyKey,
+            userId,
+            customerName: data.customerName,
+            customerPhone: data.customerPhone,
+            customerEmail: data.customerEmail,
+            shippingAddress: data.shippingAddress,
+            subtotal,
+            shippingFee,
+            total,
+            storeCreditApplied,
+            couponCode: appliedCouponCode,
+            discountAmount: discountAmount || null,
+            giftMessage: data.giftMessage?.trim() || null,
+            status: initialStatus,
+            paymentMethod: selectedPaymentMethod,
+            items: { create: orderItemsData },
+          },
+          include: { items: true },
+        });
+
+        // Record store credit transaction if applied
+        if (storeCreditApplied > 0) {
+          await tx.storeCreditTransaction.create({
+            data: {
+              userId,
+              amount: -storeCreditApplied,
+              reason: isZeroTotal
+                ? `Full payment for Order #${displayId}`
+                : `Partial store credit applied to Order #${displayId}`,
+              relatedOrderId: newOrder.id,
+            },
+          });
+        }
+
+        // 4c. COD and zero-total store-credit orders: reserveStock strictly inside same transaction
+        if (isCod || isZeroTotal) {
+          await reserveStock(
+            tx,
+            orderItemsData.map((i) => ({ variantId: i.variantId, qty: i.qty })),
+            isCod ? "COD_PLACED" : "STORE_CREDIT_PLACED",
+            { refType: "Order", refId: newOrder.id }
+          );
+
+          await tx.order.update({
+            where: { id: newOrder.id },
+            data: { stockDeducted: true },
+          });
+        }
+
+        if (isZeroTotal) {
+          await tx.orderStatusEvent.create({
+            data: {
+              orderId: newOrder.id,
+              status: "PAID",
+              note: `Paid in full using Store Credit (₹${(storeCreditApplied / 100).toFixed(2)})`,
+            },
+          });
+        }
+
+        return newOrder;
+      });
+
+      break; // Transaction succeeded
+    } catch (err: any) {
+      if (err instanceof StoreCreditConflictError || err instanceof CouponConflictError) {
+        return NextResponse.json({ error: err.message }, { status: 409 });
+      }
+
+      if (err instanceof InsufficientStockError) {
+        return NextResponse.json(
+          { error: "One or more items in your cart is no longer available" },
+          { status: 409 }
+        );
+      }
+
+      // Handle unique constraint conflict (P2002)
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        const target = (err.meta as any)?.target;
+        // If conflict is on idempotencyKey, re-read and answer
+        if (Array.isArray(target) && target.includes("idempotencyKey")) {
+          const reRead = await prisma.order.findUnique({
+            where: { idempotencyKey: data.idempotencyKey },
+            include: { items: true },
+          });
+          if (reRead) {
+            const res = await checkExistingOrder(reRead);
+            if (res) return res;
+          }
+        }
+        // If conflict is on displayId, decrement retry and loop
+        retries--;
+        if (retries === 0) {
+          return NextResponse.json({ error: "Failed to generate order ID, please try again" }, { status: 500 });
+        }
+        continue;
+      }
+
+      console.error("Order creation transaction error:", err);
+      return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+    }
+  }
+
+  // 5. Zero-total order paid completely with store credit
   if (isZeroTotal) {
     const { sendOrderConfirmationEmail } = await import("@/lib/email");
-    sendOrderConfirmationEmail(order.id).catch(console.error);
+    sendOrderConfirmationEmail(createdOrder.id).catch(console.error);
 
     return NextResponse.json({
-      orderId: order.id,
+      orderId: createdOrder.id,
       isStoreCredit: true,
       payableAmount: 0,
       currency: "INR",
     });
   }
 
-  // If COD, skip Razorpay API calls
+  // 6. COD Order response
   if (isCod) {
     return NextResponse.json({
-      orderId: order.id,
+      orderId: createdOrder.id,
       isCod: true,
       amount: payable,
       currency: "INR",
     });
   }
 
-  const razorpay = getRazorpay();
-  const rzpOrder = await razorpay.orders.create({
-    amount: payable,
-    currency: "INR",
-    receipt: order.displayId,
-  });
+  // 7. Razorpay Order: create after DB transaction commits
+  try {
+    const razorpay = getRazorpay();
+    const rzpOrder = await razorpay.orders.create({
+      amount: payable,
+      currency: "INR",
+      receipt: createdOrder.displayId,
+    });
 
-  await prisma.order.update({
-    where: { id: order.id },
-    data: { razorpayOrderId: rzpOrder.id },
-  });
+    await prisma.order.update({
+      where: { id: createdOrder.id },
+      data: { razorpayOrderId: rzpOrder.id },
+    });
 
-  return NextResponse.json({
-    orderId: order.id,
-    razorpayOrderId: rzpOrder.id,
-    amount: payable,
-    currency: "INR",
-  });
+    return NextResponse.json({
+      orderId: createdOrder.id,
+      razorpayOrderId: rzpOrder.id,
+      amount: payable,
+      currency: "INR",
+    });
+  } catch (rzpErr) {
+    console.error("Razorpay order creation failed:", rzpErr);
+    await prisma.$transaction(async (tx) => {
+      await failOrder(tx, createdOrder, "Payment provider unavailable during checkout");
+    });
+    return NextResponse.json(
+      { error: "Payment provider unavailable, please try again" },
+      { status: 502 }
+    );
+  }
 }

@@ -1,104 +1,84 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { requireStaff, requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
+import { releaseStock } from "@/lib/stock";
+import { canTransition } from "@/lib/orders/transitions";
 import { revalidatePath } from "next/cache";
 import { sendCancellationEmail } from "@/lib/email";
-
-async function requireStaffOrOwner() {
-  const session = await auth();
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user || (role !== "STAFF" && role !== "OWNER")) {
-    throw new Error("Unauthorized: Action requires STAFF or OWNER role.");
-  }
-  return session;
-}
+import { OrderStatus } from "@prisma/client";
 
 export async function cancelOrderAsCustomer(orderId: string, reason: string) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error("Unauthorized: Please sign in to cancel your order.");
-  }
+  const user = await requireUser();
 
-  const userId = session.user.id;
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { items: true },
   });
 
   if (!order) throw new Error("Order not found");
-  if (order.userId !== userId) throw new Error("Unauthorized: Order does not belong to you.");
+  if (order.userId !== user.id) throw new Error("Unauthorized: Order does not belong to you.");
 
-  if (order.status === "SHIPPED" || order.status === "DELIVERED") {
-    throw new Error("Shipped or delivered orders cannot be cancelled directly. Please request a return instead.");
-  }
-
-  if (order.status === "CANCELLED" || order.status === "FAILED") {
-    throw new Error(`Order is already ${order.status.toLowerCase()}.`);
-  }
-
-  let razorpayRefundId: string | undefined = undefined;
-  let refundedAt: Date | undefined = undefined;
-  let refundAmount: number | undefined = undefined;
-
-  const storeCreditToRestore = order.storeCreditApplied || 0;
-  const razorpayAmountToRefund = Math.max(0, order.total - storeCreditToRestore);
-
-  // Process Razorpay refund if remaining balance was paid via Razorpay
-  if (order.paymentMethod !== "COD" && order.status === "PAID" && razorpayAmountToRefund > 0 && order.razorpayPaymentId) {
-    try {
-      const razorpay = getRazorpay();
-      const refund = await razorpay.payments.refund(order.razorpayPaymentId, {
-        amount: razorpayAmountToRefund,
-        notes: {
-          reason: reason || "Customer cancellation",
-          orderId: order.displayId,
-        },
-      });
-      razorpayRefundId = refund.id;
-      refundedAt = new Date();
-      refundAmount = razorpayAmountToRefund;
-    } catch (err) {
-      console.error("Razorpay refund error during customer cancellation:", err);
-      throw new Error(`Failed to process payment refund via Razorpay: ${err instanceof Error ? err.message : "Refund API error"}`);
-    }
+  // Check legal transition
+  if (!canTransition(order.paymentMethod, order.status, "CANCELLED") || order.status === "DELIVERED") {
+    throw new Error(`Order cannot be cancelled from status ${order.status}`);
   }
 
   const cancellationReason = reason?.trim() || "Cancelled by customer";
-  const now = new Date();
+  const priorStatus = order.status;
 
-  // Transaction: update order, restore stock, restore store credit, log event
+  // Claim first: atomic conditional update inside transaction
   await prisma.$transaction(async (tx) => {
-    if (storeCreditToRestore > 0 && order.userId) {
+    const updateRes = await tx.order.updateMany({
+      where: {
+        id: orderId,
+        status: priorStatus,
+      },
+      data: {
+        status: "CANCELLED",
+        cancellationReason,
+      },
+    });
+
+    if (updateRes.count === 0) {
+      throw new Error("Order already changed");
+    }
+
+    // Release stock ONLY if stockDeducted
+    if (order.stockDeducted && order.items.length > 0) {
+      await releaseStock(tx, order.items, "CANCEL", {
+        refType: "Order",
+        refId: order.id,
+      });
+      await tx.order.update({
+        where: { id: order.id },
+        data: { stockDeducted: false },
+      });
+    }
+
+    // Restore store credit
+    if (order.storeCreditApplied > 0 && order.userId) {
       await tx.user.update({
         where: { id: order.userId },
-        data: { storeCreditBalance: { increment: storeCreditToRestore } },
+        data: { storeCreditBalance: { increment: order.storeCreditApplied } },
       });
 
       await tx.storeCreditTransaction.create({
         data: {
           userId: order.userId,
-          amount: storeCreditToRestore,
+          amount: order.storeCreditApplied,
           reason: `Refund store credit for cancelled Order #${order.displayId}`,
           relatedOrderId: order.id,
         },
       });
     }
 
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
-        status: "CANCELLED",
-        cancellationReason,
-        ...(razorpayRefundId ? { razorpayRefundId, refundedAt, refundAmount } : {}),
-      },
-    });
-
-    for (const item of order.items) {
-      await tx.productVariant.update({
-        where: { id: item.variantId },
-        data: { stock: { increment: item.qty } },
+    // Release coupon usage
+    if (order.couponCode) {
+      await tx.coupon.updateMany({
+        where: { code: order.couponCode, timesUsed: { gt: 0 } },
+        data: { timesUsed: { decrement: 1 } },
       });
     }
 
@@ -106,11 +86,58 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
       data: {
         orderId,
         status: "CANCELLED",
-        note: `Cancelled by customer. Reason: ${cancellationReason}${razorpayRefundId ? ` (Refund ID: ${razorpayRefundId})` : ""}`,
-        createdAt: now,
+        note: `Cancelled by customer. Reason: ${cancellationReason}`,
       },
     });
   });
+
+  // Refund after: if a Razorpay refund is owed, call after commit
+  const storeCreditToRestore = order.storeCreditApplied || 0;
+  const razorpayAmountToRefund = Math.max(0, order.total - storeCreditToRestore);
+  const owesRazorpayRefund =
+    order.paymentMethod === "RAZORPAY" &&
+    priorStatus === "PAID" &&
+    razorpayAmountToRefund > 0 &&
+    order.razorpayPaymentId;
+
+  if (owesRazorpayRefund && order.razorpayPaymentId) {
+    try {
+      const razorpay = getRazorpay();
+      const refund = await razorpay.payments.refund(order.razorpayPaymentId, {
+        amount: razorpayAmountToRefund,
+        notes: {
+          reason: cancellationReason,
+          orderId: order.displayId,
+        },
+      });
+
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          razorpayRefundId: refund.id,
+          refundedAt: new Date(),
+          refundAmount: razorpayAmountToRefund,
+        },
+      });
+
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId,
+          status: "CANCELLED",
+          note: `Razorpay refund processed: ${refund.id} (₹${(razorpayAmountToRefund / 100).toFixed(2)})`,
+        },
+      });
+    } catch (err: any) {
+      console.error("Razorpay refund error during customer cancellation:", err);
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId,
+          status: "CANCELLED",
+          note: `REFUND FAILED – manual action required: ${err?.message || err}`,
+        },
+      });
+    }
+  }
 
   // Async email notification
   sendCancellationEmail(orderId).catch((err) => {
@@ -123,7 +150,7 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
 }
 
 export async function cancelOrderAsAdmin(orderId: string, reason: string) {
-  await requireStaffOrOwner();
+  await requireStaff();
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -132,45 +159,47 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
 
   if (!order) throw new Error("Order not found");
 
-  if (order.status === "CANCELLED" || order.status === "FAILED") {
-    throw new Error(`Order is already ${order.status.toLowerCase()}.`);
-  }
-
-  let razorpayRefundId: string | undefined = undefined;
-  let refundedAt: Date | undefined = undefined;
-  let refundAmount: number | undefined = undefined;
-
-  const storeCreditToRestore = order.storeCreditApplied || 0;
-  const razorpayAmountToRefund = Math.max(0, order.total - storeCreditToRestore);
-
-  // Process Razorpay refund if remaining balance was paid via Razorpay
-  if (order.paymentMethod !== "COD" && order.status === "PAID" && razorpayAmountToRefund > 0 && order.razorpayPaymentId) {
-    try {
-      const razorpay = getRazorpay();
-      const refund = await razorpay.payments.refund(order.razorpayPaymentId, {
-        amount: razorpayAmountToRefund,
-        notes: {
-          reason: reason || "Admin cancellation & refund",
-          orderId: order.displayId,
-        },
-      });
-      razorpayRefundId = refund.id;
-      refundedAt = new Date();
-      refundAmount = razorpayAmountToRefund;
-    } catch (err) {
-      console.error("Razorpay refund error during admin cancellation:", err);
-      throw new Error(`Failed to process payment refund via Razorpay: ${err instanceof Error ? err.message : "Refund API error"}`);
-    }
+  if (!canTransition(order.paymentMethod, order.status, "CANCELLED") || order.status === "DELIVERED") {
+    throw new Error(`Order cannot be cancelled from status ${order.status}`);
   }
 
   const cancellationReason = reason?.trim() || "Cancelled by admin";
-  const now = new Date();
+  const priorStatus = order.status;
 
+  // Claim first: atomic conditional update inside transaction
   await prisma.$transaction(async (tx) => {
-    if (storeCreditToRestore > 0 && order.userId) {
+    const updateRes = await tx.order.updateMany({
+      where: {
+        id: orderId,
+        status: priorStatus,
+      },
+      data: {
+        status: "CANCELLED",
+        cancellationReason,
+      },
+    });
+
+    if (updateRes.count === 0) {
+      throw new Error("Order already changed");
+    }
+
+    // Release stock ONLY if stockDeducted
+    if (order.stockDeducted && order.items.length > 0) {
+      await releaseStock(tx, order.items, "CANCEL", {
+        refType: "Order",
+        refId: order.id,
+      });
+      await tx.order.update({
+        where: { id: order.id },
+        data: { stockDeducted: false },
+      });
+    }
+
+    // Restore store credit
+    if (order.storeCreditApplied > 0 && order.userId) {
       await tx.user.update({
         where: { id: order.userId },
-        data: { storeCreditBalance: { increment: storeCreditToRestore } },
+        data: { storeCreditBalance: { increment: order.storeCreditApplied } },
       });
 
       await tx.storeCreditTransaction.create({
@@ -183,19 +212,11 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
       });
     }
 
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
-        status: "CANCELLED",
-        cancellationReason,
-        ...(razorpayRefundId ? { razorpayRefundId, refundedAt, refundAmount } : {}),
-      },
-    });
-
-    for (const item of order.items) {
-      await tx.productVariant.update({
-        where: { id: item.variantId },
-        data: { stock: { increment: item.qty } },
+    // Release coupon usage
+    if (order.couponCode) {
+      await tx.coupon.updateMany({
+        where: { code: order.couponCode, timesUsed: { gt: 0 } },
+        data: { timesUsed: { decrement: 1 } },
       });
     }
 
@@ -203,11 +224,58 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
       data: {
         orderId,
         status: "CANCELLED",
-        note: `Cancelled by admin. Reason: ${cancellationReason}${razorpayRefundId ? ` (Refund ID: ${razorpayRefundId})` : ""}`,
-        createdAt: now,
+        note: `Cancelled by admin. Reason: ${cancellationReason}`,
       },
     });
   });
+
+  // Refund after: if a Razorpay refund is owed, call after commit
+  const storeCreditToRestore = order.storeCreditApplied || 0;
+  const razorpayAmountToRefund = Math.max(0, order.total - storeCreditToRestore);
+  const owesRazorpayRefund =
+    order.paymentMethod === "RAZORPAY" &&
+    priorStatus === "PAID" &&
+    razorpayAmountToRefund > 0 &&
+    order.razorpayPaymentId;
+
+  if (owesRazorpayRefund && order.razorpayPaymentId) {
+    try {
+      const razorpay = getRazorpay();
+      const refund = await razorpay.payments.refund(order.razorpayPaymentId, {
+        amount: razorpayAmountToRefund,
+        notes: {
+          reason: cancellationReason,
+          orderId: order.displayId,
+        },
+      });
+
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          razorpayRefundId: refund.id,
+          refundedAt: new Date(),
+          refundAmount: razorpayAmountToRefund,
+        },
+      });
+
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId,
+          status: "CANCELLED",
+          note: `Razorpay refund processed: ${refund.id} (₹${(razorpayAmountToRefund / 100).toFixed(2)})`,
+        },
+      });
+    } catch (err: any) {
+      console.error("Razorpay refund error during admin cancellation:", err);
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId,
+          status: "CANCELLED",
+          note: `REFUND FAILED – manual action required: ${err?.message || err}`,
+        },
+      });
+    }
+  }
 
   sendCancellationEmail(orderId).catch((err) => {
     console.error("Failed to send cancellation email:", err);

@@ -100,6 +100,9 @@ model Order {
   discountAmount    Int?
   giftMessage       String?
   storeCreditApplied Int               @default(0) // paise
+  idempotencyKey    String?            @unique
+  stockDeducted     Boolean            @default(false)
+  abandonedEmailSentAt DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -312,4 +315,34 @@ model OrderNote {
   authorName String
   body       String
   createdAt  DateTime @default(now())
+}
+
+model ProcessedWebhook {
+  id         String   @id
+  provider   String
+  receivedAt DateTime @default(now())
+}
+
+enum StockReason {
+  SALE
+  COD_PLACED
+  STORE_CREDIT_PLACED
+  CANCEL
+  RETURN
+  RTO
+  MANUAL_ADJUST
+  OVERSOLD
+}
+
+model StockMovement {
+  id        String      @id @default(cuid())
+  variantId String
+  delta     Int
+  reason    StockReason
+  refType   String?
+  refId     String?
+  actorId   String?
+  createdAt DateTime    @default(now())
+
+  @@index([variantId, createdAt])
 }

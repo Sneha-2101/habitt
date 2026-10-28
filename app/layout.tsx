@@ -16,6 +16,9 @@ const fraunces = Fraunces({
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", weight: ["400", "500", "600"] });
 const jbMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jbmono", weight: ["400", "500"] });
 
+// temporary until the header stops reading the session on the server
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Habitt — considered basics",
   description: "Heavier fabrics, honest fits. Habitt makes clothes with a quiet weight to them.",

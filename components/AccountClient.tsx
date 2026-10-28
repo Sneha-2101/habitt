@@ -283,12 +283,11 @@ export default function AccountClient({ user, address, orders }: AccountClientPr
           <div>
             <label className="block text-[12px] font-medium text-stone-dark mb-1">Phone Number</label>
             <input
-              name="phone"
               type="tel"
-              placeholder="+91 98765 43210"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-3.5 py-2.5 border border-stone bg-white text-[13.5px] focus:outline-none focus:border-ink"
+              value={user.phone || ""}
+              placeholder="No phone linked"
+              disabled
+              className="w-full px-3.5 py-2.5 border border-stone bg-paper text-[13.5px] text-stone-dark cursor-not-allowed"
             />
           </div>
           <div>

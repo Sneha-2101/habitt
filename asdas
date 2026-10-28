@@ -1,0 +1,12 @@
+ habitt/.env.example                           |   4 [32m+[m[31m-[m
+ habitt/app/api/checkout/create-order/route.ts | 225 [32m+++++++++++++++[m[31m-----------[m
+ habitt/app/api/checkout/verify/route.ts       |  39 [32m+++[m[31m--[m
+ habitt/app/api/webhooks/razorpay/route.ts     |  31 [32m++[m[31m--[m
+ habitt/app/checkout/page.tsx                  |  11 [32m+[m[31m-[m
+ habitt/app/not-found.tsx                      |  18 [32m+++[m
+ habitt/components/Header.tsx                  |  15 [32m+[m[31m-[m
+ habitt/lib/auth.ts                            |  10 [32m+[m[31m-[m
+ habitt/package.json                           |   3 [32m+[m[31m-[m
+ habitt/prisma/schema.prisma                   |   3 [32m+[m[31m-[m
+ habitt/vercel.json                            |   3 [32m+[m
+ 11 files changed, 229 insertions(+), 133 deletions(-)

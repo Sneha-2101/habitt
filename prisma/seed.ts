@@ -4,18 +4,35 @@ import { hash } from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  const adminPasswordHash = await hash("admin123", 10);
+  const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
+  const ownerPassword = process.env.SEED_OWNER_PASSWORD;
 
-  await prisma.user.upsert({
-    where: { email: "admin@habitt.in" },
-    update: { passwordHash: adminPasswordHash },
-    create: {
-      email: "admin@habitt.in",
-      name: "Habitt Admin",
-      passwordHash: adminPasswordHash,
-      role: "OWNER",
-    },
+  if (!ownerEmail) {
+    throw new Error("OWNER_EMAIL environment variable is required to seed owner account.");
+  }
+
+  if (!ownerPassword || ownerPassword.length < 12) {
+    throw new Error("SEED_OWNER_PASSWORD environment variable is required (min 12 characters).");
+  }
+
+  const existingOwner = await prisma.user.findUnique({
+    where: { email: ownerEmail },
   });
+
+  if (!existingOwner) {
+    const adminPasswordHash = await hash(ownerPassword, 10);
+    await prisma.user.create({
+      data: {
+        email: ownerEmail,
+        name: "Habitt Owner",
+        passwordHash: adminPasswordHash,
+        role: "OWNER",
+      },
+    });
+    console.log(`Created owner account for ${ownerEmail}`);
+  } else {
+    console.log(`Owner account ${ownerEmail} already exists. Leaving password untouched.`);
+  }
 
   const sample = [
     { name: "Oxford Weave Shirt", category: "SHIRTS", price: 249000, description: "Heavyweight cotton oxford, garment-washed." },
@@ -42,7 +59,7 @@ async function main() {
     });
   }
 
-  console.log("Seed complete. Admin login: admin@habitt.in / admin123");
+  console.log("Seed complete.");
 }
 
 main()

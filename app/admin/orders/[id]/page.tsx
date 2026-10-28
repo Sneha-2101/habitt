@@ -6,20 +6,50 @@ import type { OrderStatus } from "@prisma/client";
 import { markOrderShipped, markOrderDelivered } from "@/lib/actions/fulfillment";
 import { cancelOrderAsAdmin } from "@/lib/actions/cancellation";
 import { addOrderNote } from "@/lib/actions/notes";
+import { requireStaff } from "@/lib/guards";
+import { canTransition, nextStatusOptions } from "@/lib/orders/transitions";
 
 async function updateStatus(orderId: string, formData: FormData) {
   "use server";
-  const status = formData.get("status") as OrderStatus;
-  await prisma.$transaction([
-    prisma.order.update({ where: { id: orderId }, data: { status } }),
-    prisma.orderStatusEvent.create({
+  await requireStaff();
+  const targetStatus = formData.get("status") as OrderStatus;
+
+  // Never allow manual transition to PAID, PENDING, or FAILED
+  if (targetStatus === "PAID" || targetStatus === "PENDING" || targetStatus === "FAILED") {
+    throw new Error("Invalid manual status change");
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { status: true, paymentMethod: true },
+  });
+  if (!order) throw new Error("Order not found");
+
+  if (!canTransition(order.paymentMethod, order.status, targetStatus)) {
+    throw new Error(`Illegal status transition from ${order.status} to ${targetStatus}`);
+  }
+
+  const priorStatus = order.status;
+
+  await prisma.$transaction(async (tx) => {
+    const updateRes = await tx.order.updateMany({
+      where: { id: orderId, status: priorStatus },
+      data: { status: targetStatus },
+    });
+
+    if (updateRes.count === 0) {
+      throw new Error("Order already changed");
+    }
+
+    await tx.orderStatusEvent.create({
       data: {
         orderId,
-        status,
-        note: `Status updated manually to ${status}`,
+        status: targetStatus,
+        note: `Status updated manually to ${targetStatus}`,
       },
-    }),
-  ]);
+    });
+  });
+
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");
 }
@@ -37,6 +67,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   if (!order) notFound();
 
   const updateWithId = updateStatus.bind(null, order.id);
+  const availableStatuses = nextStatusOptions({ paymentMethod: order.paymentMethod, status: order.status });
 
   const variantIds = order.items.map((i) => i.variantId).filter(Boolean);
   const variants = await prisma.productVariant.findMany({
@@ -307,16 +338,20 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
       {/* Manual Status Override */}
       <div className="border border-stone bg-white p-5 rounded-sm">
         <p className="text-xs font-medium text-stone-dark mb-3">Manual Status Override</p>
-        <form action={updateWithId} className="flex gap-3 items-center">
-          <select name="status" defaultValue={order.status} className="px-3.5 py-2 border border-stone text-[13px] rounded-sm">
-            {["PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED", "FAILED"].map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          <button type="submit" className="px-4 py-2 border border-stone text-[12.5px] font-medium hover:bg-paper">
-            Update Status
-          </button>
-        </form>
+        {availableStatuses.length > 0 ? (
+          <form action={updateWithId} className="flex gap-3 items-center">
+            <select name="status" className="px-3.5 py-2 border border-stone text-[13px] rounded-sm">
+              {availableStatuses.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <button type="submit" className="px-4 py-2 border border-stone text-[12.5px] font-medium hover:bg-paper">
+              Update Status
+            </button>
+          </form>
+        ) : (
+          <p className="text-[12.5px] text-stone-dark italic">No manual transitions available from current status ({order.status}).</p>
+        )}
       </div>
 
       {/* Admin Order Cancellation & Razorpay Refund */}

@@ -3,22 +3,10 @@ import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
 import { verifyOtp } from "@/lib/otp";
-
-// One login system supporting:
-// 1. Phone + OTP (id: "otp")
-// 2. Email + OTP (id: "otp")
-// 3. Email + Password (id: "credentials", for STAFF/OWNER & legacy password accounts)
-const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-if (!secret) {
-  throw new Error(
-    "AUTH_SECRET or NEXTAUTH_SECRET environment variable is missing. Please set AUTH_SECRET or NEXTAUTH_SECRET in environment variables."
-  );
-}
+import { authConfig } from "@/auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret,
-  session: { strategy: "jwt" },
-  pages: { signIn: "/login" },
+  ...authConfig,
   providers: [
     // 1 & 2: OTP Verification Provider (Phone or Email)
     Credentials({
@@ -95,21 +83,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.role = (user as { role?: string }).role;
-      }
-      return token;
-    },
-    session({ session, token }) {
-      if (session.user) {
-        (session.user as { id?: string; role?: string }).id =
-          (token.id as string) || (token.sub as string);
-        (session.user as { id?: string; role?: string }).role = token.role as string;
-      }
-      return session;
-    },
-  },
 });

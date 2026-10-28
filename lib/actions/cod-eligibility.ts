@@ -1,5 +1,3 @@
-"use server";
-
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { formatINR } from "@/lib/money";

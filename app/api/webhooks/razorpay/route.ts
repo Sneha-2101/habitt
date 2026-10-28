@@ -1,64 +1,100 @@
 import crypto from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { sendOrderConfirmationEmail } from "@/lib/email";
+import { markOrderPaid } from "@/lib/orders/mark-paid";
 
-// Configure this URL in the Razorpay dashboard (Settings → Webhooks) for the
-// "payment.captured" event. This exists as a second, server-to-server
-// confirmation path independent of the browser — see AppFlow.md step 6.
 export async function POST(req: Request) {
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error("RAZORPAY_WEBHOOK_SECRET is missing");
+    return new Response("Webhook secret not configured", { status: 500 });
+  }
+
   const rawBody = await req.text();
   const signature = req.headers.get("x-razorpay-signature");
 
-  if (!signature) return new Response("missing signature", { status: 400 });
+  if (!signature) {
+    return new Response("missing signature", { status: 400 });
+  }
 
   const expected = crypto
-    .createHmac("sha256", process.env.RAZORPAY_WEBHOOK_SECRET!)
+    .createHmac("sha256", webhookSecret)
     .update(rawBody)
     .digest("hex");
 
-  if (signature !== expected) return new Response("invalid signature", { status: 400 });
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
 
-  const event = JSON.parse(rawBody);
+  if (
+    signatureBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+  ) {
+    return new Response("invalid signature", { status: 400 });
+  }
 
-  if (event.event === "payment.captured") {
-    const razorpayOrderId = event.payload.payment.entity.order_id as string;
-    const razorpayPaymentId = event.payload.payment.entity.id as string;
+  let event: any;
+  try {
+    event = JSON.parse(rawBody);
+  } catch {
+    return new Response("Invalid JSON payload", { status: 400 });
+  }
 
-    const order = await prisma.order.findUnique({
-      where: { razorpayOrderId },
-      include: { items: true },
-    });
+  const eventId = req.headers.get("x-razorpay-event-id") || event?.id;
 
-    // Idempotent: skip if /api/checkout/verify already processed this order.
-    if (order && order.status !== "PAID") {
-      try {
-        await prisma.$transaction(async (tx) => {
-          await tx.order.update({
-            where: { id: order.id },
-            data: { status: "PAID", razorpayPaymentId, paidAt: new Date() },
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Deduplicate webhook events via ProcessedWebhook
+      if (eventId) {
+        await tx.processedWebhook.create({
+          data: {
+            id: eventId,
+            provider: "RAZORPAY",
+          },
+        });
+      }
+
+      if (event.event === "payment.captured") {
+        const razorpayOrderId = event.payload?.payment?.entity?.order_id as string | undefined;
+        const razorpayPaymentId = event.payload?.payment?.entity?.id as string | undefined;
+
+        if (razorpayOrderId && razorpayPaymentId) {
+          const order = await tx.order.findUnique({
+            where: { razorpayOrderId },
           });
 
-          for (const item of order.items) {
-            const updated = await tx.productVariant.updateMany({
-              where: { id: item.variantId, stock: { gte: item.qty } },
-              data: { stock: { decrement: item.qty } },
-            });
-
-            if (updated.count === 0) {
-              throw new Error(`Insufficient stock for variant ${item.variantId}`);
-            }
+          if (order) {
+            await markOrderPaid(tx, order.id, razorpayPaymentId);
           }
-        });
+        }
+      } else if (event.event === "payment.failed") {
+        const razorpayOrderId = event.payload?.payment?.entity?.order_id as string | undefined;
+        const errorDesc = event.payload?.payment?.entity?.error_description || "Payment failed at gateway";
 
-        // Send order confirmation email asynchronously
-        sendOrderConfirmationEmail(order.id).catch((err) => {
-          console.error("Failed to send webhook order confirmation email:", err);
-        });
-      } catch (err) {
-        console.error("Webhook processing failed due to insufficient stock:", err);
-        return new Response("Insufficient stock", { status: 400 });
+        if (razorpayOrderId) {
+          const order = await tx.order.findUnique({
+            where: { razorpayOrderId },
+          });
+
+          if (order) {
+            // Note only: customers can retry on the same Razorpay order; do not change status
+            await tx.orderStatusEvent.create({
+              data: {
+                orderId: order.id,
+                status: order.status,
+                note: `Payment attempt failed: ${errorDesc}`,
+              },
+            });
+          }
+        }
       }
+    });
+  } catch (err: any) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      // Event already processed
+      return new Response("Duplicate webhook event", { status: 200 });
     }
+    console.error("Razorpay webhook processing error:", err);
+    return new Response("Processing error", { status: 500 });
   }
 
   return new Response("ok", { status: 200 });

@@ -6,10 +6,21 @@ import crypto from "crypto";
 
 export async function GET(request: Request) {
   try {
-    const authHeader = request.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!cronSecret) {
+      return new NextResponse("cron not configured", { status: 500 });
+    }
+
+    const authHeader = request.headers.get("authorization");
+    const expectedHeader = `Bearer ${cronSecret}`;
+    if (!authHeader) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    const authBuffer = Buffer.from(authHeader);
+    const expectedBuffer = Buffer.from(expectedHeader);
+    if (authBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(authBuffer, expectedBuffer)) {
+      return new NextResponse("Unauthorized", { status: 401 });
     }
 
     const settings = await getSettings();

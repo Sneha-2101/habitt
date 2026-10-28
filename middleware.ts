@@ -1,5 +1,8 @@
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
+import { authConfig } from "@/auth.config";
 import { NextResponse } from "next/server";
+
+const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
@@ -9,7 +12,9 @@ export default auth((req) => {
   // logged-out or customer users. STAFF/OWNER only.
   if (pathname.startsWith("/admin")) {
     if (!req.auth) {
-      return NextResponse.redirect(new URL(`/login?redirect=${pathname}`, req.nextUrl.origin));
+      return NextResponse.redirect(
+        new URL(`/login?redirect=${encodeURIComponent(pathname)}`, req.nextUrl.origin)
+      );
     }
     if (role !== "STAFF" && role !== "OWNER") {
       return NextResponse.redirect(new URL("/", req.nextUrl.origin));
@@ -19,7 +24,9 @@ export default auth((req) => {
   // Buying requires an account — anonymous visitors get bounced to /login
   // and sent back to checkout once they've signed in.
   if (pathname.startsWith("/checkout") && !req.auth) {
-    return NextResponse.redirect(new URL("/login?redirect=/checkout", req.nextUrl.origin));
+    return NextResponse.redirect(
+      new URL(`/login?redirect=${encodeURIComponent("/checkout")}`, req.nextUrl.origin)
+    );
   }
 });
 

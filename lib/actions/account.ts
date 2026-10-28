@@ -1,17 +1,13 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
 export async function updateProfile(formData: FormData) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error("Unauthorized");
-  }
+  const user = await requireUser();
 
   const name = (formData.get("name") as string)?.trim();
-  const phone = (formData.get("phone") as string)?.trim();
   const dobRaw = (formData.get("dateOfBirth") as string)?.trim();
 
   if (!name) {
@@ -26,19 +22,17 @@ export async function updateProfile(formData: FormData) {
     }
   }
 
+  // SECURITY: phone is excluded to prevent account takeover without OTP verification
   await prisma.user.update({
-    where: { id: session.user.id },
-    data: { name, phone: phone || null, dateOfBirth },
+    where: { id: user.id },
+    data: { name, dateOfBirth },
   });
 
   revalidatePath("/account");
 }
 
 export async function saveAddress(formData: FormData) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error("Unauthorized");
-  }
+  const user = await requireUser();
 
   const street = (formData.get("street") as string)?.trim();
   const city = (formData.get("city") as string)?.trim();
@@ -50,7 +44,7 @@ export async function saveAddress(formData: FormData) {
   }
 
   const existingDefault = await prisma.address.findFirst({
-    where: { userId: session.user.id, isDefault: true },
+    where: { userId: user.id, isDefault: true },
   });
 
   if (existingDefault) {
@@ -61,7 +55,7 @@ export async function saveAddress(formData: FormData) {
   } else {
     await prisma.address.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         street,
         city,
         state,

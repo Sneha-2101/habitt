@@ -1,27 +1,15 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { requireStaff, requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
 import { getSettings } from "@/lib/settings";
+import { releaseStock } from "@/lib/stock";
 import { revalidatePath } from "next/cache";
 
-async function requireStaffOrOwner() {
-  const session = await auth();
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  if (!session?.user || (role !== "STAFF" && role !== "OWNER")) {
-    throw new Error("Unauthorized: Action requires STAFF or OWNER role.");
-  }
-  return session;
-}
-
 export async function requestReturn(orderId: string, reason: string) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error("Unauthorized: Please sign in to request a return.");
-  }
-
-  const userId = session.user.id;
+  const user = await requireUser();
+  const userId = user.id;
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { returnRequests: true },
@@ -38,26 +26,28 @@ export async function requestReturn(orderId: string, reason: string) {
   const returnWindowDays = settings.returnWindowDays || 7;
   if (order.deliveredAt) {
     const elapsedMs = Date.now() - new Date(order.deliveredAt).getTime();
-    const allowedMs = returnWindowDays * 24 * 60 * 60 * 1000;
-    if (elapsedMs > allowedMs) {
-      throw new Error(`The ${returnWindowDays}-day return window for this order has closed.`);
+    const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
+    if (elapsedDays > returnWindowDays) {
+      throw new Error(`The return window for this order has expired (${returnWindowDays} days).`);
     }
   }
 
-  const existingRequest = order.returnRequests.find(
-    (r) => r.status === "REQUESTED" || r.status === "APPROVED" || r.status === "REFUNDED"
+  const existingPending = order.returnRequests.find(
+    (r) => r.status === "REQUESTED" || r.status === "APPROVED"
   );
-  if (existingRequest) {
-    throw new Error(`A return request is already ${existingRequest.status.toLowerCase()} for this order.`);
+  if (existingPending) {
+    throw new Error("A return request has already been submitted for this order.");
   }
 
-  const returnReason = reason?.trim() || "Defective or unsatisfactory item";
+  if (!reason?.trim()) {
+    throw new Error("Please select or describe the reason for your return.");
+  }
 
   const returnReq = await prisma.returnRequest.create({
     data: {
       orderId,
       userId,
-      reason: returnReason,
+      reason: reason.trim(),
       status: "REQUESTED",
     },
   });
@@ -66,7 +56,7 @@ export async function requestReturn(orderId: string, reason: string) {
     data: {
       orderId,
       status: "DELIVERED",
-      note: `Return request submitted by customer. Reason: ${returnReason}`,
+      note: `Customer requested return / refund. Reason: ${reason.trim()}`,
     },
   });
 
@@ -78,7 +68,7 @@ export async function requestReturn(orderId: string, reason: string) {
 }
 
 export async function approveReturn(returnId: string, adminNote?: string) {
-  await requireStaffOrOwner();
+  await requireStaff();
 
   const returnReq = await prisma.returnRequest.findUnique({
     where: { id: returnId },
@@ -87,40 +77,50 @@ export async function approveReturn(returnId: string, adminNote?: string) {
 
   if (!returnReq) throw new Error("Return request not found");
   const order = returnReq.order;
-
-  let razorpayRefundId: string | undefined = undefined;
-  let refundedAt: Date | undefined = undefined;
-  let refundAmount: number | undefined = undefined;
-
-  const storeCreditRefund = order.storeCreditApplied || 0;
   const isCod = order.paymentMethod === "COD";
+  const storeCreditRefund = order.storeCreditApplied || 0;
   const razorpayAmountToRefund = isCod ? 0 : Math.max(0, order.total - storeCreditRefund);
 
-  // Process Razorpay refund if order had online balance paid via Razorpay
-  if (razorpayAmountToRefund > 0 && order.razorpayPaymentId) {
-    try {
-      const razorpay = getRazorpay();
-      const refund = await razorpay.payments.refund(order.razorpayPaymentId, {
-        amount: razorpayAmountToRefund,
-        notes: {
-          reason: `Approved return: ${returnReq.reason}`,
-          returnId: returnReq.id,
-          orderId: order.displayId,
-        },
-      });
-      razorpayRefundId = refund.id;
-      refundedAt = new Date();
-      refundAmount = razorpayAmountToRefund;
-    } catch (err) {
-      console.error("Razorpay refund error during return approval:", err);
-      throw new Error(`Failed to process payment refund via Razorpay: ${err instanceof Error ? err.message : "Refund API error"}`);
-    }
-  }
-
-  const now = new Date();
-
+  // Claim first: atomically update ReturnRequest inside transaction
   await prisma.$transaction(async (tx) => {
-    // Issue store credit for COD return OR restore store credit applied
+    const claimRes = await tx.returnRequest.updateMany({
+      where: { id: returnId, status: "REQUESTED" },
+      data: {
+        status: "REFUNDED",
+        adminNote: adminNote?.trim() || "Approved and refunded by store admin",
+      },
+    });
+
+    if (claimRes.count === 0) {
+      throw new Error("Return request already processed");
+    }
+
+    // Atomic order status update DELIVERED -> CANCELLED
+    const orderUpdateRes = await tx.order.updateMany({
+      where: { id: order.id, status: "DELIVERED" },
+      data: {
+        status: "CANCELLED",
+        cancellationReason: `Return approved: ${returnReq.reason}`,
+      },
+    });
+
+    if (orderUpdateRes.count === 0) {
+      throw new Error("Order already changed");
+    }
+
+    // Release stock ONLY if stockDeducted
+    if (order.stockDeducted && order.items && order.items.length > 0) {
+      await releaseStock(tx, order.items, "RETURN", {
+        refType: "ReturnRequest",
+        refId: returnReq.id,
+      });
+      await tx.order.update({
+        where: { id: order.id },
+        data: { stockDeducted: false },
+      });
+    }
+
+    // Issue COD store credit exactly once OR restore store credit applied
     if (order.userId) {
       if (isCod) {
         await tx.user.update({
@@ -153,41 +153,57 @@ export async function approveReturn(returnId: string, adminNote?: string) {
       }
     }
 
-    await tx.returnRequest.update({
-      where: { id: returnId },
-      data: {
-        status: "REFUNDED",
-        adminNote: adminNote?.trim() || "Approved and refunded by store admin",
-      },
-    });
-
-    await tx.order.update({
-      where: { id: order.id },
-      data: {
-        status: "CANCELLED",
-        cancellationReason: `Return approved: ${returnReq.reason}`,
-        ...(razorpayRefundId ? { razorpayRefundId, refundedAt, refundAmount } : {}),
-      },
-    });
-
-    // Restore item stock
-    for (const item of order.items) {
-      await tx.productVariant.update({
-        where: { id: item.variantId },
-        data: { stock: { increment: item.qty } },
-      });
-    }
-
     await tx.orderStatusEvent.create({
       data: {
         orderId: order.id,
         status: "CANCELLED",
-        note: `Return approved & refunded by admin. Note: ${adminNote?.trim() || "Approved"}${isCod ? " (Issued Store Credit)" : ""}${razorpayRefundId ? ` (Refund ID: ${razorpayRefundId})` : ""}`,
-        createdAt: now,
+        note: `Return approved & refunded by admin. Note: ${adminNote?.trim() || "Approved"}${isCod ? " (Issued Store Credit)" : ""}`,
       },
     });
   });
 
+  // Refund after: process Razorpay refund after transaction commit
+  if (razorpayAmountToRefund > 0 && order.razorpayPaymentId) {
+    try {
+      const razorpay = getRazorpay();
+      const refund = await razorpay.payments.refund(order.razorpayPaymentId, {
+        amount: razorpayAmountToRefund,
+        notes: {
+          reason: `Approved return: ${returnReq.reason}`,
+          returnId: returnReq.id,
+          orderId: order.displayId,
+        },
+      });
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          razorpayRefundId: refund.id,
+          refundedAt: new Date(),
+          refundAmount: razorpayAmountToRefund,
+        },
+      });
+
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId: order.id,
+          status: "CANCELLED",
+          note: `Razorpay refund processed: ${refund.id}`,
+        },
+      });
+    } catch (err: any) {
+      console.error("Razorpay refund error during return approval:", err);
+      await prisma.orderStatusEvent.create({
+        data: {
+          orderId: order.id,
+          status: "CANCELLED",
+          note: `REFUND FAILED – manual action required: ${err?.message || err}`,
+        },
+      });
+    }
+  }
+
+  // Send store credit email if COD
   const { sendStoreCreditIssuedEmail } = await import("@/lib/email");
   if (isCod && order.userId && (order.user?.email || order.customerEmail)) {
     const emailToUse = order.user?.email || order.customerEmail;
@@ -207,7 +223,7 @@ export async function approveReturn(returnId: string, adminNote?: string) {
 }
 
 export async function rejectReturn(returnId: string, adminNote: string) {
-  await requireStaffOrOwner();
+  await requireStaff();
 
   if (!adminNote?.trim()) {
     throw new Error("Please provide a reason for rejecting the return request.");
@@ -219,20 +235,26 @@ export async function rejectReturn(returnId: string, adminNote: string) {
 
   if (!returnReq) throw new Error("Return request not found");
 
-  await prisma.returnRequest.update({
-    where: { id: returnId },
-    data: {
-      status: "REJECTED",
-      adminNote: adminNote.trim(),
-    },
-  });
+  await prisma.$transaction(async (tx) => {
+    const claimRes = await tx.returnRequest.updateMany({
+      where: { id: returnId, status: "REQUESTED" },
+      data: {
+        status: "REJECTED",
+        adminNote: adminNote.trim(),
+      },
+    });
 
-  await prisma.orderStatusEvent.create({
-    data: {
-      orderId: returnReq.orderId,
-      status: "DELIVERED",
-      note: `Return request rejected by admin. Reason: ${adminNote.trim()}`,
-    },
+    if (claimRes.count === 0) {
+      throw new Error("Return request already processed");
+    }
+
+    await tx.orderStatusEvent.create({
+      data: {
+        orderId: returnReq.orderId,
+        status: "DELIVERED",
+        note: `Return request rejected by admin. Reason: ${adminNote.trim()}`,
+      },
+    });
   });
 
   revalidatePath("/admin/returns");
