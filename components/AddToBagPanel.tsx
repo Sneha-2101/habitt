@@ -19,12 +19,16 @@ export default function AddToBagPanel({
   price,
   category,
   variants,
+  freeShippingThreshold = 299900,
+  freeShippingOnPrepaid = true,
 }: {
   productId: string;
   productName: string;
   price: number;
   category: string;
   variants: Variant[];
+  freeShippingThreshold?: number;
+  freeShippingOnPrepaid?: boolean;
 }) {
   const [selectedSize, setSelectedSize] = useState<Size>(
     variants.find((v) => v.stock > 0)?.size || variants[0]?.size || "M"
@@ -72,6 +76,10 @@ export default function AddToBagPanel({
       setIsSubmittingNotify(false);
     }
   }
+
+  const shippingNote = freeShippingOnPrepaid
+    ? "Free shipping on prepaid orders"
+    : `Free shipping over ${formatINR(freeShippingThreshold)}`;
 
   return (
     <>
@@ -157,7 +165,7 @@ export default function AddToBagPanel({
 
       <div className="mt-3 text-[11.5px] text-stone-dark flex items-center justify-between">
         <span>{stock > 0 ? `${stock} in stock` : `Size ${selectedSize} unavailable`}</span>
-        <span>Free shipping over {formatINR(299900)}</span>
+        <span>{shippingNote}</span>
       </div>
 
       {showSizeGuide && (

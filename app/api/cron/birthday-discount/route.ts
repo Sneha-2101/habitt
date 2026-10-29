@@ -91,8 +91,8 @@ export async function GET(request: Request) {
       birthdayUsersFound: birthdayUsers.length,
       couponsGenerated: generatedCount,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("[Cron Birthday Discount Error]:", error);
-    return NextResponse.json({ error: error.message || "Failed to process birthday discounts" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to process birthday discounts" }, { status: 500 });
   }
 }

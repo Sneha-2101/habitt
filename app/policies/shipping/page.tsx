@@ -1,6 +1,8 @@
 import { getSettings } from "@/lib/settings";
 import { formatINR } from "@/lib/money";
 
+export const dynamic = "force-dynamic";
+
 export default async function ShippingPolicyPage() {
   const settings = await getSettings();
   const freeThresholdStr = formatINR(settings.freeShippingThreshold);
@@ -24,15 +26,20 @@ export default async function ShippingPolicyPage() {
         <section className="space-y-2">
           <h3 className="text-sm font-semibold text-ink">2. Shipping Charges & Free Shipping</h3>
           <p>
-            We offer <strong>Free Standard Shipping</strong> on all orders above {freeThresholdStr}. For orders under {freeThresholdStr}, a flat shipping fee of {shippingFeeStr} is applied at checkout.
+            {settings.freeShippingOnPrepaid && (
+              <span>We offer <strong>Free Shipping</strong> on all prepaid orders (UPI, Cards, Netbanking). </span>
+            )}
+            Orders above {freeThresholdStr} qualify for free standard shipping. For orders under {freeThresholdStr}, a flat shipping fee of {shippingFeeStr} is applied at checkout.
           </p>
         </section>
 
         <section className="space-y-2">
           <h3 className="text-sm font-semibold text-ink">3. Delivery Timelines</h3>
+          <p>
+            Orders are delivered across India within {settings.maxDeliveryDays} business days post-dispatch.
+          </p>
           <ul className="list-disc pl-5 space-y-1">
-            <li><strong>Metro Cities:</strong> 2 to 4 business days post-dispatch.</li>
-            <li><strong>Rest of India:</strong> 4 to 6 business days post-dispatch.</li>
+            <li><strong>Standard Delivery:</strong> Up to {settings.maxDeliveryDays} business days post-dispatch.</li>
           </ul>
         </section>
 

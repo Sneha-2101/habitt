@@ -1,13 +1,11 @@
 import React from "react";
 import Link from "next/link";
 import { CareTag } from "@/components/CareTag";
+import { getSettings } from "@/lib/settings";
 
-export const metadata = {
-  title: "Our Story — Habitt",
-  description: "Considered basics with a quiet weight. Learn about Habitt's design philosophy and commitment to quality garments.",
-};
+export default async function AboutPage() {
+  const settings = await getSettings();
 
-export default function AboutPage() {
   return (
     <main className="px-4 sm:px-7 py-12 md:py-20 max-w-4xl mx-auto">
       {/* Editorial Header */}
@@ -17,7 +15,7 @@ export default function AboutPage() {
           Clothes with a quiet weight to them.
         </h1>
         <p className="text-lg md:text-xl text-[#4B473F] leading-relaxed max-w-2xl">
-          Habitt was founded on a simple premise: garments should feel considered, honest, and built to endure beyond seasonal noise.
+          {settings.businessName} was founded on a simple premise: garments should feel considered, honest, and built to endure beyond seasonal noise.
         </p>
       </div>
 

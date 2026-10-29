@@ -135,6 +135,17 @@ model SiteSettings {
   birthdayDiscountPercent Int     @default(10)
   returnWindowDays       Int      @default(7)
   abandonedCartDelayHours Int     @default(24)
+  freeShippingOnPrepaid  Boolean  @default(true)
+  codRequiresDeliveredOrder Boolean @default(true)
+  freeReturnShipping     Boolean  @default(true)
+  refundProcessingHours  Int      @default(48)
+  maxDeliveryDays        Int      @default(7)
+  legalName              String?
+  businessPhone          String?
+  businessState          String?
+  businessPincode        String?
+  whatsappSupportNumber  String?
+  shiprocketPickupLocation String @default("Primary")
   updatedAt              DateTime @updatedAt
 }
 
@@ -345,4 +356,13 @@ model StockMovement {
   createdAt DateTime    @default(now())
 
   @@index([variantId, createdAt])
+}
+
+
+model NewsletterSubscriber {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  consentedAt DateTime @default(now())
+  source      String   @default("website")
+  createdAt   DateTime @default(now())
 }

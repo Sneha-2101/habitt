@@ -95,6 +95,8 @@ export async function createTestOrder(opts: {
   razorpayPaymentId?: string;
   paidAt?: Date;
   createdAt?: Date;
+  customerName?: string;
+  shippingAddress?: any;
 }) {
   const id = genId("m1test_ord");
   const displayId = `m1test_HB_${crypto.randomInt(100000, 999999)}`;
@@ -106,10 +108,10 @@ export async function createTestOrder(opts: {
       id,
       displayId,
       userId: opts.userId,
-      customerName: "M1 Test Customer",
+      customerName: opts.customerName ?? "M1 Test Customer",
       customerPhone: "9876543210",
       customerEmail: "m1test_cust@example.test",
-      shippingAddress: {
+      shippingAddress: opts.shippingAddress ?? {
         line1: "123 Test St",
         city: "Mumbai",
         state: "Maharashtra",
@@ -271,6 +273,45 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
+  // 13. Review, StockNotification, NewsletterSubscriber, OtpCode
+  await prisma.review.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { userId: { startsWith: "m1test" } },
+        { productId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.stockNotification.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { email: { startsWith: "m1test" } },
+        { productId: { startsWith: "m1test" } },
+        { variantId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.newsletterSubscriber.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { email: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.otpCode.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { identifier: { startsWith: "m1test" } },
+      ],
+    },
+  });
 
   // 14. User
   await prisma.user.deleteMany({
@@ -294,6 +335,10 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     coupons: await prisma.coupon.count({ where: { id: { startsWith: "m1test" } } }),
     productVariants: await prisma.productVariant.count({ where: { id: { startsWith: "m1test" } } }),
     products: await prisma.product.count({ where: { id: { startsWith: "m1test" } } }),
+    reviews: await prisma.review.count({ where: { id: { startsWith: "m1test" } } }),
+    stockNotifications: await prisma.stockNotification.count({ where: { id: { startsWith: "m1test" } } }),
+    newsletterSubscribers: await prisma.newsletterSubscriber.count({ where: { id: { startsWith: "m1test" } } }),
+    otpCodes: await prisma.otpCode.count({ where: { id: { startsWith: "m1test" } } }),
     users: await prisma.user.count({ where: { id: { startsWith: "m1test" } } }),
   };
 

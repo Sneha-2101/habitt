@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import crypto from "crypto";
-import { prisma } from "./helpers/prisma";
+import { prisma } from "../helpers/prisma";
 import {
   createTestUser,
   createTestProduct,
   createTestCoupon,
   createTestOrder,
   cleanupM1TestRows,
-} from "./helpers/fixtures";
+} from "../helpers/fixtures";
 
 // Setup mocks
 let mockCurrentUser: { id: string; role: string } = { id: "default_user", role: "CUSTOMER" };

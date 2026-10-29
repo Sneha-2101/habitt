@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
-import { prisma } from "./helpers/prisma";
+import { prisma } from "../helpers/prisma";
 import {
   createTestUser,
   createTestProduct,
   createTestCoupon,
   createTestOrder,
   cleanupM1TestRows,
-} from "./helpers/fixtures";
-import { createSessionCookie } from "./helpers/session";
+} from "../helpers/fixtures";
+import { createSessionCookie } from "../helpers/session";
 import { failOrder } from "@/lib/orders/fail-order";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";

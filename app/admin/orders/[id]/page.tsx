@@ -8,6 +8,7 @@ import { cancelOrderAsAdmin } from "@/lib/actions/cancellation";
 import { addOrderNote } from "@/lib/actions/notes";
 import { requireStaff } from "@/lib/guards";
 import { canTransition, nextStatusOptions } from "@/lib/orders/transitions";
+import { updateOrderShippingAddress } from "@/lib/actions/order-address";
 
 async function updateStatus(orderId: string, formData: FormData) {
   "use server";
@@ -67,6 +68,10 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   if (!order) notFound();
 
   const updateWithId = updateStatus.bind(null, order.id);
+  const updateAddressWithId = async (formData: FormData) => {
+    "use server";
+    await updateOrderShippingAddress(order.id, formData);
+  };
   const availableStatuses = nextStatusOptions({ paymentMethod: order.paymentMethod, status: order.status });
 
   const variantIds = order.items.map((i) => i.variantId).filter(Boolean);
@@ -77,7 +82,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   const variantStockMap = new Map(variants.map((v) => [v.id, v.stock]));
 
   const address = typeof order.shippingAddress === "object" && order.shippingAddress !== null
-    ? (order.shippingAddress as Record<string, any>)
+    ? (order.shippingAddress as Record<string, string | undefined>)
     : {};
 
   const formattedAddress = [
@@ -185,9 +190,77 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
       </div>
 
       {/* Shipping Address */}
-      <div className="border border-stone bg-white p-5 rounded-sm text-[13px]">
-        <div className="text-xs font-semibold tracking-wider text-stone-dark uppercase mb-1">Shipping Address</div>
-        {formattedAddress || "Standard Delivery Address"}
+      <div className="border border-stone bg-white p-5 rounded-sm text-[13px] space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold tracking-wider text-stone-dark uppercase">Shipping Address</div>
+          {(order.status === "PENDING" || order.status === "PAID") && (
+            <span className="text-[11px] text-moss font-medium">Editable before dispatch</span>
+          )}
+        </div>
+        <p className="text-ink">{formattedAddress || "Standard Delivery Address"}</p>
+
+        {(order.status === "PENDING" || order.status === "PAID") && (
+          <details className="mt-3 pt-3 border-t border-stone/40">
+            <summary className="text-xs text-ink font-medium cursor-pointer hover:underline">
+              ✏️ Edit Delivery Address
+            </summary>
+            <form action={updateAddressWithId} className="mt-3 space-y-2">
+              <div>
+                <label className="block text-[11px] text-stone-dark">Address Line 1</label>
+                <input
+                  name="line1"
+                  defaultValue={address.line1 || address.addressLine1 || address.street || ""}
+                  required
+                  className="w-full px-2.5 py-1.5 border border-stone text-xs rounded-sm bg-paper"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-stone-dark">Address Line 2 (Optional)</label>
+                <input
+                  name="line2"
+                  defaultValue={address.line2 || address.addressLine2 || ""}
+                  className="w-full px-2.5 py-1.5 border border-stone text-xs rounded-sm bg-paper"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[11px] text-stone-dark">City</label>
+                  <input
+                    name="city"
+                    defaultValue={address.city || ""}
+                    required
+                    className="w-full px-2.5 py-1.5 border border-stone text-xs rounded-sm bg-paper"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-stone-dark">State</label>
+                  <input
+                    name="state"
+                    defaultValue={address.state || ""}
+                    required
+                    className="w-full px-2.5 py-1.5 border border-stone text-xs rounded-sm bg-paper"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-stone-dark">Pincode</label>
+                  <input
+                    name="pincode"
+                    defaultValue={address.pincode || address.postalCode || ""}
+                    required
+                    pattern="\d{6}"
+                    className="w-full px-2.5 py-1.5 border border-stone text-xs rounded-sm bg-paper"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="mt-2 px-3 py-1.5 bg-ink text-paper text-xs font-medium uppercase tracking-[0.04em] rounded-sm hover:opacity-90"
+              >
+                Save Updated Address
+              </button>
+            </form>
+          </details>
+        )}
       </div>
 
       {/* Payment / Reference Info */}

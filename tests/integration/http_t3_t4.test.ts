@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
-import { prisma } from "./helpers/prisma";
+import { prisma } from "../helpers/prisma";
 import {
   createTestUser,
   createTestProduct,
   cleanupM1TestRows,
-} from "./helpers/fixtures";
-import { createSessionCookie } from "./helpers/session";
+} from "../helpers/fixtures";
+import { createSessionCookie } from "../helpers/session";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
@@ -126,13 +126,16 @@ describe("T3 & T4: HTTP Checkout Validation & Idempotency", () => {
     expect(ordersCountAfterBadInputs).toBe(0);
 
     // 6. Draft and archived products -> 409 and NO order created
+    const user2 = await createTestUser();
+    const session2 = await createSessionCookie(user2.id);
+
     const { product: draftProduct, variants: draftVariants } = await createTestProduct({
       status: "DRAFT",
       variants: [{ size: "M", stock: 5 }],
     });
     const draftRes = await fetch(`${BASE_URL}/api/checkout/create-order`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: session.headerValue },
+      headers: { "Content-Type": "application/json", Cookie: session2.headerValue },
       body: JSON.stringify({
         ...validPayload,
         idempotencyKey: crypto.randomUUID(),
@@ -147,7 +150,7 @@ describe("T3 & T4: HTTP Checkout Validation & Idempotency", () => {
     });
     const archivedRes = await fetch(`${BASE_URL}/api/checkout/create-order`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: session.headerValue },
+      headers: { "Content-Type": "application/json", Cookie: session2.headerValue },
       body: JSON.stringify({
         ...validPayload,
         idempotencyKey: crypto.randomUUID(),
@@ -159,7 +162,7 @@ describe("T3 & T4: HTTP Checkout Validation & Idempotency", () => {
     // 7. Duplicate lines 6+6 -> 400 (merged qty = 12 > 10)
     const dupLine6Res = await fetch(`${BASE_URL}/api/checkout/create-order`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: session.headerValue },
+      headers: { "Content-Type": "application/json", Cookie: session2.headerValue },
       body: JSON.stringify({
         ...validPayload,
         idempotencyKey: crypto.randomUUID(),
@@ -177,7 +180,7 @@ describe("T3 & T4: HTTP Checkout Validation & Idempotency", () => {
     });
     const dupLine3Res = await fetch(`${BASE_URL}/api/checkout/create-order`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: session.headerValue },
+      headers: { "Content-Type": "application/json", Cookie: session2.headerValue },
       body: JSON.stringify({
         ...validPayload,
         idempotencyKey: crypto.randomUUID(),
@@ -189,9 +192,11 @@ describe("T3 & T4: HTTP Checkout Validation & Idempotency", () => {
     });
     expect(dupLine3Res.status).toBe(409);
 
-    // Confirm absolutely no orders created for this user
-    const finalOrdersCount = await prisma.order.count({ where: { userId: user.id } });
-    expect(finalOrdersCount).toBe(0);
+    // Confirm absolutely no orders created for either user
+    const finalOrdersCount1 = await prisma.order.count({ where: { userId: user.id } });
+    const finalOrdersCount2 = await prisma.order.count({ where: { userId: user2.id } });
+    expect(finalOrdersCount1).toBe(0);
+    expect(finalOrdersCount2).toBe(0);
   });
 
   it("T4 idempotency: sequential replay, parallel calls, user mismatch, and expired checkout", async () => {

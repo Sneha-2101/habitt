@@ -6,8 +6,8 @@ import { useSession } from "next-auth/react";
 import Script from "next/script";
 import { useCartStore } from "@/lib/cart-store";
 import { formatINR } from "@/lib/money";
-
 import { validateCoupon } from "@/lib/actions/coupons";
+import { ShippingNote } from "@/lib/pricing/shipping";
 
 declare global {
   interface Window {
@@ -23,11 +23,48 @@ interface SavedAddress {
   pincode: string;
 }
 
+interface QuoteData {
+  items: Array<{
+    productId: string;
+    variantId: string;
+    name: string;
+    size: string;
+    unitPrice: number;
+    qty: number;
+    lineTotal: number;
+  }>;
+  subtotal: number;
+  discount: number;
+  shippingFee: number;
+  codFee: number;
+  shippingNote: ShippingNote;
+  total: number;
+  storeCreditApplied: number;
+  payable: number;
+  cod: {
+    eligible: boolean;
+    reason?: string;
+  };
+  warnings: Array<{
+    type: string;
+    message: string;
+  }>;
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const { items, clear } = useCartStore();
-  const [form, setForm] = useState({ name: "", phone: "", email: "", line1: "", city: "", state: "", pincode: "" });
+
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    line1: "",
+    city: "",
+    state: "",
+    pincode: "",
+  });
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("NEW");
 
@@ -52,57 +89,25 @@ export default function CheckoutPage() {
   const [showGiftMessage, setShowGiftMessage] = useState(false);
   const [giftMessage, setGiftMessage] = useState("");
 
-  // COD Payment Method state
+  // Payment Method & Store Credit selection
   const [paymentMethod, setPaymentMethod] = useState<"RAZORPAY" | "COD">("RAZORPAY");
-  const [codEligibility, setCodEligibility] = useState<{
-    eligible: boolean;
-    reason?: "cod_disabled" | "order_cap_exceeded" | "requires_first_delivery";
-    message?: string;
-  } | null>(null);
-
-  // SiteSettings state for dynamic shipping & COD fee calculation
-  const [siteSettings, setSiteSettings] = useState<{
-    shippingFee: number;
-    freeShippingThreshold: number;
-    codFeeEnabled: boolean;
-    codFee: number;
-  }>({
-    shippingFee: 9900,
-    freeShippingThreshold: 299900,
-    codFeeEnabled: false,
-    codFee: 0,
-  });
-
-  // Store Credit state
   const [userStoreCreditBalance, setUserStoreCreditBalance] = useState<number>(0);
   const [useStoreCredit, setUseStoreCredit] = useState<boolean>(true);
 
-  const subtotal = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
-  const shippingFee = subtotal >= siteSettings.freeShippingThreshold ? 0 : siteSettings.shippingFee;
-  const codSurcharge = (paymentMethod === "COD" && siteSettings.codFeeEnabled) ? siteSettings.codFee : 0;
-  const discountAmount = appliedCoupon?.discountAmount || 0;
-  const grossTotal = Math.max(0, subtotal - discountAmount + shippingFee + codSurcharge);
+  // Server Quote State (No price maths in the browser)
+  const [quote, setQuote] = useState<QuoteData | null>(null);
+  const [isQuoteLoading, setIsQuoteLoading] = useState<boolean>(true);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
 
-  const storeCreditApplied = useStoreCredit ? Math.min(userStoreCreditBalance, grossTotal) : 0;
-  const finalTotal = Math.max(0, grossTotal - storeCreditApplied);
-  const isZeroTotal = finalTotal === 0;
-
+  // 1. Fetch user profile and saved addresses on mount
   useEffect(() => {
-    // Track InitiateCheckout Meta Pixel Event
-    import("@/components/MetaPixel").then(({ trackPixelEvent }) => {
-      trackPixelEvent("InitiateCheckout", {
-        value: (subtotal / 100),
-        currency: "INR",
-        num_items: items.reduce((acc, item) => acc + item.qty, 0),
-      });
-    });
-
-    // Site settings and COD eligibility checks are performed server-side on checkout/create-order
     if (session?.user) {
-      const userId = (session.user as { id?: string }).id;
-      setForm((f) => ({ ...f, name: session.user?.name || f.name, email: session.user?.email || f.email }));
-      
-      // Fetch user store credit balance and saved address
+      setForm((f) => ({
+        ...f,
+        name: session.user?.name || f.name,
+        email: session.user?.email || f.email,
+      }));
+
       fetch("/api/account/profile")
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
@@ -129,14 +134,90 @@ export default function CheckoutPage() {
         })
         .catch(() => {});
     }
-  }, [session, subtotal]);
+  }, [session]);
+
+  // 2. Fetch server price quote on load and whenever inputs change (debounced 300ms, abort controller)
+  useEffect(() => {
+    if (items.length === 0) {
+      setQuote(null);
+      setIsQuoteLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsQuoteLoading(true);
+    setQuoteError(null);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/checkout/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            items: items.map((i) => ({
+              productId: i.productId,
+              variantId: i.variantId,
+              qty: i.qty,
+            })),
+            paymentMethod,
+            couponCode: appliedCoupon?.code || undefined,
+            useStoreCredit,
+          }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Failed to calculate order quote");
+        }
+
+        const data: QuoteData = await res.json();
+        setQuote(data);
+
+        // Check for coupon-specific warning
+        const couponWarn = data.warnings?.find((w) => w.type === "INVALID_COUPON");
+        if (couponWarn) {
+          setCouponError(couponWarn.message);
+          setAppliedCoupon(null);
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          setQuoteError(err.message || "Failed to calculate quote");
+        } else if (!(err instanceof Error)) {
+          setQuoteError("Failed to calculate quote");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsQuoteLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [items, paymentMethod, appliedCoupon?.code, useStoreCredit]);
+
+  // Meta Pixel track initiate checkout
+  useEffect(() => {
+    if (quote?.subtotal) {
+      import("@/components/MetaPixel").then(({ trackPixelEvent }) => {
+        trackPixelEvent("InitiateCheckout", {
+          value: quote.subtotal / 100,
+          currency: "INR",
+          num_items: items.reduce((acc, item) => acc + item.qty, 0),
+        });
+      });
+    }
+  }, [quote?.subtotal, items]);
 
   async function handleApplyCoupon() {
     if (!couponCodeInput.trim()) return;
     setCouponError(null);
     setIsValidatingCoupon(true);
     try {
-      const res = await validateCoupon(couponCodeInput, subtotal);
+      const res = await validateCoupon(couponCodeInput, quote?.subtotal || 0);
       if (res.valid) {
         setAppliedCoupon({ code: res.code, discountAmount: res.discountAmount });
         setCouponError(null);
@@ -147,6 +228,8 @@ export default function CheckoutPage() {
       setIsValidatingCoupon(false);
     }
   }
+
+  const isZeroTotal = quote ? quote.payable === 0 && quote.storeCreditApplied > 0 : false;
 
   async function handlePay() {
     setLoading(true);
@@ -171,9 +254,15 @@ export default function CheckoutPage() {
           customerEmail: form.email || undefined,
           couponCode: appliedCoupon?.code || undefined,
           giftMessage: giftMessage.trim() || undefined,
-          shippingAddress: { line1: form.line1, city: form.city, state: form.state, pincode: form.pincode },
+          shippingAddress: {
+            line1: form.line1,
+            city: form.city,
+            state: form.state,
+            pincode: form.pincode,
+          },
         }),
       });
+
       const data = await res.json();
       if (!res.ok) {
         if (data?.retry && typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -226,12 +315,19 @@ export default function CheckoutPage() {
     }
   }
 
+  function renderShippingNote(note: ShippingNote) {
+    if (note === "FREE_PREPAID") return "Free shipping with online payment";
+    if (note === "FREE_THRESHOLD") return "Free shipping (order threshold reached)";
+    if (note === "CHARGED") return "Standard shipping";
+    return "";
+  }
+
   return (
     <main className="max-w-lg mx-auto px-4 sm:px-7 py-10 sm:py-14">
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
       <h1 className="font-display text-2xl mb-6 text-ink font-medium">Checkout</h1>
 
-      {/* Saved Address Selection Dropdown (if logged in & addresses exist) */}
+      {/* Saved Address Selection Dropdown */}
       {savedAddresses.length > 0 && (
         <div className="mb-4">
           <label className="block text-[12px] font-medium text-stone-dark mb-1">Select Shipping Address</label>
@@ -243,7 +339,13 @@ export default function CheckoutPage() {
               if (val !== "NEW") {
                 const addr = savedAddresses.find((a) => a.id === val);
                 if (addr) {
-                  setForm((f) => ({ ...f, line1: addr.street, city: addr.city, state: addr.state, pincode: addr.pincode }));
+                  setForm((f) => ({
+                    ...f,
+                    line1: addr.street,
+                    city: addr.city,
+                    state: addr.state,
+                    pincode: addr.pincode,
+                  }));
                 }
               }
             }}
@@ -329,9 +431,11 @@ export default function CheckoutPage() {
                 </span>
               </label>
             </div>
-            <span className="text-xs font-mono font-semibold text-emerald-900">
-              -{formatINR(storeCreditApplied)}
-            </span>
+            {quote && quote.storeCreditApplied > 0 && (
+              <span className="text-xs font-mono font-semibold text-emerald-900">
+                -{formatINR(quote.storeCreditApplied)}
+              </span>
+            )}
           </div>
         )}
 
@@ -350,7 +454,13 @@ export default function CheckoutPage() {
             <div className="space-y-2">
               <div className="flex justify-between items-center text-xs font-semibold text-ink">
                 <span>Apply Coupon</span>
-                <button type="button" onClick={() => setShowCoupon(false)} className="text-stone-dark text-[11px]">✕</button>
+                <button
+                  type="button"
+                  onClick={() => setShowCoupon(false)}
+                  className="text-stone-dark text-[11px]"
+                >
+                  ✕
+                </button>
               </div>
               <div className="flex gap-2">
                 <input
@@ -370,9 +480,19 @@ export default function CheckoutPage() {
                 </button>
               </div>
               {appliedCoupon && (
-                <p className="text-xs text-moss font-medium">
-                  ✓ Coupon "{appliedCoupon.code}" applied! Savings: {formatINR(appliedCoupon.discountAmount)}
-                </p>
+                <div className="flex items-center justify-between text-xs text-moss font-medium">
+                  <span>✓ Coupon &quot;{appliedCoupon.code}&quot; applied!</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppliedCoupon(null);
+                      setCouponCodeInput("");
+                    }}
+                    className="text-stone-dark hover:underline text-[11px]"
+                  >
+                    Remove
+                  </button>
+                </div>
               )}
               {couponError && <p className="text-xs text-clay">{couponError}</p>}
             </div>
@@ -394,7 +514,13 @@ export default function CheckoutPage() {
             <div className="space-y-2">
               <div className="flex justify-between items-center text-xs font-semibold text-ink">
                 <span>Gift Message</span>
-                <button type="button" onClick={() => setShowGiftMessage(false)} className="text-stone-dark text-[11px]">✕</button>
+                <button
+                  type="button"
+                  onClick={() => setShowGiftMessage(false)}
+                  className="text-stone-dark text-[11px]"
+                >
+                  ✕
+                </button>
               </div>
               <textarea
                 rows={2}
@@ -408,7 +534,7 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* Payment Method Selection (hidden if store credit completely covers total) */}
+      {/* Payment Method Selection */}
       {!isZeroTotal ? (
         <div className="bg-white border border-stone p-4 mb-6 rounded-sm space-y-3">
           <div className="text-[11px] tracking-[0.08em] font-semibold text-stone-dark uppercase">
@@ -427,32 +553,38 @@ export default function CheckoutPage() {
               />
               <div>
                 <div className="text-xs font-medium text-ink">Online Payment (Razorpay)</div>
-                <div className="text-[11px] text-stone-dark">UPI, Cards, NetBanking</div>
+                <div className="text-[11px] text-stone-dark">UPI, Cards, NetBanking (Free shipping on prepaid)</div>
               </div>
             </label>
 
-            {codEligibility?.eligible ? (
-              <label className="flex items-center gap-3 p-3 border border-stone rounded-sm cursor-pointer hover:bg-paper/50">
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="COD"
-                  checked={paymentMethod === "COD"}
-                  onChange={() => setPaymentMethod("COD")}
-                  className="w-4 h-4 accent-ink cursor-pointer"
-                />
-                <div>
-                  <div className="text-xs font-medium text-ink">Cash on Delivery (COD)</div>
-                  <div className="text-[11px] text-stone-dark">Pay cash upon delivery</div>
-                </div>
-              </label>
-            ) : (
-              codEligibility && codEligibility.reason !== "cod_disabled" && (
-                <div className="p-2.5 bg-paper text-[11.5px] text-stone-dark border border-stone/50 rounded-sm">
-                  ℹ️ {codEligibility.message}
-                </div>
-              )
-            )}
+            <label
+              className={`flex items-start gap-3 p-3 border rounded-sm ${
+                quote?.cod.eligible
+                  ? "border-stone cursor-pointer hover:bg-paper/50"
+                  : "border-stone/40 bg-stone/10 cursor-not-allowed opacity-60"
+              }`}
+            >
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="COD"
+                disabled={!quote?.cod.eligible}
+                checked={paymentMethod === "COD"}
+                onChange={() => {
+                  if (quote?.cod.eligible) setPaymentMethod("COD");
+                }}
+                className="w-4 h-4 mt-0.5 accent-ink"
+              />
+              <div className="flex-1">
+                <div className="text-xs font-medium text-ink">Cash on Delivery (COD)</div>
+                <div className="text-[11px] text-stone-dark">Pay cash upon delivery</div>
+                {!quote?.cod.eligible && quote?.cod.reason && (
+                  <p className="text-[11px] text-clay mt-1">
+                    {quote.cod.reason}
+                  </p>
+                )}
+              </div>
+            </label>
           </div>
         </div>
       ) : (
@@ -461,63 +593,108 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      {/* Order Summary & Pricing Breakdown */}
+      {/* Order Summary & Pricing Breakdown (Exclusively rendered from server quote response) */}
       <div className="bg-white border border-stone p-4 mb-6 text-sm rounded-sm space-y-2">
-        <div className="text-[11px] tracking-[0.08em] font-semibold text-stone-dark uppercase mb-2">Order Summary</div>
+        <div className="flex justify-between items-center mb-2">
+          <div className="text-[11px] tracking-[0.08em] font-semibold text-stone-dark uppercase">
+            Order Summary
+          </div>
+          {isQuoteLoading && (
+            <span className="text-[11px] text-stone-dark italic">Updating quote…</span>
+          )}
+        </div>
+
         {items.map((i) => (
           <div key={i.variantId} className="flex justify-between text-xs">
-            <span>{i.name} ({i.size}) × {i.qty}</span>
+            <span>
+              {i.name} ({i.size}) × {i.qty}
+            </span>
             <span className="font-mono">{formatINR(i.unitPrice * i.qty)}</span>
           </div>
         ))}
-        <div className="pt-2 mt-2 border-t border-stone/40 text-xs space-y-1">
-          <div className="flex justify-between text-stone-dark">
-            <span>Subtotal</span>
-            <span className="font-mono">{formatINR(subtotal)}</span>
+
+        {quote ? (
+          <div className="pt-2 mt-2 border-t border-stone/40 text-xs space-y-1">
+            <div className="flex justify-between text-stone-dark">
+              <span>Subtotal</span>
+              <span className="font-mono">{formatINR(quote.subtotal)}</span>
+            </div>
+
+            {quote.discount > 0 && (
+              <div className="flex justify-between text-moss font-medium">
+                <span>Discount {appliedCoupon?.code ? `(${appliedCoupon.code})` : ""}</span>
+                <span className="font-mono">-{formatINR(quote.discount)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between text-stone-dark">
+              <div>
+                <span>Shipping</span>
+                {quote.shippingNote && (
+                  <span className="text-[10px] text-stone-dark block italic">
+                    {renderShippingNote(quote.shippingNote)}
+                  </span>
+                )}
+              </div>
+              <span className="font-mono">
+                {quote.shippingFee === 0 ? "FREE" : formatINR(quote.shippingFee)}
+              </span>
+            </div>
+
+            {quote.codFee > 0 && (
+              <div className="flex justify-between text-amber-800 font-medium">
+                <span>COD Handling Fee</span>
+                <span className="font-mono">+{formatINR(quote.codFee)}</span>
+              </div>
+            )}
+
+            {quote.storeCreditApplied > 0 && (
+              <div className="flex justify-between text-emerald-800 font-medium">
+                <span>Store Credit Applied</span>
+                <span className="font-mono">-{formatINR(quote.storeCreditApplied)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between font-semibold pt-2 mt-2 border-t border-stone text-sm">
+              <span>{isZeroTotal ? "Total Payable" : "Remaining Payable"}</span>
+              <span className="font-mono">{formatINR(quote.payable)}</span>
+            </div>
           </div>
-          {appliedCoupon && (
-            <div className="flex justify-between text-moss font-medium">
-              <span>Discount ({appliedCoupon.code})</span>
-              <span className="font-mono">-{formatINR(discountAmount)}</span>
-            </div>
-          )}
-          <div className="flex justify-between text-stone-dark">
-            <span>Shipping</span>
-            <span className="font-mono">{shippingFee === 0 ? "FREE" : formatINR(shippingFee)}</span>
-          </div>
-          {codSurcharge > 0 && (
-            <div className="flex justify-between text-amber-800 font-medium">
-              <span>COD Handling Fee</span>
-              <span className="font-mono">+{formatINR(codSurcharge)}</span>
-            </div>
-          )}
-          {storeCreditApplied > 0 && (
-            <div className="flex justify-between text-emerald-800 font-medium">
-              <span>Store Credit Applied</span>
-              <span className="font-mono">-{formatINR(storeCreditApplied)}</span>
-            </div>
-          )}
-        </div>
-        <div className="flex justify-between font-semibold pt-2 mt-2 border-t border-stone text-sm">
-          <span>{isZeroTotal ? "Total Payable" : "Remaining Payable"}</span>
-          <span className="font-mono">{formatINR(finalTotal)}</span>
-        </div>
+        ) : quoteError ? (
+          <p className="text-xs text-clay py-2">{quoteError}</p>
+        ) : (
+          <div className="pt-2 text-xs text-stone-dark italic">Loading quote…</div>
+        )}
       </div>
+
+      {quote?.warnings && quote.warnings.length > 0 && (
+        <div className="mb-4 space-y-1">
+          {quote.warnings.map((w, idx) => (
+            <p key={idx} className="text-xs text-clay font-medium bg-red-50 p-2 border border-red-200 rounded-sm">
+              ⚠ {w.message}
+            </p>
+          ))}
+        </div>
+      )}
 
       {error && <p className="text-clay text-[12.5px] mb-4 font-medium">{error}</p>}
 
       <button
         onClick={handlePay}
-        disabled={loading || items.length === 0}
+        disabled={loading || items.length === 0 || isQuoteLoading || !quote}
         className="w-full py-3.5 bg-ink text-white text-[13.5px] font-medium tracking-[0.04em] rounded-sm hover:bg-opacity-90 disabled:opacity-50 transition-opacity"
       >
         {loading
           ? "Processing…"
+          : isQuoteLoading
+          ? "Calculating Total…"
+          : !quote
+          ? "Checkout"
           : isZeroTotal
           ? "Place Order (Paid with Store Credit)"
           : paymentMethod === "COD"
-          ? `Place Order — ${formatINR(finalTotal)} (COD)`
-          : `Pay ${formatINR(finalTotal)} with Razorpay`}
+          ? `Place Order — ${formatINR(quote.payable)} (COD)`
+          : `Pay ${formatINR(quote.payable)} with Razorpay`}
       </button>
     </main>
   );

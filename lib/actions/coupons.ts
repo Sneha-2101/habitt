@@ -1,29 +1,35 @@
 "use server";
 
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { getClientIp } from "@/lib/client-ip";
+import { limit } from "@/lib/ratelimit";
 
 export async function validateCoupon(code: string, subtotal: number) {
   if (!code?.trim()) {
     throw new Error("Please enter a coupon code.");
   }
 
+  try {
+    const reqHeaders = await headers();
+    const ip = getClientIp(reqHeaders);
+    const rl = await limit("couponCheck", ip);
+    if (!rl.ok) {
+      throw new Error("Too many coupon checks. Please wait a minute before trying again.");
+    }
+  } catch (e: any) {
+    if (e?.message?.includes("Too many coupon checks")) {
+      throw e;
+    }
+    // Headers might not be available in non-request contexts
+  }
+
   const normalizedCode = code.trim().toUpperCase();
 
   // Find active coupon
-  let coupon = await prisma.coupon.findUnique({
+  const coupon = await prisma.coupon.findUnique({
     where: { code: normalizedCode },
   });
-
-  // Default auto-creation for WELCOME10 if first time
-  if (!coupon && normalizedCode === "WELCOME10") {
-    coupon = await prisma.coupon.create({
-      data: {
-        code: "WELCOME10",
-        discountType: "PERCENT",
-        value: 10, // 10% off
-      },
-    });
-  }
 
   if (!coupon) {
     throw new Error("Invalid coupon code.");

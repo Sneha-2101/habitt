@@ -1,5 +1,6 @@
 import { ShippingProvider, ShipmentDetails, TrackingStatus } from "./types";
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 
 const SHIPROCKET_BASE_URL = "https://apiv2.shiprocket.in/v1/external";
 
@@ -41,7 +42,12 @@ export class ShiprocketProvider implements ShippingProvider {
   }
 
   async createShipment(orderId: string): Promise<ShipmentDetails> {
-    const token = await this.getAuthToken();
+    const [token, settings] = await Promise.all([
+      this.getAuthToken(),
+      getSettings(),
+    ]);
+    const pickupLocation = settings.shiprocketPickupLocation || this.pickupLocation;
+
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: { items: true },
@@ -50,13 +56,13 @@ export class ShiprocketProvider implements ShippingProvider {
     if (!order) throw new Error(`Order ${orderId} not found`);
 
     const address = typeof order.shippingAddress === "object" && order.shippingAddress !== null
-      ? (order.shippingAddress as Record<string, any>)
+      ? (order.shippingAddress as Record<string, string | undefined>)
       : {};
 
     const payload = {
       order_id: order.displayId,
       order_date: order.createdAt.toISOString().replace("T", " ").substring(0, 19),
-      pickup_location: this.pickupLocation,
+      pickup_location: pickupLocation,
       billing_customer_name: order.customerName,
       billing_last_name: "",
       billing_address: address.addressLine1 || address.street || address.line1 || "Street Address",
@@ -126,11 +132,13 @@ export class ShiprocketProvider implements ShippingProvider {
       status: trackData?.current_status || "In Transit",
       currentLocation: trackData?.destination || undefined,
       estimatedDelivery: trackData?.edd ? new Date(trackData.edd) : undefined,
-      events: (data.tracking_data?.shipment_track_activities || []).map((act: any) => ({
-        activity: act.activity,
-        location: act.location,
-        date: new Date(act.date),
-      })),
+      events: (data.tracking_data?.shipment_track_activities || []).map(
+        (act: { activity?: string; location?: string; date: string | number | Date }) => ({
+          activity: act.activity || "",
+          location: act.location || "",
+          date: new Date(act.date),
+        })
+      ),
     };
   }
 }

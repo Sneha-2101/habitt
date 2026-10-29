@@ -44,6 +44,17 @@ export default async function AdminSettingsPage() {
           birthdayDiscountPercent: settings.birthdayDiscountPercent,
           returnWindowDays: settings.returnWindowDays,
           abandonedCartDelayHours: settings.abandonedCartDelayHours,
+          freeShippingOnPrepaid: settings.freeShippingOnPrepaid,
+          codRequiresDeliveredOrder: settings.codRequiresDeliveredOrder,
+          freeReturnShipping: settings.freeReturnShipping,
+          refundProcessingHours: settings.refundProcessingHours,
+          maxDeliveryDays: settings.maxDeliveryDays,
+          legalName: settings.legalName,
+          businessPhone: settings.businessPhone,
+          businessState: settings.businessState,
+          businessPincode: settings.businessPincode,
+          whatsappSupportNumber: settings.whatsappSupportNumber,
+          shiprocketPickupLocation: settings.shiprocketPickupLocation,
         }}
       />
     </main>

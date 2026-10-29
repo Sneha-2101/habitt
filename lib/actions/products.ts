@@ -75,7 +75,7 @@ async function uploadFileToSupabase(file: File): Promise<string> {
 
   if (error) {
     console.error("Supabase storage upload error:", error);
-    throw new Error(`Failed to upload image: ${error.message}`);
+    throw new Error("Failed to upload image.");
   }
 
   const { data } = supabase.storage.from("product-images").getPublicUrl(filePath);
@@ -187,7 +187,7 @@ export async function addProductImage(productId: string, formData: FormData) {
     });
   } catch (err) {
     console.error("Failed image upload on product edit:", err);
-    throw new Error(err instanceof Error ? err.message : "Failed to upload image");
+    throw new Error("Failed to upload image.");
   }
 
   revalidatePath(`/admin/products/${productId}/edit`);

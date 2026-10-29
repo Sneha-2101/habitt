@@ -6,6 +6,17 @@
  * falls back to logging the OTP code prominently in the server console for dev testing.
  */
 
+export function graphVersion(): string {
+  const version = process.env.META_GRAPH_VERSION?.trim();
+  if (version) {
+    return version;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("META_GRAPH_VERSION is required in production environment");
+  }
+  return "v20.0";
+}
+
 export async function sendWhatsappOtp(
   phone: string,
   code: string
@@ -24,8 +35,10 @@ export async function sendWhatsappOtp(
   // Format phone number to numeric digits (Meta E.164 without leading '+')
   const recipient = phone.replace(/\D/g, "");
 
+  const version = graphVersion();
+
   try {
-    const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+    const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
     const res = await fetch(url, {
       method: "POST",
       headers: {

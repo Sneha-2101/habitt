@@ -1,15 +1,19 @@
 "use client";
 
-export default function WhatsAppWidget() {
-  const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER;
-  const digitsOnly = whatsappNumber ? whatsappNumber.replace(/[^0-9]/g, "") : "";
+interface WhatsAppWidgetProps {
+  phoneNumber?: string | null;
+}
 
-  // Hide widget if no number is configured or if it matches placeholder values
-  if (!digitsOnly || digitsOnly === "919876543210" || digitsOnly === "9876543210") {
+export default function WhatsAppWidget({ phoneNumber }: WhatsAppWidgetProps = {}) {
+  const digitsOnly = phoneNumber ? phoneNumber.replace(/[^0-9]/g, "") : "";
+
+  // Hide widget if no number is configured
+  if (!digitsOnly) {
     return null;
   }
 
-  const whatsappUrl = `https://wa.me/${digitsOnly}?text=Hi%20Habitt%20Team!%20I%20have%20a%20question%20about%20an%20order/product.`;
+  const cleanNumber = digitsOnly.length === 10 ? `91${digitsOnly}` : digitsOnly;
+  const whatsappUrl = `https://wa.me/${cleanNumber}?text=Hi!%20I%20have%20a%20question%20about%20an%20order/product.`;
 
   return (
     <a

@@ -21,6 +21,17 @@ export interface UpdateSiteSettingsInput {
   birthdayDiscountPercent?: number;
   returnWindowDays?: number;
   abandonedCartDelayHours?: number;
+  freeShippingOnPrepaid?: boolean;
+  codRequiresDeliveredOrder?: boolean;
+  freeReturnShipping?: boolean;
+  refundProcessingHours?: number;
+  maxDeliveryDays?: number;
+  legalName?: string | null;
+  businessPhone?: string | null;
+  businessState?: string | null;
+  businessPincode?: string | null;
+  whatsappSupportNumber?: string | null;
+  shiprocketPickupLocation?: string;
 }
 
 export async function getSettings() {
@@ -32,24 +43,6 @@ export async function getSettings() {
     settings = await prisma.siteSettings.create({
       data: {
         id: "default",
-        codEnabled: true,
-        codOrderCap: 500000,
-        shippingFee: 9900,
-        freeShippingThreshold: 299900,
-        codFeeEnabled: false,
-        codFee: 0,
-        gstEnabled: false,
-        gstRate: 0.0,
-        businessName: "habitt",
-        businessTagline: "Minimalist Apparel Essentials",
-        supportEmail: "support@habitt.in",
-        orderSenderEmail: "orders@habitt.in",
-        lowStockThreshold: 3,
-        welcomeCouponCode: "WELCOME10",
-        welcomeCouponPercent: 10,
-        birthdayDiscountPercent: 10,
-        returnWindowDays: 7,
-        abandonedCartDelayHours: 24,
       },
     });
   }

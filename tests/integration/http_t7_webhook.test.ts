@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
-import { prisma } from "./helpers/prisma";
+import { prisma } from "../helpers/prisma";
 import {
   createTestUser,
   createTestProduct,
   createTestOrder,
   cleanupM1TestRows,
-} from "./helpers/fixtures";
-import { webhookSignature } from "./helpers/razorpay";
+} from "../helpers/fixtures";
+import { webhookSignature } from "../helpers/razorpay";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 

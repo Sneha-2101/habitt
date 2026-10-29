@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
-import { prisma } from "./helpers/prisma";
+import { prisma } from "../helpers/prisma";
 import {
   createTestUser,
   createTestProduct,
   createTestOrder,
   cleanupM1TestRows,
   genId,
-} from "./helpers/fixtures";
-import { createSessionCookie } from "./helpers/session";
-import { verifySignature, webhookSignature } from "./helpers/razorpay";
+} from "../helpers/fixtures";
+import { createSessionCookie } from "../helpers/session";
+import { verifySignature, webhookSignature } from "../helpers/razorpay";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
@@ -56,8 +56,8 @@ describe("T1 & T2: HTTP Checkout Happy Path & Concurrency", () => {
     const createData = await createRes.json();
     expect(createData.orderId).toBeDefined();
     expect(createData.razorpayOrderId).toBeDefined();
-    // Subtotal = 200000, shipping = 9900 (under 299900 threshold), payable = 209900
-    expect(createData.amount).toBe(209900);
+    // Subtotal = 200000; free shipping on prepaid applies (freeShippingOnPrepaid: true), payable = 200000
+    expect(createData.amount).toBe(200000);
 
     // Verify order in DB before payment
     const pendingOrder = await prisma.order.findUnique({

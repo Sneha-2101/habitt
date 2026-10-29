@@ -1,18 +1,27 @@
 import { Resend } from "resend";
 import { getSettings } from "@/lib/settings";
+import { escapeHtml } from "@/lib/escape-html";
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
-async function getFromEmail() {
-  if (process.env.RESEND_FROM_EMAIL) return process.env.RESEND_FROM_EMAIL;
+async function getSenderInfo() {
+  let settings;
   try {
-    const settings = await getSettings();
-    if (settings.orderSenderEmail) return `Habitt <${settings.orderSenderEmail}>`;
-  } catch (err) {
-    // fallback
+    settings = await getSettings();
+  } catch {
+    settings = {
+      businessName: "Habitt",
+      orderSenderEmail: "",
+      supportEmail: "",
+    };
   }
-  return "Habitt <onboarding@resend.dev>";
+
+  const businessName = settings.businessName || "Habitt";
+  const from = process.env.RESEND_FROM_EMAIL || (settings.orderSenderEmail ? `${businessName} <${settings.orderSenderEmail}>` : `${businessName} <onboarding@resend.dev>`);
+  const replyTo = settings.supportEmail || undefined;
+
+  return { from, replyTo, businessName };
 }
 
 export async function sendEmailOtp(
@@ -25,15 +34,15 @@ export async function sendEmailOtp(
   }
 
   try {
-    const fromEmail = await getFromEmail();
+    const { from, replyTo, businessName } = await getSenderInfo();
 
     const htmlContent = `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; color: #111; background-color: #faf9f6;">
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px; color: #111;">Verification Code</h2>
-        <p style="color: #555; margin-bottom: 20px; font-size: 14px;">Use the following 6-digit verification code to sign in to your Habitt account:</p>
+        <p style="color: #555; margin-bottom: 20px; font-size: 14px;">Use the following 6-digit verification code to sign in to your ${escapeHtml(businessName)} account:</p>
 
         <div style="background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 24px;">
-          <span style="font-family: monospace; font-size: 28px; font-weight: 700; letter-spacing: 4px; color: #111;">${code}</span>
+          <span style="font-family: monospace; font-size: 28px; font-weight: 700; letter-spacing: 4px; color: #111;">${escapeHtml(code)}</span>
           <p style="font-size: 12px; color: #888; margin: 10px 0 0 0;">This code expires in 5 minutes.</p>
         </div>
 
@@ -44,9 +53,10 @@ export async function sendEmailOtp(
     `;
 
     const response = await resend.emails.send({
-      from: fromEmail,
+      from,
+      replyTo,
       to: email,
-      subject: `${code} is your Habitt verification code`,
+      subject: `${code} is your ${businessName} verification code`,
       html: htmlContent,
     });
 

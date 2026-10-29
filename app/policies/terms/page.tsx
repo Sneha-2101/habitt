@@ -1,4 +1,11 @@
-export default function TermsOfServicePage() {
+import { getSettings } from "@/lib/settings";
+
+export const dynamic = "force-dynamic";
+
+export default async function TermsOfServicePage() {
+  const settings = await getSettings();
+  const companyName = settings.legalName || settings.businessName;
+
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-7 py-12 space-y-8 text-ink">
       <header className="border-b border-stone pb-6">
@@ -9,7 +16,7 @@ export default function TermsOfServicePage() {
       <section className="space-y-4 text-xs leading-relaxed">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-ink">1. Overview</h2>
         <p>
-          Welcome to Habitt ("we", "us", "our"). By visiting our website and/or purchasing from us, you engage in our "Service" and agree to be bound by the following Terms of Service.
+          Welcome to {settings.businessName} (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;). By visiting our website and/or purchasing from us, you engage in our &quot;Service&quot; and agree to be bound by the following Terms of Service.
         </p>
 
         <h2 className="text-sm font-semibold uppercase tracking-wider text-ink pt-4">2. Orders & Pricing</h2>
@@ -24,13 +31,17 @@ export default function TermsOfServicePage() {
 
         <h2 className="text-sm font-semibold uppercase tracking-wider text-ink pt-4">4. Intellectual Property</h2>
         <p>
-          All content included on this site, such as text, graphics, logos, images, and software, is the property of Habitt Apparel and protected by copyright and intellectual property laws.
+          All content included on this site, such as text, graphics, logos, images, and software, is the property of {companyName} and protected by copyright and intellectual property laws.
         </p>
 
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink pt-4">5. Contact Information</h2>
-        <p>
-          Questions about the Terms of Service should be sent to us at support@habitt.in.
-        </p>
+        {settings.supportEmail && (
+          <>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-ink pt-4">5. Contact Information</h2>
+            <p>
+              Questions about the Terms of Service should be sent to us at {settings.supportEmail}.
+            </p>
+          </>
+        )}
       </section>
     </main>
   );

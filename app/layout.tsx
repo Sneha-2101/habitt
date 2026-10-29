@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import WhatsAppWidget from "@/components/WhatsAppWidget";
 import Providers from "@/components/Providers";
 import MetaPixel from "@/components/MetaPixel";
+import { getSettings } from "@/lib/settings";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -25,7 +26,9 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const settings = await getSettings();
+
   return (
     <html lang="en" className={`${fraunces.variable} ${inter.variable} ${jbMono.variable}`}>
       <body suppressHydrationWarning className="flex flex-col min-h-screen">
@@ -33,8 +36,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <MetaPixel />
           <Header />
           <div className="flex-1">{children}</div>
-          <Footer />
-          <WhatsAppWidget />
+          <Footer
+            businessName={settings.businessName}
+            businessTagline={settings.businessTagline}
+            legalName={settings.legalName}
+            businessAddress={settings.businessAddress}
+          />
+          <WhatsAppWidget phoneNumber={settings.whatsappSupportNumber} />
         </Providers>
       </body>
     </html>

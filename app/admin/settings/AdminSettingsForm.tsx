@@ -25,6 +25,17 @@ interface SettingsFormProps {
     birthdayDiscountPercent: number;
     returnWindowDays: number;
     abandonedCartDelayHours: number;
+    freeShippingOnPrepaid: boolean;
+    codRequiresDeliveredOrder: boolean;
+    freeReturnShipping: boolean;
+    refundProcessingHours: number;
+    maxDeliveryDays: number;
+    legalName: string | null;
+    businessPhone: string | null;
+    businessState: string | null;
+    businessPincode: string | null;
+    whatsappSupportNumber: string | null;
+    shiprocketPickupLocation: string;
   };
 }
 
@@ -50,6 +61,17 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
     birthdayDiscountPercent: initialSettings.birthdayDiscountPercent,
     returnWindowDays: initialSettings.returnWindowDays,
     abandonedCartDelayHours: initialSettings.abandonedCartDelayHours,
+    freeShippingOnPrepaid: initialSettings.freeShippingOnPrepaid,
+    codRequiresDeliveredOrder: initialSettings.codRequiresDeliveredOrder,
+    freeReturnShipping: initialSettings.freeReturnShipping,
+    refundProcessingHours: initialSettings.refundProcessingHours,
+    maxDeliveryDays: initialSettings.maxDeliveryDays,
+    legalName: initialSettings.legalName || "",
+    businessPhone: initialSettings.businessPhone || "",
+    businessState: initialSettings.businessState || "",
+    businessPincode: initialSettings.businessPincode || "",
+    whatsappSupportNumber: initialSettings.whatsappSupportNumber || "",
+    shiprocketPickupLocation: initialSettings.shiprocketPickupLocation || "Primary",
   });
 
   const [activeTab, setActiveTab] = useState<
@@ -86,10 +108,21 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
           birthdayDiscountPercent: Math.max(0, Number(form.birthdayDiscountPercent)),
           returnWindowDays: Math.max(0, Number(form.returnWindowDays)),
           abandonedCartDelayHours: Math.max(0, Number(form.abandonedCartDelayHours)),
+          freeShippingOnPrepaid: form.freeShippingOnPrepaid,
+          codRequiresDeliveredOrder: form.codRequiresDeliveredOrder,
+          freeReturnShipping: form.freeReturnShipping,
+          refundProcessingHours: Math.max(1, Math.min(240, Number(form.refundProcessingHours))),
+          maxDeliveryDays: Math.max(1, Math.min(60, Number(form.maxDeliveryDays))),
+          legalName: form.legalName.trim() || null,
+          businessPhone: form.businessPhone.trim() || null,
+          businessState: form.businessState.trim() || null,
+          businessPincode: form.businessPincode.trim() || null,
+          whatsappSupportNumber: form.whatsappSupportNumber.trim() || null,
+          shiprocketPickupLocation: form.shiprocketPickupLocation.trim() || "Primary",
         });
         setMessage({ type: "success", text: "Store settings saved successfully." });
-      } catch (err: any) {
-        setMessage({ type: "error", text: err?.message || "Failed to update settings." });
+      } catch (err: unknown) {
+        setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to update settings." });
       }
     });
   };
@@ -144,7 +177,7 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
           <div className="space-y-5">
             <div>
               <h2 className="text-sm font-semibold text-ink mb-1">Cash on Delivery (COD) Settings</h2>
-              <p className="text-xs text-stone-dark">Configure availability, order limits, and optional surcharge fees for COD.</p>
+              <p className="text-xs text-stone-dark">Configure availability, order limits, customer verification, and optional surcharge fees for COD.</p>
             </div>
 
             <div className="flex items-center gap-3 pt-2">
@@ -158,6 +191,22 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
               <label htmlFor="codEnabled" className="text-xs font-medium text-ink cursor-pointer">
                 Enable Cash on Delivery (COD) payment option
               </label>
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <input
+                type="checkbox"
+                id="codRequiresDeliveredOrder"
+                checked={form.codRequiresDeliveredOrder}
+                onChange={(e) => setForm({ ...form, codRequiresDeliveredOrder: e.target.checked })}
+                className="w-4 h-4 accent-ink cursor-pointer"
+              />
+              <div>
+                <label htmlFor="codRequiresDeliveredOrder" className="text-xs font-medium text-ink cursor-pointer">
+                  Require at least one delivered order for COD eligibility
+                </label>
+                <p className="text-[11px] text-stone-dark">When enabled, first-time customers must prepay online to establish account trust.</p>
+              </div>
             </div>
 
             <div>
@@ -222,13 +271,30 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
           <div className="space-y-5">
             <div>
               <h2 className="text-sm font-semibold text-ink mb-1">Shipping & Delivery Rates</h2>
-              <p className="text-xs text-stone-dark">Set standard flat shipping fee and free shipping eligibility threshold.</p>
+              <p className="text-xs text-stone-dark">Set standard flat shipping fee, free shipping eligibility, delivery turnaround, and Shiprocket integration.</p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <input
+                type="checkbox"
+                id="freeShippingOnPrepaid"
+                checked={form.freeShippingOnPrepaid}
+                onChange={(e) => setForm({ ...form, freeShippingOnPrepaid: e.target.checked })}
+                className="w-4 h-4 accent-ink cursor-pointer"
+              />
+              <div>
+                <label htmlFor="freeShippingOnPrepaid" className="text-xs font-medium text-ink cursor-pointer">
+                  Free shipping on all prepaid orders (Razorpay & Store Credit)
+                </label>
+                <p className="text-[11px] text-stone-dark">When enabled, customers paying online enjoy zero delivery fees regardless of order amount.</p>
+              </div>
             </div>
 
             <div>
               <label htmlFor="shippingFee" className="block text-xs font-medium text-ink mb-1">
                 Standard Flat Shipping Fee (₹)
               </label>
+              <p className="text-[11px] text-stone-dark mb-2">Default delivery charge applied when free shipping rules are not satisfied.</p>
               <div className="relative max-w-xs">
                 <span className="absolute left-3 top-2.5 text-xs text-stone-dark">₹</span>
                 <input
@@ -248,7 +314,7 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
               <label htmlFor="freeShippingThreshold" className="block text-xs font-medium text-ink mb-1">
                 Free Shipping Subtotal Threshold (₹)
               </label>
-              <p className="text-[11px] text-stone-dark mb-2">Orders with subtotal at or above this amount receive free shipping.</p>
+              <p className="text-[11px] text-stone-dark mb-2">Orders with subtotal at or above this amount receive free delivery.</p>
               <div className="relative max-w-xs">
                 <span className="absolute left-3 top-2.5 text-xs text-stone-dark">₹</span>
                 <input
@@ -263,6 +329,38 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                 />
               </div>
             </div>
+
+            <div>
+              <label htmlFor="maxDeliveryDays" className="block text-xs font-medium text-ink mb-1">
+                Maximum Estimated Delivery Days
+              </label>
+              <p className="text-[11px] text-stone-dark mb-2">Estimated delivery timeframe displayed on product details and shipping policy pages (1 to 60 days).</p>
+              <input
+                type="number"
+                id="maxDeliveryDays"
+                min="1"
+                max="60"
+                value={form.maxDeliveryDays}
+                onChange={(e) => setForm({ ...form, maxDeliveryDays: Number(e.target.value) })}
+                className="w-full max-w-xs px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="shiprocketPickupLocation" className="block text-xs font-medium text-ink mb-1">
+                Shiprocket Pickup Location
+              </label>
+              <p className="text-[11px] text-stone-dark mb-2">Configured warehouse pickup location nickname in your Shiprocket account.</p>
+              <input
+                type="text"
+                id="shiprocketPickupLocation"
+                value={form.shiprocketPickupLocation}
+                onChange={(e) => setForm({ ...form, shiprocketPickupLocation: e.target.value })}
+                className="w-full max-w-md px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                required
+              />
+            </div>
           </div>
         )}
 
@@ -271,7 +369,22 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
           <div className="space-y-5">
             <div>
               <h2 className="text-sm font-semibold text-ink mb-1">GST & Tax Invoice Settings</h2>
-              <p className="text-xs text-stone-dark">Configure business details and GST tax rates printed on PDF invoices.</p>
+              <p className="text-xs text-stone-dark">Configure business legal entity details and GST tax rates printed on customer invoices.</p>
+            </div>
+
+            <div>
+              <label htmlFor="legalName" className="block text-xs font-medium text-ink mb-1">
+                Legal Entity Name
+              </label>
+              <p className="text-[11px] text-stone-dark mb-2">Official registered legal name printed on tax receipts and footer notices (falls back to Business Name if empty).</p>
+              <input
+                type="text"
+                id="legalName"
+                placeholder="e.g. Habitt Apparel Private Limited"
+                value={form.legalName}
+                onChange={(e) => setForm({ ...form, legalName: e.target.value })}
+                className="w-full max-w-md px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+              />
             </div>
 
             <div className="flex items-center gap-3">
@@ -321,10 +434,10 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
             )}
 
             <div className="pt-3 border-t border-stone/50 space-y-4">
-              <h3 className="text-xs font-semibold text-ink uppercase tracking-wider">Business Invoice Info</h3>
+              <h3 className="text-xs font-semibold text-ink uppercase tracking-wider">Business Display Info</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="businessName" className="block text-xs font-medium text-ink mb-1">Store / Business Name</label>
+                  <label htmlFor="businessName" className="block text-xs font-medium text-ink mb-1">Store / Brand Name</label>
                   <input
                     type="text"
                     id="businessName"
@@ -351,7 +464,7 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                 <textarea
                   id="businessAddress"
                   rows={2}
-                  placeholder="e.g. 102 Craft House, MG Road, Mumbai, Maharashtra 400001"
+                  placeholder="e.g. 102 Craft House, MG Road, Mumbai"
                   value={form.businessAddress}
                   onChange={(e) => setForm({ ...form, businessAddress: e.target.value })}
                   className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
@@ -365,36 +478,100 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
         {activeTab === "contact" && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-sm font-semibold text-ink mb-1">Store Contact Emails</h2>
-              <p className="text-xs text-stone-dark">Emails used for customer support and transactional notifications.</p>
+              <h2 className="text-sm font-semibold text-ink mb-1">Store Contact & Channels</h2>
+              <p className="text-xs text-stone-dark">Manage official emails, phone lines, state, pincode, and customer WhatsApp support widget.</p>
             </div>
 
-            <div>
-              <label htmlFor="supportEmail" className="block text-xs font-medium text-ink mb-1">
-                Customer Support Email
-              </label>
-              <input
-                type="email"
-                id="supportEmail"
-                value={form.supportEmail}
-                onChange={(e) => setForm({ ...form, supportEmail: e.target.value })}
-                className="w-full max-w-md px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
-                required
-              />
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="supportEmail" className="block text-xs font-medium text-ink mb-1">
+                  Customer Support Email (Reply-To)
+                </label>
+                <p className="text-[11px] text-stone-dark mb-1">Used as Reply-To on all order emails and support links.</p>
+                <input
+                  type="email"
+                  id="supportEmail"
+                  value={form.supportEmail}
+                  onChange={(e) => setForm({ ...form, supportEmail: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  required
+                />
+              </div>
 
-            <div>
-              <label htmlFor="orderSenderEmail" className="block text-xs font-medium text-ink mb-1">
-                Order Sender Email (From Address)
-              </label>
-              <input
-                type="email"
-                id="orderSenderEmail"
-                value={form.orderSenderEmail}
-                onChange={(e) => setForm({ ...form, orderSenderEmail: e.target.value })}
-                className="w-full max-w-md px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
-                required
-              />
+              <div>
+                <label htmlFor="orderSenderEmail" className="block text-xs font-medium text-ink mb-1">
+                  Order Sender Email (From Address)
+                </label>
+                <p className="text-[11px] text-stone-dark mb-1">Verified sender email used in transactional order dispatches.</p>
+                <input
+                  type="email"
+                  id="orderSenderEmail"
+                  value={form.orderSenderEmail}
+                  onChange={(e) => setForm({ ...form, orderSenderEmail: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="businessPhone" className="block text-xs font-medium text-ink mb-1">
+                  Business Phone Number
+                </label>
+                <p className="text-[11px] text-stone-dark mb-1">10-digit Indian mobile number for customer inquiries (omits row if empty).</p>
+                <input
+                  type="tel"
+                  id="businessPhone"
+                  placeholder="10-digit mobile number"
+                  value={form.businessPhone}
+                  onChange={(e) => setForm({ ...form, businessPhone: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="whatsappSupportNumber" className="block text-xs font-medium text-ink mb-1">
+                  WhatsApp Support Number
+                </label>
+                <p className="text-[11px] text-stone-dark mb-1">10-digit Indian mobile number powering the chat widget (widget hidden if empty).</p>
+                <input
+                  type="tel"
+                  id="whatsappSupportNumber"
+                  placeholder="10-digit mobile number"
+                  value={form.whatsappSupportNumber}
+                  onChange={(e) => setForm({ ...form, whatsappSupportNumber: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="businessState" className="block text-xs font-medium text-ink mb-1">
+                  Business State
+                </label>
+                <p className="text-[11px] text-stone-dark mb-1">State name used on invoice footers and contact pages.</p>
+                <input
+                  type="text"
+                  id="businessState"
+                  placeholder="e.g. Maharashtra"
+                  value={form.businessState}
+                  onChange={(e) => setForm({ ...form, businessState: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="businessPincode" className="block text-xs font-medium text-ink mb-1">
+                  Business Pincode
+                </label>
+                <p className="text-[11px] text-stone-dark mb-1">6-digit Indian postal code of registered facility.</p>
+                <input
+                  type="text"
+                  id="businessPincode"
+                  placeholder="e.g. 400001"
+                  value={form.businessPincode}
+                  onChange={(e) => setForm({ ...form, businessPincode: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -412,7 +589,7 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                 Low Stock Threshold (Units)
               </label>
               <p className="text-[11px] text-stone-dark mb-2">
-                Variants with stock $\le$ this number trigger customer "Only X left" badges and admin warnings.
+                Variants with stock &le; this number trigger customer &quot;Only X left&quot; badges and admin warnings.
               </p>
               <input
                 type="number"
@@ -439,7 +616,7 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="welcomeCouponCode" className="block text-xs font-medium text-ink mb-1">
-                  Welcome Coupon Code
+                  Welcome Coupon Code Prefix / Name
                 </label>
                 <input
                   type="text"
@@ -493,8 +670,24 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
         {activeTab === "returns" && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-sm font-semibold text-ink mb-1">Returns & Refund Window</h2>
-              <p className="text-xs text-stone-dark">Define the post-delivery return request window enforced server-side.</p>
+              <h2 className="text-sm font-semibold text-ink mb-1">Returns, Shipping & Refund Timing</h2>
+              <p className="text-xs text-stone-dark">Define post-delivery return window, free return shipping, and refund processing turnaround.</p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <input
+                type="checkbox"
+                id="freeReturnShipping"
+                checked={form.freeReturnShipping}
+                onChange={(e) => setForm({ ...form, freeReturnShipping: e.target.checked })}
+                className="w-4 h-4 accent-ink cursor-pointer"
+              />
+              <div>
+                <label htmlFor="freeReturnShipping" className="text-xs font-medium text-ink cursor-pointer">
+                  Free Return Shipping
+                </label>
+                <p className="text-[11px] text-stone-dark">When enabled, return pickups and reverse logistics are provided at zero cost to customers.</p>
+              </div>
             </div>
 
             <div>
@@ -502,7 +695,7 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                 Return Eligibility Window (Days post-delivery)
               </label>
               <p className="text-[11px] text-stone-dark mb-2">
-                Return requests after this number of days from delivery are automatically rejected.
+                Return requests submitted after this number of days from delivery are automatically rejected.
               </p>
               <input
                 type="number"
@@ -511,6 +704,25 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                 max="90"
                 value={form.returnWindowDays}
                 onChange={(e) => setForm({ ...form, returnWindowDays: Number(e.target.value) })}
+                className="w-full max-w-xs px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="refundProcessingHours" className="block text-xs font-medium text-ink mb-1">
+                Refund Processing Time (Hours)
+              </label>
+              <p className="text-[11px] text-stone-dark mb-2">
+                Turnaround hours within which we initiate customer refunds upon return approval (1 to 240 hours).
+              </p>
+              <input
+                type="number"
+                id="refundProcessingHours"
+                min="1"
+                max="240"
+                value={form.refundProcessingHours}
+                onChange={(e) => setForm({ ...form, refundProcessingHours: Number(e.target.value) })}
                 className="w-full max-w-xs px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
                 required
               />
@@ -531,7 +743,7 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                 Abandoned Cart Delay (Hours)
               </label>
               <p className="text-[11px] text-stone-dark mb-2">
-                The cron job selects pending orders created $\ge$ this many hours ago for email reminders.
+                The cron job selects pending orders created &ge; this many hours ago for email reminders.
               </p>
               <input
                 type="number"

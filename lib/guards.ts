@@ -20,7 +20,7 @@ export interface GuardUser {
   name?: string | null;
   role?: string;
   user?: GuardUser;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export async function requireUser(): Promise<GuardUser> {

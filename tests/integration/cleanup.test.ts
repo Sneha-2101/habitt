@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { cleanupM1TestRows } from "./helpers/fixtures";
-import { prisma } from "./helpers/prisma";
+import { cleanupM1TestRows } from "../helpers/fixtures";
+import { prisma } from "../helpers/prisma";
 
 describe("Final Cleanup Check", () => {
   it("cleans up and verifies 0 remaining m1test rows in every table", async () => {
@@ -18,6 +18,10 @@ describe("Final Cleanup Check", () => {
       coupons: await prisma.coupon.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { code: { startsWith: "m1test" } }] } }),
       productVariants: await prisma.productVariant.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { productId: { startsWith: "m1test" } }] } }),
       products: await prisma.product.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { slug: { startsWith: "m1test" } }] } }),
+      reviews: await prisma.review.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
+      stockNotifications: await prisma.stockNotification.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { email: { startsWith: "m1test" } }] } }),
+      newsletterSubscribers: await prisma.newsletterSubscriber.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { email: { startsWith: "m1test" } }] } }),
+      otpCodes: await prisma.otpCode.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { identifier: { startsWith: "m1test" } }] } }),
       users: await prisma.user.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { email: { startsWith: "m1test" } }] } }),
     };
 

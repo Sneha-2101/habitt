@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { prisma } from "./helpers/prisma";
-import { createTestUser, cleanupM1TestRows } from "./helpers/fixtures";
+import { prisma } from "../helpers/prisma";
+import { createTestUser, cleanupM1TestRows } from "../helpers/fixtures";
 import { canTransition } from "@/lib/orders/transitions";
 import { OrderStatus, PaymentMethod } from "@prisma/client";
 

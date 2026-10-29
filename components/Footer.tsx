@@ -4,7 +4,19 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { subscribeNewsletter } from "@/lib/actions/newsletter";
 
-export default function Footer() {
+interface FooterProps {
+  businessName?: string;
+  businessTagline?: string;
+  legalName?: string | null;
+  businessAddress?: string | null;
+}
+
+export default function Footer({
+  businessName = "habitt",
+  businessTagline = "Considered minimalist basics — heavier fabrics, honest fits, made to wear in over years.",
+  legalName,
+  businessAddress,
+}: FooterProps = {}) {
   const [email, setEmail] = useState("");
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -15,10 +27,10 @@ export default function Footer() {
 
     startTransition(async () => {
       try {
-        const res = await subscribeNewsletter(email);
+        await subscribeNewsletter(email);
         setStatusMsg({
           type: "success",
-          text: `Welcome! Use code "${res.code}" for 10% off your first purchase.`,
+          text: "Thank you for subscribing! Check your email for your welcome discount.",
         });
         setEmail("");
       } catch (err) {
@@ -30,21 +42,30 @@ export default function Footer() {
     });
   }
 
+  const displayName = legalName || businessName || "habitt";
+
   return (
     <footer className="mt-20 border-t border-stone bg-paper text-ink">
       <div className="max-w-6xl mx-auto px-4 sm:px-7 py-12 grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* Column 1: Brand & Tagline */}
         <div className="space-y-3">
-          <h4 className="font-display font-medium text-lg tracking-[0.02em]">habitt</h4>
-          <p className="text-xs text-stone-dark leading-relaxed max-w-xs">
-            Considered minimalist basics — heavier fabrics, honest fits, made to wear in over years.
-          </p>
+          <h4 className="font-display font-medium text-lg tracking-[0.02em]">{businessName}</h4>
+          {businessTagline && (
+            <p className="text-xs text-stone-dark leading-relaxed max-w-xs">
+              {businessTagline}
+            </p>
+          )}
+          {businessAddress && businessAddress.trim().length > 0 && (
+            <p className="text-xs text-stone-dark leading-relaxed max-w-xs whitespace-pre-line">
+              {businessAddress}
+            </p>
+          )}
           <p className="text-[11px] text-stone-dark font-mono pt-2">
-            © {new Date().getFullYear()} Habitt Apparel. All rights reserved.
+            © {new Date().getFullYear()} {displayName}. All rights reserved.
           </p>
         </div>
 
-        {/* Column 2: Support & Trust Links (Footer-only nav per design restraint rules) */}
+        {/* Column 2: Support & Trust Links */}
         <div className="space-y-3">
           <h4 className="text-xs font-semibold text-stone-dark uppercase tracking-wider">Support & Info</h4>
           <ul className="space-y-2 text-xs">
@@ -80,7 +101,7 @@ export default function Footer() {
         <div className="space-y-3">
           <h4 className="text-xs font-semibold text-stone-dark uppercase tracking-wider">Join The Newsletter</h4>
           <p className="text-xs text-stone-dark">
-            Subscribe for quiet collection drops & get 10% off your first order.
+            Subscribe for quiet collection drops & get a discount on your first order.
           </p>
           <form onSubmit={handleSubscribe} className="space-y-2">
             <div className="flex gap-2">

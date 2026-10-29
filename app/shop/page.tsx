@@ -50,7 +50,7 @@ export default async function ShopPage({
       {searchQuery && (
         <div className="mb-6 p-4 rounded-xl bg-white border border-stone/30 flex justify-between items-center text-[13.5px]">
           <div>
-            Showing results for <span className="font-semibold text-ink">"{searchQuery}"</span>
+            Showing results for <span className="font-semibold text-ink">&quot;{searchQuery}&quot;</span>
           </div>
           <Link href="/shop" className="text-stone-dark underline hover:text-ink">
             Clear search

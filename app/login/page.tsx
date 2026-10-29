@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
+import Script from "next/script";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -26,6 +27,8 @@ function LoginForm() {
   const [otpCode, setOtpCode] = useState("");
   const [cooldown, setCooldown] = useState(0);
   const [isDevMode, setIsDevMode] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   // General states
   const [error, setError] = useState("");
@@ -39,6 +42,14 @@ function LoginForm() {
     return () => clearTimeout(timer);
   }, [cooldown]);
 
+  useEffect(() => {
+    if (turnstileSiteKey && typeof window !== "undefined") {
+      (window as unknown as { onTurnstileSuccess?: (token: string) => void }).onTurnstileSuccess = (token: string) => {
+        setTurnstileToken(token);
+      };
+    }
+  }, [turnstileSiteKey]);
+
   function resetFormState() {
     setOtpSent(false);
     setNormalizedIdentifier("");
@@ -46,6 +57,7 @@ function LoginForm() {
     setError("");
     setLoading(false);
     setIsDevMode(false);
+    setTurnstileToken("");
   }
 
   function handleTabChange(tab: TabType) {
@@ -68,7 +80,7 @@ function LoginForm() {
       return;
     }
 
-    const res = await requestOtpAction(rawIdentifier, channel);
+    const res = await requestOtpAction(rawIdentifier, channel, turnstileToken || undefined);
     setLoading(false);
 
     if (!res.success || !res.identifier) {
@@ -224,6 +236,14 @@ function LoginForm() {
                 </div>
               )}
 
+              {turnstileSiteKey && (
+                <div
+                  className="cf-turnstile my-1 flex justify-center"
+                  data-sitekey={turnstileSiteKey}
+                  data-callback="onTurnstileSuccess"
+                />
+              )}
+
               {error && <p className="text-clay text-[12px] text-left">{error}</p>}
 
               <button
@@ -338,6 +358,12 @@ export default function LoginPage() {
           Create an account
         </Link>
       </p>
+      {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+          strategy="afterInteractive"
+        />
+      )}
     </main>
   );
 }

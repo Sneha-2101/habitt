@@ -76,7 +76,6 @@ export default function AccountClient({ user, address, orders }: AccountClientPr
   const { add: addCartItem, open: openCart } = useCartStore();
 
   const [name, setName] = useState(user.name || "");
-  const [phone, setPhone] = useState(user.phone || "");
   const [dateOfBirth, setDateOfBirth] = useState<string>(
     user.dateOfBirth ? new Date(user.dateOfBirth).toISOString().split("T")[0] : ""
   );

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { verifyOtp, normalizeIdentifier, OtpChannel } from "@/lib/otp";
+import { limit } from "@/lib/ratelimit";
 import { revalidatePath } from "next/cache";
 
 export async function linkIdentifierAction(
@@ -15,6 +16,15 @@ export async function linkIdentifierAction(
 
   if (!session?.user || !userId) {
     return { success: false, error: "Unauthorized: Please sign in to link identifiers." };
+  }
+
+  // Rate limit: linkIdentifier (5 per hour per user)
+  const rateLimitResult = await limit("linkIdentifier", userId);
+  if (!rateLimitResult.ok) {
+    return {
+      success: false,
+      error: "Too many account linking attempts. Please try again later.",
+    };
   }
 
   const identifier = normalizeIdentifier(rawIdentifier, channel);
@@ -48,12 +58,17 @@ export async function linkIdentifierAction(
     };
   }
 
-  // Update current user record
-  await prisma.user.update({
-    where: { id: userId },
-    data: isPhone ? { phone: identifier } : { email: identifier },
-  });
+  try {
+    // Update current user record
+    await prisma.user.update({
+      where: { id: userId },
+      data: isPhone ? { phone: identifier } : { email: identifier },
+    });
 
-  revalidatePath("/account");
-  return { success: true };
+    revalidatePath("/account");
+    return { success: true };
+  } catch (err) {
+    console.error("Account linking error:", err);
+    return { success: false, error: "Failed to link account. Please try again." };
+  }
 }

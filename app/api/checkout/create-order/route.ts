@@ -1,14 +1,13 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, Order, OrderItem, Size } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
 import { auth } from "@/lib/auth";
-import { validateCoupon } from "@/lib/actions/coupons";
-import { isEligibleForCod } from "@/lib/actions/cod-eligibility";
-import { getSettings } from "@/lib/settings";
 import { reserveStock, InsufficientStockError } from "@/lib/stock";
 import { failOrder } from "@/lib/orders/fail-order";
+import { limit } from "@/lib/ratelimit";
+import { calculateQuote } from "@/lib/pricing/quote";
 import { z } from "zod";
 
 class StoreCreditConflictError extends Error {
@@ -72,7 +71,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sign in required to check out" }, { status: 401 });
   }
 
-  let bodyJson: any;
+  // Rate limit: createOrder (10 per minute per user)
+  const rl = await limit("createOrder", userId);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a moment.", retryAfterSec: rl.retryAfterSec },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSec) },
+      }
+    );
+  }
+
+  let bodyJson: unknown;
   try {
     bodyJson = await req.json();
   } catch {
@@ -87,103 +98,58 @@ export async function POST(req: Request) {
 
   const data = parseResult.data;
 
-  // 1. Merge duplicate variantIds (sum qty; merged qty must still be <= 10) BEFORE any stock check
-  const mergedMap = new Map<string, { productId: string; variantId: string; qty: number }>();
-  for (const item of data.items) {
-    const existing = mergedMap.get(item.variantId);
-    if (existing) {
-      existing.qty += item.qty;
-      if (existing.qty > 10) {
-        return NextResponse.json({ error: "Maximum quantity per item is 10" }, { status: 400 });
-      }
-    } else {
-      mergedMap.set(item.variantId, { ...item });
-    }
-  }
-  const mergedItems = Array.from(mergedMap.values());
-
-  // 2. Load products with status "ACTIVE" only; verify variant belongs to product & check stock
-  const productIds = Array.from(new Set(mergedItems.map((i) => i.productId)));
-  const products = await prisma.product.findMany({
-    where: {
-      id: { in: productIds },
-      status: "ACTIVE",
-    },
-    include: { variants: true },
+  // 1. Calculate quote via shared lib/pricing/quote.ts
+  const quote = await calculateQuote({
+    userId,
+    items: data.items,
+    paymentMethod: data.paymentMethod,
+    couponCode: data.couponCode,
+    useStoreCredit: data.useStoreCredit,
   });
 
-  let subtotal = 0;
-  const orderItemsData: Array<{
-    productId: string;
-    variantId: string;
-    name: string;
-    size: any;
-    unitPrice: number;
-    qty: number;
-  }> = [];
-
-  for (const item of mergedItems) {
-    const product = products.find((p) => p.id === item.productId);
-    const variant = product?.variants.find((v) => v.id === item.variantId);
-
-    if (!product || !variant) {
-      return NextResponse.json(
-        { error: `Item is no longer available` },
-        { status: 409 }
-      );
+  // Check structured warnings from quote engine
+  for (const w of quote.warnings) {
+    if (w.type === "MAX_QTY_EXCEEDED") {
+      return NextResponse.json({ error: w.message }, { status: 400 });
     }
-
-    if (variant.stock < item.qty) {
-      return NextResponse.json(
-        { error: `${product.name} (${variant.size}) is no longer available` },
-        { status: 409 }
-      );
+    if (w.type === "ITEM_UNAVAILABLE" || w.type === "STOCK_EXCEEDED") {
+      return NextResponse.json({ error: w.message }, { status: 409 });
     }
-
-    subtotal += product.price * item.qty;
-    orderItemsData.push({
-      productId: product.id,
-      variantId: variant.id,
-      name: product.name,
-      size: variant.size,
-      unitPrice: product.price,
-      qty: item.qty,
-    });
+    if (w.type === "INVALID_COUPON") {
+      const status = w.message.includes("already used") ? 409 : 400;
+      return NextResponse.json({ error: w.message }, { status });
+    }
+    if (w.type === "EMPTY_CART") {
+      return NextResponse.json({ error: w.message }, { status: 400 });
+    }
   }
 
-  // Calculate fees and coupon discount
-  const settings = await getSettings();
   const isCod = data.paymentMethod === "COD";
-
-  if (isCod) {
-    const eligibility = await isEligibleForCod(userId, subtotal);
-    if (!eligibility.eligible) {
-      return NextResponse.json({ error: eligibility.message || "COD is not available for this order" }, { status: 400 });
-    }
+  if (isCod && !quote.cod.eligible) {
+    return NextResponse.json(
+      { error: quote.cod.reason || "COD is not available for this order" },
+      { status: 400 }
+    );
   }
 
-  const shippingFee = subtotal >= settings.freeShippingThreshold ? 0 : settings.shippingFee;
-  const codSurcharge = (isCod && settings.codFeeEnabled) ? settings.codFee : 0;
-
-  let discountAmount = 0;
-  let appliedCouponCode: string | undefined = undefined;
-
-  if (data.couponCode?.trim()) {
-    try {
-      const couponRes = await validateCoupon(data.couponCode, subtotal);
-      if (couponRes.valid) {
-        discountAmount = couponRes.discountAmount;
-        appliedCouponCode = couponRes.code;
-      }
-    } catch (couponErr: any) {
-      return NextResponse.json({ error: couponErr?.message || "Invalid coupon" }, { status: 400 });
-    }
-  }
-
-  const total = Math.max(0, subtotal - discountAmount + shippingFee + codSurcharge);
+  const subtotal = quote.subtotal;
+  const shippingFee = quote.shippingFee;
+  const discountAmount = quote.discount;
+  const appliedCouponCode = discountAmount > 0 ? (data.couponCode?.trim().toUpperCase() || undefined) : undefined;
+  const total = quote.total;
+  const orderItemsData = quote.items;
 
   // 3. Idempotency Check: look up the order by idempotencyKey
-  const checkExistingOrder = async (existing: any) => {
+  const checkExistingOrder = async (existing: {
+    userId: string;
+    status: string;
+    total: number;
+    storeCreditApplied?: number | null;
+    razorpayOrderId?: string | null;
+    displayId: string;
+    paymentMethod: string;
+    id: string;
+  }) => {
     if (existing.userId !== userId) {
       return NextResponse.json({ error: "Idempotency key belongs to another user" }, { status: 409 });
     }
@@ -239,7 +205,7 @@ export async function POST(req: Request) {
   }
 
   // 4. Create Order inside Transaction with guarded coupon increment, store credit debit, and strict stock reservation
-  let createdOrder: any;
+  let createdOrder: (Order & { items: OrderItem[] }) | null = null;
   let payable = total;
   let storeCreditApplied = 0;
   let isZeroTotal = false;
@@ -344,7 +310,16 @@ export async function POST(req: Request) {
             giftMessage: data.giftMessage?.trim() || null,
             status: initialStatus,
             paymentMethod: selectedPaymentMethod,
-            items: { create: orderItemsData },
+            items: {
+              create: orderItemsData.map((i) => ({
+                productId: i.productId,
+                variantId: i.variantId,
+                name: i.name,
+                size: i.size as Size,
+                unitPrice: i.unitPrice,
+                qty: i.qty,
+              })),
+            },
           },
           include: { items: true },
         });
@@ -392,7 +367,7 @@ export async function POST(req: Request) {
       });
 
       break; // Transaction succeeded
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof StoreCreditConflictError || err instanceof CouponConflictError) {
         return NextResponse.json({ error: err.message }, { status: 409 });
       }
@@ -406,7 +381,7 @@ export async function POST(req: Request) {
 
       // Handle unique constraint conflict (P2002)
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-        const target = (err.meta as any)?.target;
+        const target = (err.meta as { target?: unknown })?.target;
         // If conflict is on idempotencyKey, re-read and answer
         if (Array.isArray(target) && target.includes("idempotencyKey")) {
           const reRead = await prisma.order.findUnique({
@@ -429,6 +404,10 @@ export async function POST(req: Request) {
       console.error("Order creation transaction error:", err);
       return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
     }
+  }
+
+  if (!createdOrder) {
+    return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
   }
 
   // 5. Zero-total order paid completely with store credit

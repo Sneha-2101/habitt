@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { prisma } from "./helpers/prisma";
-import { createTestProduct, cleanupM1TestRows } from "./helpers/fixtures";
+import { prisma } from "../helpers/prisma";
+import { createTestProduct, cleanupM1TestRows } from "../helpers/fixtures";
 
 describe("T11: Database Non-Negative Stock Check Constraint", () => {
   beforeEach(async () => {

@@ -1,4 +1,4 @@
-import { Prisma, Order, OrderItem } from "@prisma/client";
+import { Prisma, Order } from "@prisma/client";
 import { releaseStock } from "@/lib/stock";
 
 export type OrderWithItems = Order & {

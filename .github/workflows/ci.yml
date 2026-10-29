@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/habitt_test?schema=public"
+      DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/habitt_test?schema=public"
+      AUTH_SECRET: "ci_dummy_auth_secret_for_testing_purposes_min_32_chars"
+      NEXTAUTH_SECRET: "ci_dummy_nextauth_secret_for_testing_purposes_min_32_chars"
+      NEXTAUTH_URL: "http://localhost:3000"
+      NEXT_PUBLIC_SUPABASE_URL: "https://dummyproject.supabase.co"
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "dummy-supabase-anon-key"
+      SUPABASE_URL: "https://dummyproject.supabase.co"
+      SUPABASE_SERVICE_ROLE_KEY: "dummy-supabase-service-role-key"
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: "rzp_test_dummykey12345"
+      RAZORPAY_KEY_ID: "rzp_test_dummykey12345"
+      RAZORPAY_KEY_SECRET: "dummy_razorpay_secret_12345"
+      RAZORPAY_WEBHOOK_SECRET: "dummy_webhook_secret_12345"
+      CRON_SECRET: "dummy_cron_secret_12345"
+      OTP_PEPPER: "dummy_otp_pepper_for_ci_testing_purposes"
+      OTP_DAILY_CAP: "300"
+      RESEND_API_KEY: "disabled"
+      RESEND_FROM_EMAIL: "support@example.com"
+      SHIPROCKET_EMAIL: "dummy@example.com"
+      SHIPROCKET_PASSWORD: "dummy_password"
+      SHIPROCKET_PICKUP_LOCATION: "Primary"
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
+      TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA"
+      UPSTASH_REDIS_REST_URL: "https://dummy.upstash.io"
+      UPSTASH_REDIS_REST_TOKEN: "dummy_token"
+      META_WHATSAPP_PHONE_NUMBER_ID: "123456789"
+      META_WHATSAPP_TOKEN: "YOUR_META_WHATSAPP_TOKEN"
+      META_GRAPH_VERSION: "v20.0"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma Generate
+        run: npx prisma generate
+
+      - name: Prisma Validate
+        run: npx prisma validate
+
+      - name: TypeScript Check
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Run Unit Tests
+        run: npm test
+
+      - name: Build Next.js Application
+        run: npm run build
+

@@ -3,6 +3,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { formatReviewerName } from "@/lib/reviews";
 
 export async function submitReview(productId: string, rating: number, comment: string) {
   const session = await auth();
@@ -12,12 +13,13 @@ export async function submitReview(productId: string, rating: number, comment: s
 
   const userId = session.user.id;
 
-  if (rating < 1 || rating > 5) {
-    throw new Error("Rating must be between 1 and 5.");
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new Error("Rating must be an integer between 1 and 5.");
   }
 
-  if (!comment || comment.trim().length === 0) {
-    throw new Error("Please provide a review comment.");
+  const trimmedComment = (comment || "").trim();
+  if (trimmedComment.length < 10 || trimmedComment.length > 1000) {
+    throw new Error("Review comment must be between 10 and 1000 characters.");
   }
 
   // Check if user already reviewed this product
@@ -54,7 +56,7 @@ export async function submitReview(productId: string, rating: number, comment: s
       productId,
       userId,
       rating,
-      comment: comment.trim(),
+      comment: trimmedComment,
     },
   });
 
@@ -64,15 +66,31 @@ export async function submitReview(productId: string, rating: number, comment: s
 }
 
 export async function getReviewsForProduct(productId: string) {
-  return prisma.review.findMany({
+  const reviews = await prisma.review.findMany({
     where: { productId },
-    include: {
+    select: {
+      id: true,
+      productId: true,
+      rating: true,
+      comment: true,
+      createdAt: true,
       user: {
         select: { name: true },
       },
     },
     orderBy: { createdAt: "desc" },
   });
+
+  return reviews.map((r) => ({
+    id: r.id,
+    productId: r.productId,
+    rating: r.rating,
+    comment: r.comment,
+    createdAt: r.createdAt,
+    user: {
+      name: formatReviewerName(r.user?.name),
+    },
+  }));
 }
 
 export async function getAverageRating(productId: string) {

@@ -11,18 +11,20 @@ import RecordRecentlyViewed from "@/components/RecordRecentlyViewed";
 import { getWishlistProductIds } from "@/lib/actions/wishlist";
 import { getReviewsForProduct, getAverageRating } from "@/lib/actions/reviews";
 import { auth } from "@/lib/auth";
+import { getSettings } from "@/lib/settings";
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
   const session = await auth();
   const userId = session?.user?.id;
 
-  const [product, wishlistIds] = await Promise.all([
+  const [product, wishlistIds, settings] = await Promise.all([
     prisma.product.findUnique({
       where: { slug: resolvedParams.slug },
       include: { images: true, variants: true },
     }),
     getWishlistProductIds(),
+    getSettings(),
   ]);
 
   if (!product || product.status !== "ACTIVE") notFound();
@@ -103,6 +105,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             price={product.price}
             category={product.category}
             variants={product.variants}
+            freeShippingThreshold={settings.freeShippingThreshold}
+            freeShippingOnPrepaid={settings.freeShippingOnPrepaid}
           />
         </div>
       </div>

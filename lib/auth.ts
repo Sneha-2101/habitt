@@ -1,8 +1,10 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
 import { verifyOtp } from "@/lib/otp";
+import { getClientIp } from "@/lib/client-ip";
 import { authConfig } from "@/auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -16,12 +18,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         identifier: { label: "Identifier", type: "text" },
         code: { label: "OTP Code", type: "text" },
       },
-      authorize: async (credentials) => {
+      authorize: async (credentials, req) => {
         const identifier = credentials?.identifier as string | undefined;
         const code = credentials?.code as string | undefined;
         if (!identifier || !code) return null;
 
-        const verifyResult = await verifyOtp(identifier, code);
+        let ip = "unknown";
+        if (req && "headers" in req && req.headers) {
+          ip = getClientIp(req.headers as unknown as Headers);
+        } else {
+          try {
+            const h = await headers();
+            ip = getClientIp(h);
+          } catch {
+            // Context without headers
+          }
+        }
+
+        const verifyResult = await verifyOtp(identifier, code, ip);
         if (!verifyResult.success || !verifyResult.identifier) {
           return null;
         }

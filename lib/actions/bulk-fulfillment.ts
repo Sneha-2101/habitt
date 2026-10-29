@@ -95,8 +95,9 @@ export async function bulkMarkShipped(
       sendShipmentNotificationEmail(order.id).catch((err) => {
         console.error(`Failed to send bulk shipment email for ${order.id}:`, err);
       });
-    } catch (err: any) {
-      skipped.push({ orderId: item.orderId, reason: err?.message || "Failed to fulfill" });
+    } catch (err) {
+      console.error(`Bulk fulfill error for ${item.orderId}:`, err);
+      skipped.push({ orderId: item.orderId, reason: "Failed to fulfill" });
     }
   }
 

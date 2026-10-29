@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
+import { getSettings } from "@/lib/settings";
 import ProductCard from "@/components/ProductCard";
 import RecentlyViewed from "@/components/RecentlyViewed";
 
 export default async function HomePage() {
-  let featured: any[] = [];
+  const settings = await getSettings();
+  let featured: Awaited<ReturnType<typeof prisma.product.findMany<{
+    include: {
+      images: true;
+      variants: true;
+      reviews: { select: { rating: true } };
+    };
+  }>>> = [];
   try {
     featured = await prisma.product.findMany({
       where: { status: "ACTIVE" },
@@ -21,6 +29,10 @@ export default async function HomePage() {
     console.error("HomePage products fetch error:", err);
   }
 
+  const shippingText = settings.freeShippingOnPrepaid
+    ? `Free shipping on prepaid orders & over ${formatINR(settings.freeShippingThreshold)}.`
+    : `Free shipping over ${formatINR(settings.freeShippingThreshold)}.`;
+
   return (
     <main>
       {/* HERO SECTION */}
@@ -35,8 +47,8 @@ export default async function HomePage() {
           Clothes with a quiet weight to them.
         </h1>
         <p className="max-w-md mt-5 text-[15px] text-[#4B473F] leading-relaxed">
-          Habitt makes considered basics — heavier fabrics, honest fits, nothing shouting for
-          attention. Free shipping over {formatINR(299900)}.
+          {settings.businessName} makes considered basics — heavier fabrics, honest fits, nothing shouting for
+          attention. {shippingText}
         </p>
         <Link
           href="/shop"

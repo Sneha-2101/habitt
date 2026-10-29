@@ -1,4 +1,10 @@
-export default function PrivacyPolicyPage() {
+import { getSettings } from "@/lib/settings";
+
+export const dynamic = "force-dynamic";
+
+export default async function PrivacyPolicyPage() {
+  const settings = await getSettings();
+
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-7 py-12 space-y-8 text-ink">
       <header className="border-b border-stone pb-6">
@@ -27,10 +33,14 @@ export default function PrivacyPolicyPage() {
           We do not sell or rent your personal data to third parties. We share necessary shipping data with courier partners strictly for physical package delivery.
         </p>
 
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink pt-4">5. Contact Us</h2>
-        <p>
-          For questions regarding your personal data or privacy rights, please email support@habitt.in.
-        </p>
+        {settings.supportEmail && (
+          <>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-ink pt-4">5. Contact Us</h2>
+            <p>
+              For questions regarding your personal data or privacy rights, please email {settings.supportEmail}.
+            </p>
+          </>
+        )}
       </section>
     </main>
   );

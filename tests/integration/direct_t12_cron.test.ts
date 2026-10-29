@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import crypto from "crypto";
-import { prisma } from "./helpers/prisma";
+import { prisma } from "../helpers/prisma";
 import {
   createTestUser,
   createTestProduct,
   createTestCoupon,
   createTestOrder,
   cleanupM1TestRows,
-} from "./helpers/fixtures";
+} from "../helpers/fixtures";
 
 vi.mock("@/lib/email", () => ({
   sendOrderConfirmationEmail: vi.fn().mockResolvedValue({}),
