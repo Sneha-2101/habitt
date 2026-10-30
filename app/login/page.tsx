@@ -4,11 +4,10 @@ import { Suspense, useState, useEffect } from "react";
 import Script from "next/script";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { requestOtpAction } from "@/lib/actions/otp";
 import { safeRedirect } from "@/lib/safe-redirect";
 
-type TabType = "phone" | "emailCode" | "password";
+type TabType = "phone" | "emailCode";
 
 function LoginForm() {
   const router = useRouter();
@@ -18,8 +17,6 @@ function LoginForm() {
   // Input states
   const [phone, setPhone] = useState("");
   const [emailCode, setEmailCode] = useState("");
-  const [passwordEmail, setPasswordEmail] = useState("");
-  const [password, setPassword] = useState("");
 
   // OTP flow states
   const [otpSent, setOtpSent] = useState(false);
@@ -117,25 +114,6 @@ function LoginForm() {
     }
   }
 
-  async function handlePasswordSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    const res = await signIn("credentials", {
-      email: passwordEmail,
-      password,
-      redirect: false,
-    });
-    setLoading(false);
-
-    if (res?.error) {
-      setError("Incorrect email or password");
-    } else {
-      await handleLoginSuccess();
-    }
-  }
-
   async function handleLoginSuccess() {
     const target = searchParams.get("redirect");
     if (target) {
@@ -155,7 +133,7 @@ function LoginForm() {
 
   return (
     <div className="space-y-6">
-      {/* 3 Login Tabs */}
+      {/* 2 Login Tabs */}
       <div className="flex border-b border-stone text-xs font-medium text-stone-dark">
         <button
           type="button"
@@ -179,156 +157,59 @@ function LoginForm() {
         >
           Email Code
         </button>
-        <button
-          type="button"
-          onClick={() => handleTabChange("password")}
-          className={`flex-1 py-2.5 text-center border-b-2 transition-colors ${
-            activeTab === "password"
-              ? "border-ink text-ink font-semibold"
-              : "border-transparent hover:text-ink"
-          }`}
-        >
-          Password
-        </button>
       </div>
 
       {/* Dev Mode Banner */}
       {isDevMode && (
         <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-[11.5px] rounded-xs">
-          <strong>[Dev Mode]</strong> Meta API keys unset. OTP logged to server terminal console.
+          <strong>[Dev Mode]</strong> Dev mode: code printed in the server terminal.
         </div>
       )}
 
       {/* Phone / Email OTP Tab Content */}
-      {(activeTab === "phone" || activeTab === "emailCode") && (
-        <>
-          {!otpSent ? (
-            <form onSubmit={handleSendOtp} className="flex flex-col gap-3">
-              {activeTab === "phone" ? (
-                <div>
-                  <input
-                    type="tel"
-                    placeholder="Mobile number (e.g. +91 98765 43210)"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                    className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px] focus:outline-none focus:border-ink"
-                  />
-                  <p className="text-[11px] text-stone-dark mt-1 text-left">
-                    We will send a 6-digit code via WhatsApp.
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <input
-                    type="email"
-                    placeholder="Email address"
-                    value={emailCode}
-                    onChange={(e) => setEmailCode(e.target.value)}
-                    required
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px] focus:outline-none focus:border-ink"
-                  />
-                  <p className="text-[11px] text-stone-dark mt-1 text-left">
-                    We will email you a 6-digit verification code.
-                  </p>
-                </div>
-              )}
-
-              {turnstileSiteKey && (
-                <div
-                  className="cf-turnstile my-1 flex justify-center"
-                  data-sitekey={turnstileSiteKey}
-                  data-callback="onTurnstileSuccess"
-                />
-              )}
-
-              {error && <p className="text-clay text-[12px] text-left">{error}</p>}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="py-3 bg-ink text-paper text-[13px] tracking-[0.04em] disabled:opacity-50"
-              >
-                {loading ? "SENDING CODE..." : "SEND CODE"}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="flex flex-col gap-3">
-              <div className="text-left bg-paper p-3 border border-stone/50 text-[12px]">
-                <span className="text-stone-dark">Code sent to: </span>
-                <span className="font-mono font-medium text-ink block truncate">{normalizedIdentifier}</span>
-                <button
-                  type="button"
-                  onClick={resetFormState}
-                  className="text-[11px] text-stone-dark underline hover:text-ink mt-1 block"
-                >
-                  Change identifier
-                </button>
-              </div>
-
+      {!otpSent ? (
+        <form onSubmit={handleSendOtp} className="flex flex-col gap-3">
+          {activeTab === "phone" ? (
+            <div>
               <input
-                type="text"
-                maxLength={6}
-                placeholder="Enter 6-digit code"
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                autoFocus
+                type="tel"
+                placeholder="Phone number (+91 98765 43210)"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 required
-                className="px-3.5 py-3 border border-stone bg-card text-center font-mono text-lg tracking-[0.25em] focus:outline-none focus:border-ink"
+                className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px] focus:outline-none focus:border-ink"
               />
-
-              {error && <p className="text-clay text-[12px] text-left">{error}</p>}
-
-              <button
-                type="submit"
-                disabled={loading || otpCode.length !== 6}
-                className="py-3 bg-ink text-paper text-[13px] tracking-[0.04em] disabled:opacity-50"
-              >
-                {loading ? "VERIFYING..." : "VERIFY & SIGN IN"}
-              </button>
-
-              <div className="text-xs text-stone-dark pt-1">
-                {cooldown > 0 ? (
-                  <span>Resend code in {cooldown}s</span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    disabled={loading}
-                    className="underline text-ink hover:text-stone-dark font-medium"
-                  >
-                    Resend code
-                  </button>
-                )}
-              </div>
-            </form>
+              <p className="text-[11.5px] text-stone-dark text-left mt-1">
+                We will send an OTP via WhatsApp.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <input
+                type="email"
+                placeholder="Email address"
+                value={emailCode}
+                onChange={(e) => setEmailCode(e.target.value)}
+                required
+                autoCapitalize="none"
+                autoCorrect="off"
+                className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px] focus:outline-none focus:border-ink"
+              />
+              <p className="text-[11.5px] text-stone-dark text-left mt-1">
+                We will send a 6-digit code to your inbox.
+              </p>
+            </div>
           )}
-        </>
-      )}
 
-      {/* Password Tab Content */}
-      {activeTab === "password" && (
-        <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-3">
-          <input
-            type="email"
-            placeholder="Email address"
-            value={passwordEmail}
-            onChange={(e) => setPasswordEmail(e.target.value)}
-            required
-            autoCapitalize="none"
-            autoCorrect="off"
-            className="px-3.5 py-3 border border-stone bg-card text-[13.5px] focus:outline-none focus:border-ink"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="px-3.5 py-3 border border-stone bg-card text-[13.5px] focus:outline-none focus:border-ink"
-          />
+          {/* Turnstile Container */}
+          {turnstileSiteKey && (
+            <div
+              className="cf-turnstile my-1 flex justify-center"
+              data-sitekey={turnstileSiteKey}
+              data-callback="onTurnstileSuccess"
+              data-theme="light"
+            />
+          )}
 
           {error && <p className="text-clay text-[12px] text-left">{error}</p>}
 
@@ -337,8 +218,57 @@ function LoginForm() {
             disabled={loading}
             className="py-3 bg-ink text-paper text-[13px] tracking-[0.04em] disabled:opacity-50"
           >
-            {loading ? "SIGNING IN..." : "SIGN IN"}
+            {loading ? "SENDING CODE..." : "SEND CODE"}
           </button>
+        </form>
+      ) : (
+        <form onSubmit={handleVerifyOtp} className="flex flex-col gap-3">
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[11.5px] text-stone-dark">Sent to {normalizedIdentifier}</span>
+              <button
+                type="button"
+                onClick={resetFormState}
+                className="text-[11.5px] text-ink underline"
+              >
+                Change
+              </button>
+            </div>
+            <input
+              type="text"
+              placeholder="Enter 6-digit code"
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              maxLength={6}
+              required
+              autoFocus
+              className="w-full px-3.5 py-3 border border-stone bg-card text-[16px] tracking-widest text-center font-mono focus:outline-none focus:border-ink"
+            />
+          </div>
+
+          {error && <p className="text-clay text-[12px] text-left">{error}</p>}
+
+          <button
+            type="submit"
+            disabled={loading || otpCode.length !== 6}
+            className="py-3 bg-ink text-paper text-[13px] tracking-[0.04em] disabled:opacity-50"
+          >
+            {loading ? "VERIFYING..." : "VERIFY & SIGN IN"}
+          </button>
+
+          <div className="text-[11.5px] text-stone-dark mt-2">
+            {cooldown > 0 ? (
+              <span>Resend code in {cooldown}s</span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSendOtp}
+                className="underline text-ink hover:text-stone-dark font-medium"
+              >
+                Resend code
+              </button>
+            )}
+          </div>
         </form>
       )}
     </div>
@@ -352,12 +282,6 @@ export default function LoginPage() {
       <Suspense fallback={<div className="text-xs text-stone-dark py-8">Loading...</div>}>
         <LoginForm />
       </Suspense>
-      <p className="text-[12.5px] text-stone-dark mt-6">
-        New here?{" "}
-        <Link href="/signup" className="underline text-ink hover:text-stone-dark">
-          Create an account
-        </Link>
-      </p>
       {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
         <Script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js"

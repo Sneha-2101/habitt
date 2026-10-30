@@ -5,7 +5,7 @@ export default async function Header() {
   let isStaff = false;
   let isLoggedIn = false;
   try {
-    const session = await auth();
+    const session = await auth(); // display only
     const role = (session?.user as { role?: string } | undefined)?.role;
     isStaff = role === "STAFF" || role === "OWNER";
     isLoggedIn = !!session?.user;

@@ -59,10 +59,11 @@ export async function requestOtpAction(
     }
 
     const result = await generateAndSendOtp(identifier, channel);
+    const isProd = process.env.NODE_ENV === "production";
     return {
       success: true,
       identifier: result.identifier,
-      devMode: result.devMode,
+      devMode: isProd ? undefined : result.devMode,
     };
   } catch (err) {
     return {

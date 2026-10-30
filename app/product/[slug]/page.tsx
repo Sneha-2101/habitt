@@ -15,7 +15,7 @@ import { getSettings } from "@/lib/settings";
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
-  const session = await auth();
+  const session = await auth(); // display only
   const userId = session?.user?.id;
 
   const [product, wishlistIds, settings] = await Promise.all([

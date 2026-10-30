@@ -1,9 +1,12 @@
 import dotenv from "dotenv";
 import path from "path";
 
+const explicitAuthSecret = process.env.AUTH_SECRET;
 dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: true });
 
-if (!process.env.AUTH_SECRET) {
+if (explicitAuthSecret) {
+  process.env.AUTH_SECRET = explicitAuthSecret;
+} else if (!process.env.AUTH_SECRET) {
   process.env.AUTH_SECRET = "test_auth_secret_for_integration_testing_habitt";
 }
 

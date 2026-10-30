@@ -1,17 +1,18 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { formatReviewerName } from "@/lib/reviews";
 
 export async function submitReview(productId: string, rating: number, comment: string) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  let userId: string;
+  try {
+    const user = await requireUser();
+    userId = user.id;
+  } catch {
     throw new Error("You must be signed in to submit a review.");
   }
-
-  const userId = session.user.id;
 
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
     throw new Error("Rating must be an integer between 1 and 5.");

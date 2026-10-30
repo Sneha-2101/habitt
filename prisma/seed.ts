@@ -1,18 +1,12 @@
 import { PrismaClient } from "@prisma/client";
-import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 async function main() {
   const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
-  const ownerPassword = process.env.SEED_OWNER_PASSWORD;
 
   if (!ownerEmail) {
     throw new Error("OWNER_EMAIL environment variable is required to seed owner account.");
-  }
-
-  if (!ownerPassword || ownerPassword.length < 12) {
-    throw new Error("SEED_OWNER_PASSWORD environment variable is required (min 12 characters).");
   }
 
   const existingOwner = await prisma.user.findUnique({
@@ -20,18 +14,32 @@ async function main() {
   });
 
   if (!existingOwner) {
-    const adminPasswordHash = await hash(ownerPassword, 10);
     await prisma.user.create({
       data: {
         email: ownerEmail,
         name: "Habitt Owner",
-        passwordHash: adminPasswordHash,
         role: "OWNER",
+        status: "ACTIVE",
       },
     });
     console.log(`Created owner account for ${ownerEmail}`);
   } else {
-    console.log(`Owner account ${ownerEmail} already exists. Leaving password untouched.`);
+    console.log(`Owner account ${ownerEmail} already exists. Leaving account untouched.`);
+  }
+
+  const existingAllowlist = await prisma.staffAllowlist.findUnique({
+    where: { email: ownerEmail },
+  });
+
+  if (!existingAllowlist) {
+    await prisma.staffAllowlist.create({
+      data: {
+        email: ownerEmail,
+        role: "OWNER",
+        active: true,
+      },
+    });
+    console.log(`Created staff allowlist entry for ${ownerEmail}`);
   }
 
   const sample = [

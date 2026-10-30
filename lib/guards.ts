@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/sessions";
 
 export class UnauthorizedError extends Error {
   constructor(message = "Unauthorized: Authentication required") {
@@ -14,21 +14,33 @@ export class ForbiddenError extends Error {
   }
 }
 
+export class StepUpRequiredError extends Error {
+  constructor(message = "Step-up authentication required") {
+    super(message);
+    this.name = "StepUpRequiredError";
+  }
+}
+
 export interface GuardUser {
   id: string;
   email?: string | null;
   name?: string | null;
   role?: string;
+  phone?: string | null;
+  sid?: string;
+  stepUpAt?: Date | null;
   user?: GuardUser;
   [key: string]: unknown;
 }
 
 export async function requireUser(): Promise<GuardUser> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const sessionUser = await getSessionUser();
+  if (!sessionUser?.id) {
     throw new UnauthorizedError();
   }
-  const user = session.user as GuardUser;
+  const user: GuardUser = {
+    ...sessionUser,
+  };
   // Ensure session.user compatibility
   if (!user.user) {
     user.user = user;
@@ -47,4 +59,16 @@ export async function requireRole(...roles: string[]): Promise<GuardUser> {
 
 export async function requireStaff(): Promise<GuardUser> {
   return requireRole("STAFF", "OWNER");
+}
+
+export async function requireFreshStepUp(maxAgeMs = 10 * 60 * 1000): Promise<GuardUser> {
+  const user = await requireUser();
+  if (!user.stepUpAt) {
+    throw new StepUpRequiredError();
+  }
+  const age = Date.now() - new Date(user.stepUpAt).getTime();
+  if (age > maxAgeMs) {
+    throw new StepUpRequiredError();
+  }
+  return user;
 }

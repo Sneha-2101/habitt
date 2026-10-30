@@ -2,8 +2,13 @@ import { Resend } from "resend";
 import { getSettings } from "@/lib/settings";
 import { escapeHtml } from "@/lib/escape-html";
 
-const resendApiKey = process.env.RESEND_API_KEY;
-const resend = resendApiKey ? new Resend(resendApiKey) : null;
+function getResendClient() {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey || apiKey === "disabled") {
+    return null;
+  }
+  return new Resend(apiKey);
+}
 
 async function getSenderInfo() {
   let settings;
@@ -27,10 +32,15 @@ async function getSenderInfo() {
 export async function sendEmailOtp(
   email: string,
   code: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; devMode?: boolean; error?: string }> {
+  const resend = getResendClient();
+
   if (!resend) {
+    if (process.env.NODE_ENV === "production") {
+      return { success: false, error: "Email is not configured" };
+    }
     console.log(`[DEV MODE] Email OTP for ${email}: ${code} (RESEND_API_KEY not configured)`);
-    return { success: true };
+    return { success: true, devMode: true };
   }
 
   try {

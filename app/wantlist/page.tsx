@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/sessions";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import { CareTag } from "@/components/CareTag";
@@ -15,8 +15,8 @@ export const metadata = {
 };
 
 export default async function WantlistPage() {
-  const session = await auth();
-  const userId = (session?.user as { id?: string } | undefined)?.id;
+  const sessionUser = await getSessionUser();
+  const userId = sessionUser?.id;
 
   if (!userId) {
     redirect("/login?redirect=/wantlist");

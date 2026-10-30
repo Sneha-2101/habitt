@@ -597,3 +597,46 @@ export async function sendStoreCreditIssuedEmail(email: string, userName: string
     return { success: false, error };
   }
 }
+
+export async function sendStaffSignInAlertEmail(params: {
+  to: string;
+  name: string;
+  time: string;
+  userAgent: string;
+  ipPrefix: string;
+}) {
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping staff sign-in alert email for ${params.to}.`);
+    return { success: false, reason: "No API Key" };
+  }
+
+  try {
+    const emailInfo = await getEmailSenderInfo();
+    const htmlContent = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">New sign-in to Habitt admin</h2>
+        <p style="color: #666; margin-bottom: 20px; font-size: 14px;">Hi ${escapeHtml(params.name)}, a new sign-in to your admin account was detected.</p>
+        <div style="background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 16px; margin-bottom: 24px; font-size: 13px;">
+          <p style="margin: 0 0 8px 0;"><strong>Time:</strong> ${escapeHtml(params.time)}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Device / Browser:</strong> ${escapeHtml(params.userAgent)}</p>
+          <p style="margin: 0;"><strong>IP Network:</strong> ${escapeHtml(params.ipPrefix)}</p>
+        </div>
+        <p style="font-size: 12px; color: #888;">If this wasn't you, please immediately revoke your sessions and alert the owner.</p>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: emailInfo.from,
+      replyTo: emailInfo.replyTo,
+      to: params.to,
+      subject: `New sign-in to Habitt admin — ${emailInfo.businessName}`,
+      html: htmlContent,
+    });
+
+    return { success: true, data: response };
+  } catch (error) {
+    console.error(`[Email] Failed to send staff sign-in alert to ${params.to}:`, error);
+    return { success: false, error };
+  }
+}
+

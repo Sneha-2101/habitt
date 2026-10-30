@@ -6,6 +6,7 @@ import { cancelOrderAsCustomer } from "@/lib/actions/cancellation";
 import { requestReturn } from "@/lib/actions/returns";
 import { requestOtpAction } from "@/lib/actions/otp";
 import { linkIdentifierAction } from "@/lib/actions/account-linking";
+import { signOutEverywhereAction } from "@/lib/actions/sessions";
 import { formatINR } from "@/lib/money";
 import { useCartStore } from "@/lib/cart-store";
 import OrderStatusTimeline from "./OrderStatusTimeline";
@@ -319,6 +320,26 @@ export default function AccountClient({ user, address, orders }: AccountClientPr
 
       {/* Account Linking & Verification */}
       <LinkedContactMethods user={user} />
+
+      {/* Account Security & Sessions */}
+      <section className="border border-stone p-6 bg-white rounded-sm space-y-3">
+        <h2 className="text-base font-semibold text-ink">Account Security</h2>
+        <p className="text-xs text-stone-dark">
+          Sign out of all active sessions across phones, tablets, and computers.
+        </p>
+        <button
+          type="button"
+          onClick={async () => {
+            if (confirm("Are you sure you want to sign out of all devices? This will invalidate all your active sessions.")) {
+              await signOutEverywhereAction();
+              window.location.href = "/login";
+            }
+          }}
+          className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 text-xs font-semibold rounded-xs hover:bg-red-100 transition-colors"
+        >
+          Sign out of all devices
+        </button>
+      </section>
 
       {/* Default Shipping Address */}
       <section className="border border-stone p-6 bg-white rounded-sm">

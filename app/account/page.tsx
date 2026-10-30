@@ -1,13 +1,14 @@
 import { redirect } from "next/navigation";
-import { auth, signOut } from "@/lib/auth";
+import { signOut } from "@/lib/auth";
+import { getSessionUser } from "@/lib/sessions";
 import { prisma } from "@/lib/prisma";
 import AccountClient from "@/components/AccountClient";
 
 export default async function AccountPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login?redirect=/account");
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) redirect("/login?redirect=/account");
 
-  const userId = session.user.id;
+  const userId = sessionUser.id;
 
   const [user, defaultAddress, orders] = await Promise.all([
     prisma.user.findUnique({

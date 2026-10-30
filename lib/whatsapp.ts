@@ -24,8 +24,11 @@ export async function sendWhatsappOtp(
   const token = process.env.META_WHATSAPP_TOKEN?.trim();
   const phoneNumberId = process.env.META_WHATSAPP_PHONE_NUMBER_ID?.trim();
 
-  // If Meta credentials are not configured, log to server console for testing
+  // If Meta credentials are not configured
   if (!token || !phoneNumberId || token === "YOUR_META_WHATSAPP_TOKEN" || phoneNumberId === "YOUR_META_PHONE_NUMBER_ID") {
+    if (process.env.NODE_ENV === "production") {
+      return { success: false, error: "WhatsApp is not configured" };
+    }
     console.log("==========================================================");
     console.log(`[DEV MODE] WhatsApp OTP for ${phone}: ${code}`);
     console.log("==========================================================");

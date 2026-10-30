@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/sessions";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import { getSettings } from "@/lib/settings";
@@ -10,14 +10,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const resolvedParams = await params;
-  const session = await auth();
+  const sessionUser = await getSessionUser();
 
-  if (!session?.user?.id) {
+  if (!sessionUser?.id) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  const userId = session.user.id;
-  const role = (session.user as { role?: string }).role;
+  const userId = sessionUser.id;
+  const role = sessionUser.role;
   const isStaff = role === "STAFF" || role === "OWNER";
 
   const order = await prisma.order.findUnique({

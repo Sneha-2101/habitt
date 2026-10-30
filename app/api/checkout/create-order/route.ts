@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Order, OrderItem, Size } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/sessions";
 import { reserveStock, InsufficientStockError } from "@/lib/stock";
 import { failOrder } from "@/lib/orders/fail-order";
 import { limit } from "@/lib/ratelimit";
@@ -65,8 +65,8 @@ const createOrderSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await auth();
-  const userId = session?.user?.id;
+  const sessionUser = await getSessionUser();
+  const userId = sessionUser?.id;
   if (!userId) {
     return NextResponse.json({ error: "Sign in required to check out" }, { status: 401 });
   }

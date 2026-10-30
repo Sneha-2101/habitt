@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/sessions";
 import { markOrderPaid } from "@/lib/orders/mark-paid";
 
 interface VerifyBody {
@@ -11,8 +11,8 @@ interface VerifyBody {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  const userId = session?.user?.id;
+  const sessionUser = await getSessionUser();
+  const userId = sessionUser?.id;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -13,7 +13,7 @@ export default auth((req) => {
   if (pathname.startsWith("/admin")) {
     if (!req.auth) {
       return NextResponse.redirect(
-        new URL(`/login?redirect=${encodeURIComponent(pathname)}`, req.nextUrl.origin)
+        new URL(`/staff/login?redirect=${encodeURIComponent(pathname)}`, req.nextUrl.origin)
       );
     }
     if (role !== "STAFF" && role !== "OWNER") {

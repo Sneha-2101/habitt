@@ -313,7 +313,37 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
-  // 14. User
+  // 14. Session
+  await prisma.session.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { userId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 15. AuditLog
+  await prisma.auditLog.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { actorId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 16. StaffAllowlist
+  await prisma.staffAllowlist.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { email: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 17. User
   await prisma.user.deleteMany({
     where: {
       OR: [
@@ -339,6 +369,9 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     stockNotifications: await prisma.stockNotification.count({ where: { id: { startsWith: "m1test" } } }),
     newsletterSubscribers: await prisma.newsletterSubscriber.count({ where: { id: { startsWith: "m1test" } } }),
     otpCodes: await prisma.otpCode.count({ where: { id: { startsWith: "m1test" } } }),
+    sessions: await prisma.session.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
+    auditLogs: await prisma.auditLog.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { actorId: { startsWith: "m1test" } }] } }),
+    staffAllowlists: await prisma.staffAllowlist.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { email: { startsWith: "m1test" } }] } }),
     users: await prisma.user.count({ where: { id: { startsWith: "m1test" } } }),
   };
 

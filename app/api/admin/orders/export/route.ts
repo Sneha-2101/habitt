@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { auth } from "@/lib/auth";
+import { requireStaff, UnauthorizedError, ForbiddenError } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { sanitizeCsvCell } from "@/lib/csv";
 
 export async function GET(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
-
-  const role = (session.user as { role?: string }).role;
-  if (role !== "STAFF" && role !== "OWNER") {
-    return new NextResponse("Forbidden: Staff or Owner access required", { status: 403 });
+  try {
+    await requireStaff();
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+    if (err instanceof ForbiddenError) {
+      return new NextResponse("Forbidden: Staff or Owner access required", { status: 403 });
+    }
+    throw err;
   }
 
   const { searchParams } = new URL(req.url);

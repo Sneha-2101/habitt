@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/sessions";
 import { z } from "zod";
 import { limit, RateLimitUnavailableError } from "@/lib/ratelimit";
 import { calculateQuote } from "@/lib/pricing/quote";
@@ -24,11 +24,11 @@ const quoteSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const sessionUser = await getSessionUser();
+  if (!sessionUser?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const userId = session.user.id;
+  const userId = sessionUser.id;
 
   try {
     const rl = await limit("checkoutQuote", userId);

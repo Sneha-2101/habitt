@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/sessions";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) {
     return NextResponse.json({ address: null });
   }
 
-  const userId = (session.user as { id: string }).id;
+  const userId = sessionUser.id;
   const address = await prisma.address.findFirst({
     where: { userId, isDefault: true },
     select: { id: true, street: true, city: true, state: true, pincode: true },

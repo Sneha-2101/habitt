@@ -1,14 +1,16 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/guards";
+import { getSessionUser } from "@/lib/sessions";
 import { revalidatePath } from "next/cache";
 
 export async function toggleWishlist(productId: string) {
-  const session = await auth();
-  const userId = (session?.user as { id?: string } | undefined)?.id;
-
-  if (!userId) {
+  let userId: string;
+  try {
+    const user = await requireUser();
+    userId = user.id;
+  } catch {
     throw new Error("Unauthorized: Please sign in to save items to your Wantlist.");
   }
 
@@ -44,8 +46,8 @@ export async function toggleWishlist(productId: string) {
 }
 
 export async function getWishlistProductIds(): Promise<string[]> {
-  const session = await auth();
-  const userId = (session?.user as { id?: string } | undefined)?.id;
+  const sessionUser = await getSessionUser();
+  const userId = sessionUser?.id;
 
   if (!userId) return [];
 

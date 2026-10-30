@@ -187,18 +187,20 @@ enum OrderStatus {
 model User {
   id                     String                   @id @default(cuid())
   email                  String?                  @unique
-  passwordHash           String?
   name                   String                   @default("")
   phone                  String?                  @unique
   dateOfBirth            DateTime?
   storeCreditBalance     Int                      @default(0) // paise
   role                   Role                     @default(CUSTOMER)
+  status                 UserStatus               @default(ACTIVE)
   orders                 Order[]
   wishlistItems          WishlistItem[]
   addresses              Address[]
   reviews                Review[]
   returnRequests         ReturnRequest[]
   storeCreditTransactions StoreCreditTransaction[]
+  sessions               Session[]
+  auditLogs              AuditLog[]
   createdAt              DateTime                 @default(now())
 }
 
@@ -228,6 +230,12 @@ model OtpCode {
 enum OtpChannel {
   PHONE
   EMAIL
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  DELETED
 }
 
 enum Role {
@@ -365,4 +373,49 @@ model NewsletterSubscriber {
   consentedAt DateTime @default(now())
   source      String   @default("website")
   createdAt   DateTime @default(now())
+}
+
+
+model Session {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              Role
+  createdAt         DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  expiresAt         DateTime
+  absoluteExpiresAt DateTime?
+  revokedAt         DateTime?
+  stepUpAt          DateTime?
+  uaHash            String
+  ipPrefix          String
+  deviceLabel       String?
+
+  @@index([userId, revokedAt])
+  @@index([userId, uaHash])
+}
+
+model StaffAllowlist {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  role      Role
+  active    Boolean   @default(true)
+  addedById String?
+  createdAt DateTime  @default(now())
+  removedAt DateTime?
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String?
+  entityId  String?
+  meta      Json?
+  ipPrefix  String?
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
 }

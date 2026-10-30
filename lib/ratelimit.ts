@@ -20,7 +20,10 @@ export type RateLimitPolicy =
   | "newsletterEmail"
   | "stockNotifyIp"
   | "signUpIp"
-  | "checkoutQuote";
+  | "checkoutQuote"
+  | "staffOtpSendIp"
+  | "staffOtpSendIdentifier"
+  | "stepUpSend";
 
 export interface PolicyConfig {
   limit: number;
@@ -42,6 +45,9 @@ export const POLICY_CONFIGS: Record<RateLimitPolicy, PolicyConfig> = {
   stockNotifyIp: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "closed" },
   signUpIp: { limit: 5, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "closed" },
   checkoutQuote: { limit: 30, windowMs: 60 * 1000, upstashDuration: "1 m", failMode: "open" },
+  staffOtpSendIp: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "closed" },
+  staffOtpSendIdentifier: { limit: 3, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
+  stepUpSend: { limit: 5, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
 };
 
 // In-memory sliding window state for development and fail-open fallback

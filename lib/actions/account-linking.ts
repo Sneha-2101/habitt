@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/guards";
 import { verifyOtp, normalizeIdentifier, OtpChannel } from "@/lib/otp";
 import { limit } from "@/lib/ratelimit";
 import { revalidatePath } from "next/cache";
@@ -11,10 +11,11 @@ export async function linkIdentifierAction(
   code: string,
   channel: OtpChannel
 ): Promise<{ success: boolean; error?: string }> {
-  const session = await auth();
-  const userId = session?.user?.id;
-
-  if (!session?.user || !userId) {
+  let userId: string;
+  try {
+    const user = await requireUser();
+    userId = user.id;
+  } catch {
     return { success: false, error: "Unauthorized: Please sign in to link identifiers." };
   }
 

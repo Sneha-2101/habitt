@@ -8,6 +8,12 @@ import {
 
 let mockUser: { id: string; role: string } = { id: "m1test_mock_user", role: "CUSTOMER" };
 
+vi.mock("@/lib/guards", () => ({
+  requireUser: vi.fn(async () => mockUser),
+  requireStaff: vi.fn(async () => mockUser),
+  requireRole: vi.fn(),
+}));
+
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({
     user: mockUser,
