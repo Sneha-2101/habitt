@@ -25,6 +25,9 @@ describe("Final Cleanup Check", () => {
       sessions: await prisma.session.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
       auditLogs: await prisma.auditLog.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { actorId: { startsWith: "m1test" } }] } }),
       staffAllowlists: await prisma.staffAllowlist.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { email: { startsWith: "m1test" } }] } }),
+      cartItems: await prisma.cartItem.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { cart: { userId: { startsWith: "m1test" } } }] } }),
+      carts: await prisma.cart.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
+      addresses: await prisma.address.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
       users: await prisma.user.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { email: { startsWith: "m1test" } }] } }),
     };
 

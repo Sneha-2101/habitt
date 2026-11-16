@@ -14,6 +14,7 @@ export interface CartItem {
 
 interface CartState {
   items: CartItem[];
+  ownerId: string | null;
   isOpen: boolean;
   open: () => void;
   close: () => void;
@@ -22,6 +23,7 @@ interface CartState {
   updateQty: (variantId: string, delta: number) => void;
   remove: (variantId: string) => void;
   clear: () => void;
+  setOwner: (id: string | null) => void;
 }
 
 // Persisted to localStorage on the real deployed site (fine outside of an
@@ -30,6 +32,7 @@ export const useCartStore = create<CartState>()(
   persist(
     (set) => ({
       items: [],
+      ownerId: null,
       isOpen: false,
       open: () => set({ isOpen: true }),
       close: () => set({ isOpen: false }),
@@ -55,10 +58,11 @@ export const useCartStore = create<CartState>()(
       remove: (variantId) =>
         set((state) => ({ items: state.items.filter((i) => i.variantId !== variantId) })),
       clear: () => set({ items: [] }),
+      setOwner: (id) => set({ ownerId: id }),
     }),
     {
       name: "habitt-cart",
-      partialize: (state) => ({ items: state.items }),
+      partialize: (state) => ({ items: state.items, ownerId: state.ownerId }),
     }
   )
 );

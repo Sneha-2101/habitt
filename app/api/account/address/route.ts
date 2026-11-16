@@ -11,8 +11,28 @@ export async function GET() {
   const userId = sessionUser.id;
   const address = await prisma.address.findFirst({
     where: { userId, isDefault: true },
-    select: { id: true, street: true, city: true, state: true, pincode: true },
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      street: true,
+      line2: true,
+      city: true,
+      state: true,
+      pincode: true,
+      label: true,
+      isDefault: true,
+    },
   });
 
-  return NextResponse.json({ address: address || null });
+  if (!address) {
+    return NextResponse.json({ address: null });
+  }
+
+  return NextResponse.json({
+    address: {
+      ...address,
+      line1: address.street,
+    },
+  });
 }

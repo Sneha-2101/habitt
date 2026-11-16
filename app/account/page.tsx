@@ -3,6 +3,7 @@ import { signOut } from "@/lib/auth";
 import { getSessionUser } from "@/lib/sessions";
 import { prisma } from "@/lib/prisma";
 import AccountClient from "@/components/AccountClient";
+import AccountSignOutButton from "@/components/AccountSignOutButton";
 
 export default async function AccountPage() {
   const sessionUser = await getSessionUser();
@@ -10,7 +11,7 @@ export default async function AccountPage() {
 
   const userId = sessionUser.id;
 
-  const [user, defaultAddress, orders] = await Promise.all([
+  const [user, addresses, orders] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -26,9 +27,9 @@ export default async function AccountPage() {
         },
       },
     }),
-    prisma.address.findFirst({
-      where: { userId, isDefault: true },
-      select: { id: true, street: true, city: true, state: true, pincode: true },
+    prisma.address.findMany({
+      where: { userId },
+      orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
     }),
     prisma.order.findMany({
       where: { userId },
@@ -67,19 +68,15 @@ export default async function AccountPage() {
           <h1 className="font-display text-2xl mb-0.5 text-ink">Account Overview</h1>
           <p className="text-[13px] text-stone-dark">{user.email || user.phone || "Welcome back"}</p>
         </div>
-        <form
-          action={async () => {
+        <AccountSignOutButton
+          signOutAction={async () => {
             "use server";
             await signOut({ redirectTo: "/" });
           }}
-        >
-          <button type="submit" className="text-[12.5px] font-medium text-clay hover:underline">
-            Sign out
-          </button>
-        </form>
+        />
       </div>
 
-      <AccountClient user={user} address={defaultAddress} orders={ordersWithStock} />
+      <AccountClient user={user} addresses={addresses} orders={ordersWithStock} />
     </main>
   );
 }

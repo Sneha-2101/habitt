@@ -640,3 +640,40 @@ export async function sendStaffSignInAlertEmail(params: {
   }
 }
 
+export async function sendContactChangedAlertEmail(params: {
+  to: string;
+  name?: string | null;
+  channel: "EMAIL" | "PHONE";
+}) {
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping contact change alert email for ${params.to}.`);
+    return { success: false, reason: "No API Key" };
+  }
+
+  try {
+    const emailInfo = await getEmailSenderInfo();
+    const channelLabel = params.channel === "EMAIL" ? "email address" : "phone number";
+    const htmlContent = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Security Notice: Contact Details Updated</h2>
+        <p style="color: #666; margin-bottom: 20px; font-size: 14px;">Hi ${escapeHtml(params.name || "Customer")},</p>
+        <p style="color: #666; margin-bottom: 20px; font-size: 14px;">The ${channelLabel} linked to your ${escapeHtml(emailInfo.businessName)} account was recently updated.</p>
+        <p style="font-size: 12px; color: #888;">If you did not make this change, please sign in immediately to secure your account or contact our support team.</p>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: emailInfo.from,
+      replyTo: emailInfo.replyTo,
+      to: params.to,
+      subject: `Security Alert: Contact details updated — ${emailInfo.businessName}`,
+      html: htmlContent,
+    });
+
+    return { success: true, data: response };
+  } catch (error) {
+    console.error(`[Email] Failed to send contact change alert to ${params.to}:`, error);
+    return { success: false, error };
+  }
+}
+

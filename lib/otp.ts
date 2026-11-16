@@ -4,6 +4,7 @@ import { sendWhatsappOtp } from "@/lib/whatsapp";
 import { sendEmailOtp } from "@/lib/otp-email";
 import { limit } from "@/lib/ratelimit";
 import { mapOtpError } from "@/lib/safe-error";
+import { isReviewerIdentifier } from "@/lib/reviewer";
 
 export type OtpChannel = "PHONE" | "EMAIL";
 
@@ -57,6 +58,14 @@ export async function generateAndSendOtp(
 
   if (!identifier) {
     throw new Error("Please enter a valid phone number or email address.");
+  }
+
+  // Reviewer login bypass: do not dispatch or create OtpCode
+  if (isReviewerIdentifier(identifier)) {
+    return {
+      success: true,
+      identifier,
+    };
   }
 
   // 60-second cooldown check
@@ -132,6 +141,44 @@ export async function verifyOtp(
       const ipRateLimit = await limit("otpVerifyIp", ip);
       if (!ipRateLimit.ok) {
         return { success: false, message: "Too many verification attempts. Please wait 15 minutes." };
+      }
+    }
+
+    // Reviewer verification branch
+    if (isReviewerIdentifier(identifier)) {
+      let isStaff = false;
+      if (identifier.includes("@")) {
+        const allowlisted = await prisma.staffAllowlist.findFirst({
+          where: { email: identifier },
+        });
+        if (allowlisted) {
+          isStaff = true;
+        }
+      }
+
+      if (!isStaff) {
+        const revLimit = await limit("reviewerVerify", identifier);
+        if (!revLimit.ok) {
+          return { success: false, message: "Too many failed attempts. Please request a new code." };
+        }
+
+        const configuredCode = process.env.REVIEWER_OTP_CODE || "";
+        const bufInput = Buffer.from(inputCode);
+        const bufExpected = Buffer.from(configuredCode);
+        const isMatch =
+          bufInput.length === bufExpected.length &&
+          crypto.timingSafeEqual(bufInput, bufExpected);
+
+        if (!isMatch) {
+          return { success: false, message: "Invalid or expired verification code" };
+        }
+
+        const isPhone = !identifier.includes("@");
+        return {
+          success: true,
+          identifier,
+          channel: isPhone ? "PHONE" : "EMAIL",
+        };
       }
     }
 

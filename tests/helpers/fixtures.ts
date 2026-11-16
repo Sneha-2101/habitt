@@ -149,12 +149,37 @@ export async function createTestOrder(opts: {
 }
 
 export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; details: Record<string, number> }> {
+  // Find all m1test users and their orders first to avoid foreign key violations
+  const m1Users = await prisma.user.findMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { email: { startsWith: "m1test" } },
+      ],
+    },
+    select: { id: true },
+  });
+  const m1UserIds = m1Users.map((u) => u.id);
+
+  const m1Orders = await prisma.order.findMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { userId: { in: m1UserIds } },
+        { displayId: { startsWith: "m1test" } },
+      ],
+    },
+    select: { id: true },
+  });
+  const m1OrderIds = m1Orders.map((o) => o.id);
+
   // Delete in order of dependencies (children first)
   // 1. OrderStatusEvent
   await prisma.orderStatusEvent.deleteMany({
     where: {
       OR: [
         { id: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
         { orderId: { startsWith: "m1test" } },
       ],
     },
@@ -165,6 +190,7 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     where: {
       OR: [
         { id: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
         { orderId: { startsWith: "m1test" } },
       ],
     },
@@ -175,6 +201,7 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     where: {
       OR: [
         { id: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
         { orderId: { startsWith: "m1test" } },
         { productId: { startsWith: "m1test" } },
         { variantId: { startsWith: "m1test" } },
@@ -187,7 +214,9 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     where: {
       OR: [
         { id: { startsWith: "m1test" } },
+        { userId: { in: m1UserIds } },
         { userId: { startsWith: "m1test" } },
+        { relatedOrderId: { in: m1OrderIds } },
         { relatedOrderId: { startsWith: "m1test" } },
       ],
     },
@@ -216,7 +245,9 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
   await prisma.order.deleteMany({
     where: {
       OR: [
+        { id: { in: m1OrderIds } },
         { id: { startsWith: "m1test" } },
+        { userId: { in: m1UserIds } },
         { userId: { startsWith: "m1test" } },
         { displayId: { startsWith: "m1test" } },
       ],
@@ -263,7 +294,28 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
-  // 12. Address
+  // 12. CartItem and Cart
+  await prisma.cartItem.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { cart: { userId: { startsWith: "m1test" } } },
+        { productId: { startsWith: "m1test" } },
+        { variantId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.cart.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { userId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 13. Address
   await prisma.address.deleteMany({
     where: {
       OR: [
@@ -372,6 +424,9 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     sessions: await prisma.session.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
     auditLogs: await prisma.auditLog.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { actorId: { startsWith: "m1test" } }] } }),
     staffAllowlists: await prisma.staffAllowlist.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { email: { startsWith: "m1test" } }] } }),
+    cartItems: await prisma.cartItem.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { cart: { userId: { startsWith: "m1test" } } }] } }),
+    carts: await prisma.cart.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
+    addresses: await prisma.address.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
     users: await prisma.user.count({ where: { id: { startsWith: "m1test" } } }),
   };
 

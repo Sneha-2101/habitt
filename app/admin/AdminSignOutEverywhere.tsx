@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { signOutEverywhereAction } from "@/lib/actions/sessions";
+import { useCartStore } from "@/lib/cart-store";
 
 export default function AdminSignOutEverywhere() {
   const [loading, setLoading] = useState(false);
@@ -12,6 +13,8 @@ export default function AdminSignOutEverywhere() {
     }
     setLoading(true);
     try {
+      useCartStore.getState().clear();
+      useCartStore.getState().setOwner(null);
       await signOutEverywhereAction();
       window.location.href = "/staff/login";
     } catch (err) {

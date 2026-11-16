@@ -23,7 +23,9 @@ export type RateLimitPolicy =
   | "checkoutQuote"
   | "staffOtpSendIp"
   | "staffOtpSendIdentifier"
-  | "stepUpSend";
+  | "stepUpSend"
+  | "cartSync"
+  | "reviewerVerify";
 
 export interface PolicyConfig {
   limit: number;
@@ -48,6 +50,8 @@ export const POLICY_CONFIGS: Record<RateLimitPolicy, PolicyConfig> = {
   staffOtpSendIp: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "closed" },
   staffOtpSendIdentifier: { limit: 3, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
   stepUpSend: { limit: 5, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
+  cartSync: { limit: 60, windowMs: 60 * 1000, upstashDuration: "1 m", failMode: "open" },
+  reviewerVerify: { limit: 5, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
 };
 
 // In-memory sliding window state for development and fail-open fallback

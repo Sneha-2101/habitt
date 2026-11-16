@@ -19,6 +19,7 @@ model Product {
   price       Int // paise
   status      ProductStatus    @default(DRAFT)
   images      ProductImage[]
+  cartItems   CartItem[]
   variants    ProductVariant[]
   wishlistItems WishlistItem[]
   reviews     Review[]
@@ -40,6 +41,7 @@ model ProductVariant {
   productId String
   size      Size
   stock     Int     @default(0)
+  cartItems CartItem[]
 
   @@unique([productId, size])
 }
@@ -190,6 +192,9 @@ model User {
   name                   String                   @default("")
   phone                  String?                  @unique
   dateOfBirth            DateTime?
+  emailVerifiedAt        DateTime?
+  phoneVerifiedAt        DateTime?
+  cart                   Cart?
   storeCreditBalance     Int                      @default(0) // paise
   role                   Role                     @default(CUSTOMER)
   status                 UserStatus               @default(ACTIVE)
@@ -259,12 +264,41 @@ model Address {
   id        String   @id @default(cuid())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
+  fullName  String   @default("")
+  phone     String   @default("")
   street    String
+  line2     String?
   city      String
   state     String
   pincode   String
-  isDefault Boolean  @default(true)
+  label     String   @default("Home")
+  isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Note: partial unique index "Address_one_default_per_user" ("userId" WHERE "isDefault" = true) is defined in SQL migration.
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String     @unique
+  items     CartItem[]
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  cartId    String
+  product   Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  variantId String
+  qty       Int
+  createdAt DateTime       @default(now())
+
+  @@unique([cartId, variantId])
 }
 
 model Review {

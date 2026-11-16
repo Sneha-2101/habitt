@@ -125,7 +125,11 @@ export default function CheckoutPage() {
             setSelectedAddressId(data.address.id);
             setForm((f) => ({
               ...f,
-              line1: data.address.street,
+              name: f.name || data.address.fullName || "",
+              phone: f.phone || data.address.phone || "",
+              line1: data.address.line2
+                ? `${data.address.street || data.address.line1 || ""}, ${data.address.line2}`.trim()
+                : (data.address.street || data.address.line1 || f.line1),
               city: data.address.city,
               state: data.address.state,
               pincode: data.address.pincode,

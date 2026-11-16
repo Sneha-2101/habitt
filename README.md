@@ -81,6 +81,11 @@ See [.env.example](file:///.env.example) for the full annotated list of environm
   - `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_PICKUP_LOCATION`.
 - **Cron Jobs**:
   - `CRON_SECRET`: Bearer token authorizing automated scheduled jobs.
+- **Reviewer Login**:
+  - `REVIEWER_OTP_ENABLED`: Set to `false` in production. Only set to `true` temporarily during an active review. Keep `REVIEWER_OTP_ENABLED=false` except during a review.
+  - `REVIEWER_IDENTIFIER`: The designated reviewer email or phone identifier. WARNING: Never set `REVIEWER_IDENTIFIER` to a staff address.
+  - `REVIEWER_OTP_CODE`: Temporary 6-digit random code for review access.
+  - `REVIEWER_OTP_EXPIRES_AT`: ISO timestamp for code expiration (must be in the future to be active).
 
 ---
 

@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { escapeHtml } from "@/lib/escape-html";
 import { sendStaffSignInAlertEmail } from "@/lib/email";
 import { writeAudit } from "@/lib/audit";
+import { isReviewerLoginActive, isReviewerIdentifier } from "@/lib/reviewer";
 
 export interface AuthContext {
   ip?: string;
@@ -34,6 +35,7 @@ export async function authorizeCustomerOtp(
     ? await prisma.user.findUnique({ where: { phone: verifiedIdentifier } })
     : await prisma.user.findUnique({ where: { email: verifiedIdentifier } });
 
+  const now = new Date();
   if (!user) {
     try {
       user = await prisma.user.create({
@@ -41,7 +43,9 @@ export async function authorizeCustomerOtp(
           role: "CUSTOMER",
           status: "ACTIVE",
           phone: isPhone ? verifiedIdentifier : null,
+          phoneVerifiedAt: isPhone ? now : null,
           email: !isPhone ? verifiedIdentifier : null,
+          emailVerifiedAt: !isPhone ? now : null,
           name: "",
         },
       });
@@ -50,14 +54,40 @@ export async function authorizeCustomerOtp(
         user = isPhone
           ? await prisma.user.findUnique({ where: { phone: verifiedIdentifier } })
           : await prisma.user.findUnique({ where: { email: verifiedIdentifier } });
+        if (user) {
+          user = await prisma.user.update({
+            where: { id: user.id },
+            data: isPhone ? { phoneVerifiedAt: now } : { emailVerifiedAt: now },
+          });
+        }
       } else {
         throw err;
       }
     }
+  } else {
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: isPhone ? { phoneVerifiedAt: now } : { emailVerifiedAt: now },
+    });
   }
 
   if (!user || user.role !== "CUSTOMER" || user.status !== "ACTIVE") {
     return null;
+  }
+
+  const isReviewer = isReviewerIdentifier(verifiedIdentifier);
+  if (isReviewer) {
+    const onStaffAllowlist = await prisma.staffAllowlist.findFirst({
+      where: {
+        OR: [
+          { email: verifiedIdentifier },
+          ...(user.email ? [{ email: user.email }] : []),
+        ],
+      },
+    });
+    if (onStaffAllowlist) {
+      return null;
+    }
   }
 
   const { sid } = await createSession({
@@ -65,7 +95,18 @@ export async function authorizeCustomerOtp(
     role: user.role,
     userAgent,
     ip,
+    deviceLabel: isReviewer ? "reviewer" : undefined,
   });
+
+  if (isReviewer) {
+    await writeAudit({
+      actorId: user.id,
+      action: "reviewer.login",
+      entity: "Session",
+      entityId: sid,
+      ip,
+    });
+  }
 
   return {
     id: user.id,
@@ -83,6 +124,14 @@ export async function authorizeStaffOtp(
   const email = credentials?.email as string | undefined;
   const code = credentials?.code as string | undefined;
   if (!email || !code) return null;
+
+  // Explicit guard: Staff authentication must NEVER accept reviewer codes
+  if (isReviewerLoginActive()) {
+    const reviewerCode = process.env.REVIEWER_OTP_CODE;
+    if (reviewerCode && code.trim() === reviewerCode.trim()) {
+      return null;
+    }
+  }
 
   const normalizedEmail = email.trim().toLowerCase();
   const ip = ctx?.ip || "unknown";

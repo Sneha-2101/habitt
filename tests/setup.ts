@@ -3,6 +3,7 @@ import path from "path";
 
 const explicitAuthSecret = process.env.AUTH_SECRET;
 dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: true });
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local"), override: true });
 
 if (explicitAuthSecret) {
   process.env.AUTH_SECRET = explicitAuthSecret;
@@ -17,6 +18,10 @@ if (!process.env.CRON_SECRET) {
 if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
   process.env.RAZORPAY_WEBHOOK_SECRET = "test_webhook_secret";
 }
+
+// In integration/unit tests, ensure Turnstile verification does not block test requests
+delete process.env.TURNSTILE_SECRET_KEY;
+(process.env as Record<string, string | undefined>).NODE_ENV = "test";
 
 // Safety check per prompt:
 const rzpKey = process.env.RAZORPAY_KEY_ID || "";

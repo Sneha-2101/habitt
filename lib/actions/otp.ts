@@ -78,7 +78,13 @@ export async function verifyOtpAction(
   code: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const res = await verifyOtp(rawIdentifier, code);
+    let ip = "unknown";
+    try {
+      ip = getClientIp(await headers());
+    } catch {
+      // outside request context
+    }
+    const res = await verifyOtp(rawIdentifier, code, ip);
     if (!res.success) {
       return { success: false, error: res.message || "Failed to verify code." };
     }
