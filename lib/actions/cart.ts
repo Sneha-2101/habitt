@@ -87,7 +87,7 @@ export async function loadCartAction(): Promise<SyncCartResult> {
       items: responseItems,
       dropped,
     };
-  });
+  }, { maxWait: 10000, timeout: 20000 });
 }
 
 export async function syncCartAction(localItems: unknown): Promise<SyncCartResult> {
@@ -166,7 +166,7 @@ export async function syncCartAction(localItems: unknown): Promise<SyncCartResul
       items: responseItems,
       dropped: merged.dropped,
     };
-  });
+  }, { maxWait: 10000, timeout: 20000 });
 }
 
 export async function saveCartAction(items: unknown): Promise<{ ok: boolean }> {
@@ -226,5 +226,5 @@ export async function saveCartAction(items: unknown): Promise<{ ok: boolean }> {
     }
 
     return { ok: true };
-  });
+  }, { maxWait: 10000, timeout: 20000 });
 }
