@@ -19,8 +19,9 @@ if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
   process.env.RAZORPAY_WEBHOOK_SECRET = "test_webhook_secret";
 }
 
-// In integration/unit tests, ensure Turnstile verification does not block test requests
-delete process.env.TURNSTILE_SECRET_KEY;
+// In integration/unit tests, ensure Turnstile verification does not block test requests.
+// An existing empty value stops dotenv/Prisma from re-loading the real key from .env.
+process.env.TURNSTILE_SECRET_KEY = "";
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
 
 // Safety check per prompt:

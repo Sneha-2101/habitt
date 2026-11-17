@@ -213,24 +213,24 @@ describe("T63, T64, T65: Hardening verification", () => {
 
       // Test maskIdentifier helper
       const email1 = "testuser@example.com";
-      const masked1 = await maskIdentifier(email1);
+      const masked1 = maskIdentifier(email1);
       expect(masked1).toBe("t***@example.com");
       expect(masked1).not.toBe(email1);
       expect(masked1).not.toContain("estuser");
 
       const emailShort = "a@domain.com";
-      const maskedShort = await maskIdentifier(emailShort);
+      const maskedShort = maskIdentifier(emailShort);
       expect(maskedShort).toBe("*@domain.com");
       expect(maskedShort).not.toBe(emailShort);
 
       const phone1 = "+919876543210";
-      const maskedPhone = await maskIdentifier(phone1);
+      const maskedPhone = maskIdentifier(phone1);
       expect(maskedPhone).toBe("+91******3210");
       expect(maskedPhone).not.toBe(phone1);
       expect(maskedPhone).not.toContain("987654");
 
       const phoneShort = "1234567";
-      const maskedShortPhone = await maskIdentifier(phoneShort);
+      const maskedShortPhone = maskIdentifier(phoneShort);
       expect(maskedShortPhone).toBe("******4567");
       expect(maskedShortPhone).not.toBe(phoneShort);
     });
