@@ -963,7 +963,9 @@ function ContactDetailsCard({
   const router = useRouter();
   const [activeChannel, setActiveChannel] = useState<"PHONE" | "EMAIL" | null>(null);
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [stepUpChannel, setStepUpChannel] = useState<"EMAIL" | "PHONE">("EMAIL");
+  const [stepUpChannel, setStepUpChannel] = useState<"EMAIL" | "PHONE">(
+    !user.email && user.phone ? "PHONE" : "EMAIL"
+  );
   const [stepUpCode, setStepUpCode] = useState("");
   const [newValue, setNewValue] = useState("");
   const [confirmCode, setConfirmCode] = useState("");
@@ -985,10 +987,10 @@ function ContactDetailsCard({
     setStepUpSentMsg(null);
     setNeutralMsg(null);
 
-    if (user.email) {
-      setStepUpChannel("EMAIL");
-    } else if (user.phone) {
+    if (!user.email && user.phone) {
       setStepUpChannel("PHONE");
+    } else {
+      setStepUpChannel("EMAIL");
     }
 
     if (hasCurrentContact) {

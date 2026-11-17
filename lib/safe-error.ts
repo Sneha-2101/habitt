@@ -1,4 +1,5 @@
 import { RateLimitUnavailableError } from "./ratelimit";
+import { PHONE_UNAVAILABLE_MESSAGE } from "./whatsapp-flag";
 
 /**
  * Maps OTP-related errors to safe, user-facing error messages.
@@ -21,7 +22,7 @@ export function mapOtpError(
   const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
   if (
     msg.startsWith("Please wait") ||
-    msg === "Phone verification isn't available yet. Please use your email."
+    msg === PHONE_UNAVAILABLE_MESSAGE
   ) {
     return msg;
   }

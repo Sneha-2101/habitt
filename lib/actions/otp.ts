@@ -6,6 +6,10 @@ import { getClientIp } from "@/lib/client-ip";
 import { limit, otpDailyCap } from "@/lib/ratelimit";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { mapOtpError } from "@/lib/safe-error";
+import {
+  isPhoneOtpBlocked,
+  PHONE_UNAVAILABLE_MESSAGE,
+} from "@/lib/whatsapp-flag";
 
 export async function requestOtpAction(
   identifier: string,
@@ -27,6 +31,13 @@ export async function requestOtpAction(
       return {
         success: false,
         error: "Security verification failed. Please try again.",
+      };
+    }
+
+    if (channel === "PHONE" && isPhoneOtpBlocked()) {
+      return {
+        success: false,
+        error: PHONE_UNAVAILABLE_MESSAGE,
       };
     }
 

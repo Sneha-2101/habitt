@@ -12,6 +12,10 @@ import { writeAudit } from "@/lib/audit";
 import { sendContactChangedAlertEmail } from "@/lib/email";
 import { getClientIp } from "@/lib/client-ip";
 import { Prisma } from "@prisma/client";
+import {
+  isPhoneOtpBlocked,
+  PHONE_UNAVAILABLE_MESSAGE,
+} from "@/lib/whatsapp-flag";
 
 const emailSchema = z.string().trim().email("Please enter a valid email address");
 const phoneSchema = z.string().regex(/^\+91[6-9]\d{9}$/, "Please enter a valid 10-digit Indian mobile number");
@@ -25,6 +29,13 @@ export async function requestContactChangeAction({
 }): Promise<{ success: boolean; message: string }> {
   const user = await requireUser();
   await requireFreshStepUp();
+
+  if (channel === "PHONE" && isPhoneOtpBlocked()) {
+    return {
+      success: false,
+      message: PHONE_UNAVAILABLE_MESSAGE,
+    };
+  }
 
   const rateLimitResult = await limit("linkIdentifier", user.id);
   if (!rateLimitResult.ok) {
