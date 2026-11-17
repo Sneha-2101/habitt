@@ -6,7 +6,7 @@
  * falls back to logging the OTP code prominently in the server console for dev testing.
  */
 
-import { getWhatsappOtpLive } from "@/lib/settings";
+import { isWhatsappOtpLive } from "@/lib/whatsapp-flag";
 
 export function graphVersion(): string {
   const version = process.env.META_GRAPH_VERSION?.trim();
@@ -23,7 +23,7 @@ export async function sendWhatsappOtp(
   phone: string,
   code: string
 ): Promise<{ success: boolean; devMode?: boolean; error?: string }> {
-  const isLive = getWhatsappOtpLive();
+  const isLive = isWhatsappOtpLive();
   const token = process.env.META_WHATSAPP_TOKEN?.trim();
   const phoneNumberId = process.env.META_WHATSAPP_PHONE_NUMBER_ID?.trim();
   const hasCredentials = Boolean(

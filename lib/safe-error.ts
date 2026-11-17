@@ -19,7 +19,10 @@ export function mapOtpError(
   }
 
   const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
-  if (msg.startsWith("Please wait")) {
+  if (
+    msg.startsWith("Please wait") ||
+    msg === "Phone verification isn't available yet. Please use your email."
+  ) {
     return msg;
   }
 

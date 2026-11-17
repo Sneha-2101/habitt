@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/guards";
 import { revalidatePath } from "next/cache";
-import { getSettings, setWhatsappOtpLive, type UpdateSiteSettingsInput } from "@/lib/settings";
+import { getSettings, type UpdateSiteSettingsInput } from "@/lib/settings";
 
 export type { UpdateSiteSettingsInput };
 
@@ -73,7 +73,6 @@ const settingsSchema = z.object({
   businessPincode: optionalPincodeSchema,
   whatsappSupportNumber: optionalPhoneSchema,
   shiprocketPickupLocation: z.string().trim().min(1).optional(),
-  whatsappOtpLive: z.boolean().optional(),
 });
 
 export async function updateSettings(data: UpdateSiteSettingsInput) {
@@ -86,9 +85,6 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
   }
 
   const validated = parseResult.data;
-  if (validated.whatsappOtpLive !== undefined) {
-    setWhatsappOtpLive(validated.whatsappOtpLive);
-  }
   const current = await getSettings();
 
   const updated = await prisma.siteSettings.update({

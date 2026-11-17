@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { mapOtpError } from "@/lib/safe-error";
 import { getClientIp } from "@/lib/client-ip";
 import { maskIdentifier } from "@/lib/mask";
+import { isWhatsappOtpLive } from "@/lib/whatsapp-flag";
 
 export async function requestStepUpAction(
   channel?: "EMAIL" | "PHONE"
@@ -58,6 +59,10 @@ export async function requestStepUpAction(
         } else {
           throw new Error("No contact method associated with your account.");
         }
+      }
+
+      if (resolvedChannel === "PHONE" && process.env.NODE_ENV === "production" && !isWhatsappOtpLive()) {
+        throw new Error("Phone verification isn't available yet. Please use your email.");
       }
     }
 
