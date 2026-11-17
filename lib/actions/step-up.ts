@@ -7,23 +7,7 @@ import { limit } from "@/lib/ratelimit";
 import { prisma } from "@/lib/prisma";
 import { mapOtpError } from "@/lib/safe-error";
 import { getClientIp } from "@/lib/client-ip";
-
-export async function maskIdentifier(identifier: string): Promise<string> {
-  if (identifier.includes("@")) {
-    const [local, domain] = identifier.split("@");
-    if (!local || local.length <= 1) return `*@${domain || ""}`;
-    return `${local[0]}***@${domain}`;
-  }
-  if (identifier.startsWith("+91") && identifier.length >= 7) {
-    const last4 = identifier.slice(-4);
-    return `+91******${last4}`;
-  }
-  if (identifier.length > 4) {
-    const last4 = identifier.slice(-4);
-    return `******${last4}`;
-  }
-  return "****";
-}
+import { maskIdentifier } from "@/lib/mask";
 
 export async function requestStepUpAction(
   channel?: "EMAIL" | "PHONE"
@@ -87,7 +71,7 @@ export async function requestStepUpAction(
       throw new Error("Failed to send verification code.");
     }
 
-    const masked = await maskIdentifier(target);
+    const masked = maskIdentifier(target);
     return {
       success: true,
       message: `Verification code sent to ${masked}.`,

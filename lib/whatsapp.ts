@@ -6,6 +6,8 @@
  * falls back to logging the OTP code prominently in the server console for dev testing.
  */
 
+import { getWhatsappOtpLive } from "@/lib/settings";
+
 export function graphVersion(): string {
   const version = process.env.META_GRAPH_VERSION?.trim();
   if (version) {
@@ -21,11 +23,18 @@ export async function sendWhatsappOtp(
   phone: string,
   code: string
 ): Promise<{ success: boolean; devMode?: boolean; error?: string }> {
+  const isLive = getWhatsappOtpLive();
   const token = process.env.META_WHATSAPP_TOKEN?.trim();
   const phoneNumberId = process.env.META_WHATSAPP_PHONE_NUMBER_ID?.trim();
+  const hasCredentials = Boolean(
+    token &&
+    phoneNumberId &&
+    token !== "YOUR_META_WHATSAPP_TOKEN" &&
+    phoneNumberId !== "YOUR_META_PHONE_NUMBER_ID"
+  );
 
-  // If Meta credentials are not configured
-  if (!token || !phoneNumberId || token === "YOUR_META_WHATSAPP_TOKEN" || phoneNumberId === "YOUR_META_PHONE_NUMBER_ID") {
+  // If WHATSAPP_OTP_LIVE is false or Meta credentials are not configured
+  if (!isLive || !hasCredentials) {
     if (process.env.NODE_ENV === "production") {
       return { success: false, error: "WhatsApp is not configured" };
     }

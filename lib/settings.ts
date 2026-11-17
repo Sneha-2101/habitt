@@ -32,6 +32,20 @@ export interface UpdateSiteSettingsInput {
   businessPincode?: string | null;
   whatsappSupportNumber?: string | null;
   shiprocketPickupLocation?: string;
+  whatsappOtpLive?: boolean;
+}
+
+let runtimeWhatsappOtpLive: boolean | null = null;
+
+export function getWhatsappOtpLive(): boolean {
+  if (runtimeWhatsappOtpLive !== null) {
+    return runtimeWhatsappOtpLive;
+  }
+  return process.env.WHATSAPP_OTP_LIVE === "true";
+}
+
+export function setWhatsappOtpLive(enabled: boolean): void {
+  runtimeWhatsappOtpLive = enabled;
 }
 
 export async function getSettings() {

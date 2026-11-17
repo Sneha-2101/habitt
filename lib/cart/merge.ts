@@ -166,3 +166,62 @@ export function resolveCartSync<T extends CartLineInput = CartLineInput>({
     dropped: localItems.length,
   };
 }
+
+export type CartSyncDecision = "wait" | "clear" | "merge" | "load" | "switch-load" | "noop";
+
+export interface DecideCartSyncInput {
+  status?: string;
+  userId: string | null;
+  ownerId: string | null;
+  prevUserId?: string | null;
+}
+
+/**
+ * Pure function deciding cart sync behavior:
+ * - status === "loading" -> "wait"
+ * - signed out (userId === null):
+ *     ownerId !== null -> "clear" (clear items and set owner null)
+ *     ownerId === null -> "noop"
+ * - signed in (userId !== null):
+ *     prevUserId === userId && ownerId === userId -> "noop" (already loaded/synced in this session)
+ *     ownerId === userId -> "load" (same user returning / reload: load from server, replace local)
+ *     ownerId === null -> "merge" (guest logging in: merge with per-variant MAX, then save)
+ *     ownerId !== userId -> "switch-load" (different user: clear, set owner, load)
+ */
+export function decideCartSync({
+  status,
+  userId,
+  ownerId,
+  prevUserId = null,
+}: DecideCartSyncInput): CartSyncDecision {
+  if (status === "loading") {
+    return "wait";
+  }
+
+  // Signed out
+  if (!userId) {
+    if (ownerId !== null) {
+      return "clear";
+    }
+    return "noop";
+  }
+
+  // Already synced/loaded for this user in current session
+  if (prevUserId !== null && prevUserId === userId && ownerId === userId) {
+    return "noop";
+  }
+
+  // Same user reload / returning
+  if (ownerId === userId) {
+    return "load";
+  }
+
+  // Guest logging in
+  if (ownerId === null) {
+    return "merge";
+  }
+
+  // Another user was logged in previously
+  return "switch-load";
+}
+
