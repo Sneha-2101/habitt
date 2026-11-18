@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma, Order, OrderItem, Size, PaymentStatus, FulfilmentStatus, PaymentMethod } from "@prisma/client";
+import { Prisma, Order, OrderItem, PaymentStatus, FulfilmentStatus, PaymentMethod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
 import { getSessionUser } from "@/lib/sessions";
@@ -331,7 +331,7 @@ export async function POST(req: Request) {
                 productId: i.productId,
                 variantId: i.variantId,
                 name: i.name,
-                size: i.size as Size,
+                size: i.size,
                 unitPrice: i.unitPrice,
                 qty: i.qty,
               })),

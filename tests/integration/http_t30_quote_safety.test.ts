@@ -7,7 +7,6 @@ import {
   cleanupM1TestRows,
 } from "../helpers/fixtures";
 import { createSessionCookie } from "../helpers/session";
-import { Size } from "@prisma/client";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
@@ -38,7 +37,7 @@ describe("T30: Quote Endpoint Safety and Validation", () => {
     const { product, variants } = await createTestProduct({
       price: 100000,
       status: "ARCHIVED",
-      variants: [{ size: Size.M, stock: 5 }],
+      variants: [{ size: "M", stock: 5 }],
     });
     const items = [{ productId: product.id, variantId: variants[0].id, qty: 1 }];
 
@@ -77,7 +76,7 @@ describe("T30: Quote Endpoint Safety and Validation", () => {
     const session = await createSessionCookie(user.id);
     const { product, variants } = await createTestProduct({
       price: 100000,
-      variants: [{ size: Size.M, stock: 20 }],
+      variants: [{ size: "M", stock: 20 }],
     });
 
     // 1. Direct single item with qty: 11 rejected by quote validation (400)

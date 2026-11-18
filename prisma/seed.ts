@@ -42,10 +42,25 @@ async function main() {
     console.log(`Created staff allowlist entry for ${ownerEmail}`);
   }
 
+  const seedCategories = [
+    { id: "cat_shirts", slug: "shirts", name: "Shirts", position: 0, sizes: ["S", "M", "L", "XL", "XXL"] },
+    { id: "cat_overshirts", slug: "overshirts", name: "Overshirts", position: 1, sizes: ["S", "M", "L", "XL", "XXL"] },
+    { id: "cat_polos", slug: "polos", name: "Polos", position: 2, sizes: ["S", "M", "L", "XL", "XXL"] },
+    { id: "cat_trousers", slug: "trousers", name: "Trousers", position: 3, sizes: ["S", "M", "L", "XL", "XXL"] },
+  ];
+
+  for (const cat of seedCategories) {
+    await prisma.category.upsert({
+      where: { id: cat.id },
+      update: { name: cat.name, position: cat.position, sizes: cat.sizes },
+      create: { ...cat, active: true },
+    });
+  }
+
   const sample = [
-    { name: "Oxford Weave Shirt", category: "SHIRTS", price: 249000, description: "Heavyweight cotton oxford, garment-washed." },
-    { name: "Brushed Twill Overshirt", category: "OVERSHIRTS", price: 429000, description: "Brushed cotton twill, relaxed fit." },
-    { name: "Piqué Knit Polo", category: "POLOS", price: 189000, description: "Textured piqué knit polo." },
+    { name: "Oxford Weave Shirt", categoryId: "cat_shirts", price: 249000, description: "Heavyweight cotton oxford, garment-washed." },
+    { name: "Brushed Twill Overshirt", categoryId: "cat_overshirts", price: 429000, description: "Brushed cotton twill, relaxed fit." },
+    { name: "Piqué Knit Polo", categoryId: "cat_polos", price: 189000, description: "Textured piqué knit polo." },
   ] as const;
 
   for (const p of sample) {
@@ -57,11 +72,11 @@ async function main() {
         name: p.name,
         slug,
         description: p.description,
-        category: p.category,
+        categoryId: p.categoryId,
         price: p.price,
         status: "ACTIVE",
         variants: {
-          create: ["S", "M", "L", "XL", "XXL"].map((size) => ({ size: size as never, stock: 10 })),
+          create: ["S", "M", "L", "XL", "XXL"].map((size) => ({ size, stock: 10 })),
         },
       },
     });

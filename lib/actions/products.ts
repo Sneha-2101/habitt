@@ -3,13 +3,11 @@
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { Category, ProductStatus, Size } from "@prisma/client";
+import { ProductStatus } from "@prisma/client";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireStaff } from "@/lib/guards";
 import { sendBackInStockEmail } from "@/lib/email";
 import { z } from "zod";
-
-const SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
 
 function slugify(name: string) {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -38,7 +36,7 @@ function getStoragePathFromUrl(url: string, bucket: string): string | null {
 
 const createProductSchema = z.object({
   name: z.string().trim().min(1, "Product name is required"),
-  category: z.nativeEnum(Category, { errorMap: () => ({ message: "Invalid product category" }) }),
+  categoryId: z.string().min(1, "Product category is required"),
   price: z.number().positive("Price must be greater than 0"),
   stock: z.number().int("Stock must be an integer").min(0, "Stock cannot be negative").default(0),
   description: z.string().default(""),
@@ -46,7 +44,7 @@ const createProductSchema = z.object({
 
 const updateProductSchema = z.object({
   name: z.string().trim().min(1, "Product name is required"),
-  category: z.nativeEnum(Category, { errorMap: () => ({ message: "Invalid product category" }) }),
+  categoryId: z.string().min(1, "Product category is required"),
   price: z.number().positive("Price must be greater than 0"),
   description: z.string().default(""),
   status: z.nativeEnum(ProductStatus, { errorMap: () => ({ message: "Invalid product status" }) }),
@@ -92,11 +90,18 @@ export async function createProduct(formData: FormData) {
 
   const validated = createProductSchema.parse({
     name: formData.get("name") as string,
-    category: formData.get("category"),
+    categoryId: (formData.get("categoryId") || formData.get("category")) as string,
     price: priceNum,
     stock: stockNum,
     description: (formData.get("description") as string) || "",
   });
+
+  const category = await prisma.category.findUnique({
+    where: { id: validated.categoryId },
+  });
+  if (!category) {
+    throw new Error("Category not found");
+  }
 
   const pricePaise = Math.round(validated.price * 100); // rupees -> paise
   const slug = await generateUniqueSlug(validated.name);
@@ -106,10 +111,12 @@ export async function createProduct(formData: FormData) {
       name: validated.name,
       slug,
       description: validated.description,
-      category: validated.category,
+      categoryId: validated.categoryId,
       price: pricePaise,
       status: "DRAFT",
-      variants: { create: SIZES.map((size) => ({ size, stock: validated.stock })) },
+      variants: {
+        create: category.sizes.map((size) => ({ size, stock: validated.stock })),
+      },
     },
   });
 
@@ -145,7 +152,7 @@ export async function updateProduct(productId: string, formData: FormData) {
 
   const validated = updateProductSchema.parse({
     name: formData.get("name") as string,
-    category: formData.get("category"),
+    categoryId: (formData.get("categoryId") || formData.get("category")) as string,
     price: priceNum,
     description: (formData.get("description") as string) || "",
     status: formData.get("status"),
@@ -153,15 +160,40 @@ export async function updateProduct(productId: string, formData: FormData) {
 
   const pricePaise = Math.round(validated.price * 100);
 
-  await prisma.product.update({
-    where: { id: productId },
-    data: {
-      name: validated.name,
-      category: validated.category,
-      price: pricePaise,
-      description: validated.description,
-      status: validated.status,
-    },
+  await prisma.$transaction(async (tx) => {
+    const current = await tx.product.findUnique({
+      where: { id: productId },
+      include: { variants: true },
+    });
+    if (!current) throw new Error("Product not found");
+
+    if (current.categoryId !== validated.categoryId) {
+      const newCategory = await tx.category.findUnique({
+        where: { id: validated.categoryId },
+      });
+      if (!newCategory) throw new Error("New category not found");
+
+      const newSizesSet = new Set(newCategory.sizes.map((s) => s.toLowerCase()));
+      const unsupportedVariant = current.variants.find(
+        (v) => !newSizesSet.has(v.size.toLowerCase())
+      );
+      if (unsupportedVariant) {
+        throw new Error(
+          `Cannot change category: variant size "${unsupportedVariant.size}" is not supported by category "${newCategory.name}"`
+        );
+      }
+    }
+
+    await tx.product.update({
+      where: { id: productId },
+      data: {
+        name: validated.name,
+        categoryId: validated.categoryId,
+        price: pricePaise,
+        description: validated.description,
+        status: validated.status,
+      },
+    });
   });
 
   revalidatePath("/admin/products");

@@ -16,7 +16,6 @@ import { createSession } from "@/lib/sessions";
 import * as sessionsModule from "@/lib/sessions";
 import * as ratelimitModule from "@/lib/ratelimit";
 import { UnauthorizedError } from "@/lib/guards";
-import { Size } from "@prisma/client";
 
 describe("T50, T51: Server Cart & Sync Actions", () => {
   beforeEach(async () => {
@@ -50,7 +49,7 @@ describe("T50, T51: Server Cart & Sync Actions", () => {
     // Create active product with 2 variants
     const { product: prod1, variants: [var1, var2] } = await createTestProduct({
       price: 50000,
-      variants: [{ size: Size.M, stock: 10 }, { size: Size.L, stock: 10 }],
+      variants: [{ size: "M", stock: 10 }, { size: "L", stock: 10 }],
     });
     // Create inactive product
     const { variants: [varInactive] } = await createTestProduct({

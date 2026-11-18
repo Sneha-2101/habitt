@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "./prisma";
 
-import { Size, FulfilmentStatus, PaymentStatus } from "@prisma/client";
+import { FulfilmentStatus, PaymentStatus } from "@prisma/client";
 
 export function genId(prefix: string = "m1test"): string {
   return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
@@ -24,12 +24,21 @@ export async function createTestUser(overrides: Partial<Parameters<typeof prisma
 export async function createTestProduct(opts?: {
   price?: number;
   status?: "ACTIVE" | "DRAFT" | "ARCHIVED";
-  variants?: Array<{ size: Size; stock: number }>;
+  categoryId?: string;
+  variants?: Array<{ size: string; stock: number }>;
 }) {
   const id = genId("m1test_prod");
   const slug = `m1test-prod-${crypto.randomBytes(4).toString("hex")}`;
   const price = opts?.price ?? 100000; // Rs 1000 in paise
   const status = opts?.status ?? "ACTIVE";
+
+  let categoryId = opts?.categoryId;
+  if (!categoryId) {
+    const defaultCat = await prisma.category.findUnique({
+      where: { slug: "shirts" },
+    });
+    categoryId = defaultCat?.id ?? "cat_shirts";
+  }
 
   const product = await prisma.product.create({
     data: {
@@ -39,11 +48,11 @@ export async function createTestProduct(opts?: {
       description: "Test product description",
       price,
       status,
-      category: "SHIRTS",
+      categoryId,
     },
   });
 
-  const variantsData = opts?.variants ?? [{ size: Size.M, stock: 5 }];
+  const variantsData = opts?.variants ?? [{ size: "M", stock: 5 }];
   const createdVariants = [];
   for (const v of variantsData) {
     const varId = genId("m1test_var");
@@ -205,7 +214,7 @@ export async function createTestOrder(opts: {
           productId: it.productId,
           variantId: it.variantId,
           name: it.name ?? "Test Item",
-          size: (it.size ?? "M") as Size,
+          size: it.size ?? "M",
           unitPrice: it.unitPrice,
           qty: it.qty,
         })),
@@ -355,6 +364,16 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
 
   // 11. Product
   await prisma.product.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { slug: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 11b. Category
+  await prisma.category.deleteMany({
     where: {
       OR: [
         { id: { startsWith: "m1test" } },

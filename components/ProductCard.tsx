@@ -14,7 +14,7 @@ interface ProductCardProps {
     name: string;
     slug: string;
     price: number;
-    category: string;
+    category: string | { name: string };
     images?: Array<{ url: string }>;
     variants?: Array<{ id: string; size: string; stock: number }>;
     reviews?: Array<{ rating: number }>;
@@ -38,6 +38,10 @@ export default function ProductCard({ product, initialSaved = false, lowStockThr
     ? product.reviews!.reduce((sum, r) => sum + r.rating, 0) / reviewCount
     : 0;
 
+  const categoryName = typeof product.category === "string"
+    ? product.category
+    : product.category?.name || "";
+
   return (
     <>
       <div className="relative group">
@@ -46,7 +50,7 @@ export default function ProductCard({ product, initialSaved = false, lowStockThr
           className="block bg-white rounded-2xl p-2 border border-stone/30 shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.1)] transition-all duration-300"
         >
           <div className="relative">
-            <ProductSwatchImage url={product.images?.[0]?.url} category={product.category} />
+            <ProductSwatchImage url={product.images?.[0]?.url} category={categoryName} />
             
             {/* Quick-view hover overlay trigger (Desktop only) */}
             <button
@@ -69,10 +73,10 @@ export default function ProductCard({ product, initialSaved = false, lowStockThr
                   {product.name}
                 </div>
                 <div className="text-[12px] text-stone-dark mt-0.5">
-                  {product.category[0] + product.category.slice(1).toLowerCase()}
+                  {categoryName}
                 </div>
               </div>
-              <CareTag>{product.category}</CareTag>
+              <CareTag>{categoryName.toUpperCase()}</CareTag>
             </div>
 
             <div className="flex items-center justify-between mt-3 font-mono text-[13px]">

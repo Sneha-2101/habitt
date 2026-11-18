@@ -8,7 +8,7 @@ export default async function AdminProductsPage() {
   let products: any[] = [];
   try {
     products = await prisma.product.findMany({
-      include: { variants: true, images: { take: 1, orderBy: { position: "asc" } } },
+      include: { variants: true, images: { take: 1, orderBy: { position: "asc" } }, category: true },
       orderBy: { createdAt: "desc" },
     });
   } catch (err) {
@@ -52,7 +52,7 @@ export default async function AdminProductsPage() {
                 <span className="font-medium">{p.name}</span>
               </span>
               <span className="text-stone-dark text-[12px]">
-                {p.category[0] + p.category.slice(1).toLowerCase()}
+                {p.category?.name}
               </span>
               <span className="font-mono text-[12.5px]">{formatINR(p.price)}</span>
               <span className={`font-mono text-[12.5px] ${totalStock < 6 ? "text-clay font-medium" : ""}`}>

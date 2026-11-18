@@ -28,7 +28,7 @@ export default async function WantlistPage() {
       where: { userId },
       include: {
         product: {
-          include: { images: true },
+          include: { images: true, category: true },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -63,7 +63,7 @@ export default async function WantlistPage() {
               href={`/product/${p.slug}`}
               className="block bg-white rounded-2xl p-2 border border-stone/30 shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.1)] transition-all duration-300"
             >
-              <ProductSwatchImage url={p.images[0]?.url} category={p.category} />
+              <ProductSwatchImage url={p.images[0]?.url} category={p.category?.name || ""} />
               <div className="p-3">
                 <div className="flex justify-between items-start">
                   <div>
@@ -71,10 +71,10 @@ export default async function WantlistPage() {
                       {p.name}
                     </div>
                     <div className="text-[12px] text-stone-dark mt-0.5">
-                      {p.category[0] + p.category.slice(1).toLowerCase()}
+                      {p.category?.name}
                     </div>
                   </div>
-                  <CareTag>{p.category}</CareTag>
+                  <CareTag>{(p.category?.name || "").toUpperCase()}</CareTag>
                 </div>
                 <div className="font-mono text-[13px] mt-3">{formatINR(p.price)}</div>
               </div>

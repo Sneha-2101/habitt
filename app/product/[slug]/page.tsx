@@ -21,7 +21,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const [product, wishlistIds, settings] = await Promise.all([
     prisma.product.findUnique({
       where: { slug: resolvedParams.slug },
-      include: { images: true, variants: true },
+      include: { images: true, variants: true, category: true },
     }),
     getWishlistProductIds(),
     getSettings(),
@@ -67,13 +67,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           name: product.name,
           slug: product.slug,
           price: product.price,
-          category: product.category,
+          category: product.category?.name?.toUpperCase() ?? "",
           imageUrl: product.images[0]?.url,
         }}
       />
       <div className="grid md:grid-cols-2 gap-8 md:gap-10 items-start">
         <div>
-          <ProductImageGallery url={product.images[0]?.url} category={product.category} />
+          <ProductImageGallery url={product.images[0]?.url} category={product.category?.name?.toUpperCase() ?? ""} />
         </div>
         <div>
           <div className="flex justify-between items-start gap-4">
@@ -82,7 +82,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             </h1>
             <div className="flex items-center gap-2 shrink-0">
               <WishlistButton productId={product.id} initialSaved={isSaved} />
-              <CareTag>{product.category}</CareTag>
+              <CareTag>{product.category?.name?.toUpperCase() ?? ""}</CareTag>
             </div>
           </div>
 
@@ -106,7 +106,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             productId={product.id}
             productName={product.name}
             price={product.price}
-            category={product.category}
+            category={product.category?.name?.toUpperCase() ?? ""}
+            categorySizes={product.category?.sizes ?? []}
             variants={product.variants}
             freeShippingThreshold={settings.freeShippingThreshold}
             freeShippingOnPrepaid={settings.freeShippingOnPrepaid}

@@ -10,7 +10,7 @@ interface QuickViewModalProps {
     name: string;
     slug: string;
     price: number;
-    category: string;
+    category: string | { name: string };
     images?: Array<{ url: string }>;
     variants?: Array<{ id: string; size: string; stock: number }>;
   };
@@ -66,7 +66,9 @@ export default function QuickViewModal({ product, onClose }: QuickViewModalProps
 
           <div className="w-full sm:w-1/2 flex flex-col justify-between space-y-4">
             <div>
-              <span className="text-[11px] font-mono uppercase text-stone-dark tracking-wider">{product.category}</span>
+              <span className="text-[11px] font-mono uppercase text-stone-dark tracking-wider">
+                {typeof product.category === "string" ? product.category.toUpperCase() : product.category?.name?.toUpperCase()}
+              </span>
               <h3 className="font-display text-xl text-ink font-medium mt-0.5">{product.name}</h3>
               <p className="font-mono text-base font-semibold text-ink mt-2">{formatINR(product.price)}</p>
             </div>

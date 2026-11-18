@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestUser, createTestProduct, cleanupM1TestRows } from "../helpers/fixtures";
 import { createSessionCookie } from "../helpers/session";
 import { revokeSession } from "@/lib/sessions";
-import { Size } from "@prisma/client";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
@@ -20,7 +19,7 @@ describe("T39: HTTP quote revoked session check", () => {
     const session = await createSessionCookie(user.id);
     const { product, variants } = await createTestProduct({
       price: 100000,
-      variants: [{ size: Size.M, stock: 5 }],
+      variants: [{ size: "M", stock: 5 }],
     });
     const items = [{ productId: product.id, variantId: variants[0].id, qty: 1 }];
 

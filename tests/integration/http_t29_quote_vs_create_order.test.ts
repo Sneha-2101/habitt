@@ -8,7 +8,7 @@ import {
   cleanupM1TestRows,
 } from "../helpers/fixtures";
 import { createSessionCookie } from "../helpers/session";
-import { SiteSettings, Size } from "@prisma/client";
+import { SiteSettings } from "@prisma/client";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
@@ -55,7 +55,7 @@ describe("T29: Quote Equals Create-Order Across 6 Scenarios", () => {
   it("Scenario 1: Prepaid (RAZORPAY) - quote payable equals create-order amount", async () => {
     const user = await createTestUser();
     const session = await createSessionCookie(user.id);
-    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: Size.M, stock: 5 }] });
+    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: "M", stock: 5 }] });
     const items = [{ productId: product.id, variantId: variants[0].id, qty: 1 }];
 
     // Quote
@@ -91,7 +91,7 @@ describe("T29: Quote Equals Create-Order Across 6 Scenarios", () => {
   it("Scenario 2: COD - quote payable equals create-order amount including COD fee", async () => {
     const user = await createTestUser();
     const session = await createSessionCookie(user.id);
-    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: Size.M, stock: 5 }] });
+    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: "M", stock: 5 }] });
     const items = [{ productId: product.id, variantId: variants[0].id, qty: 1 }];
 
     const quoteRes = await fetch(`${BASE_URL}/api/checkout/quote`, {
@@ -126,7 +126,7 @@ describe("T29: Quote Equals Create-Order Across 6 Scenarios", () => {
   it("Scenario 3: Coupon - quote payable equals create-order amount with coupon discount", async () => {
     const user = await createTestUser();
     const session = await createSessionCookie(user.id);
-    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: Size.M, stock: 5 }] });
+    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: "M", stock: 5 }] });
     const coupon = await createTestCoupon({ discountType: "FLAT", value: 20000 });
     const items = [{ productId: product.id, variantId: variants[0].id, qty: 1 }];
 
@@ -162,7 +162,7 @@ describe("T29: Quote Equals Create-Order Across 6 Scenarios", () => {
   it("Scenario 4: Partial store credit - quote payable equals create-order amount", async () => {
     const user = await createTestUser({ storeCreditBalance: 40000 });
     const session = await createSessionCookie(user.id);
-    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: Size.M, stock: 5 }] });
+    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: "M", stock: 5 }] });
     const items = [{ productId: product.id, variantId: variants[0].id, qty: 1 }];
 
     const quoteRes = await fetch(`${BASE_URL}/api/checkout/quote`, {
@@ -197,7 +197,7 @@ describe("T29: Quote Equals Create-Order Across 6 Scenarios", () => {
   it("Scenario 5: Full store credit - quote payable 0 equals create-order payableAmount 0", async () => {
     const user = await createTestUser({ storeCreditBalance: 200000 });
     const session = await createSessionCookie(user.id);
-    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: Size.M, stock: 5 }] });
+    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: "M", stock: 5 }] });
     const items = [{ productId: product.id, variantId: variants[0].id, qty: 1 }];
 
     const quoteRes = await fetch(`${BASE_URL}/api/checkout/quote`, {
@@ -234,7 +234,7 @@ describe("T29: Quote Equals Create-Order Across 6 Scenarios", () => {
   it("Scenario 6: Mixed (Coupon + Store Credit + Prepaid)", async () => {
     const user = await createTestUser({ storeCreditBalance: 30000 });
     const session = await createSessionCookie(user.id);
-    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: Size.M, stock: 5 }] });
+    const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: "M", stock: 5 }] });
     const coupon = await createTestCoupon({ discountType: "FLAT", value: 20000 });
     const items = [{ productId: product.id, variantId: variants[0].id, qty: 1 }];
 

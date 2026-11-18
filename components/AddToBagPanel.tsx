@@ -1,15 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { Size } from "@prisma/client";
 import { useCartStore } from "@/lib/cart-store";
 import { formatINR } from "@/lib/money";
 import SizeGuideModal from "@/components/SizeGuideModal";
 import { requestStockNotification } from "@/lib/actions/notifications";
+import { sortSizes } from "@/lib/catalog/categories";
 
 interface Variant {
   id: string;
-  size: Size;
+  size: string;
   stock: number;
 }
 
@@ -18,6 +18,7 @@ export default function AddToBagPanel({
   productName,
   price,
   category,
+  categorySizes = [],
   variants,
   freeShippingThreshold = 299900,
   freeShippingOnPrepaid = true,
@@ -26,12 +27,16 @@ export default function AddToBagPanel({
   productName: string;
   price: number;
   category: string;
+  categorySizes?: string[];
   variants: Variant[];
   freeShippingThreshold?: number;
   freeShippingOnPrepaid?: boolean;
 }) {
-  const [selectedSize, setSelectedSize] = useState<Size>(
-    variants.find((v) => v.stock > 0)?.size || variants[0]?.size || "M"
+  const variantSizes = variants.map((v) => v.size);
+  const orderedSizes = sortSizes(variantSizes, categorySizes);
+
+  const [selectedSize, setSelectedSize] = useState<string>(
+    variants.find((v) => v.stock > 0)?.size || orderedSizes[0] || "M"
   );
   const [showSizeGuide, setShowSizeGuide] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState("");
@@ -95,7 +100,7 @@ export default function AddToBagPanel({
           </button>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {(["S", "M", "L", "XL", "XXL"] as Size[]).map((size) => {
+          {orderedSizes.map((size) => {
             const v = variants.find((variant) => variant.size === size);
             const variantStock = v?.stock || 0;
             const disabled = variantStock <= 0;

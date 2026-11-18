@@ -1,6 +1,9 @@
 import { createProduct } from "@/lib/actions/products";
+import { getPickerCategories } from "@/lib/catalog/categories";
 
-export default function NewProductPage() {
+export default async function NewProductPage() {
+  const categories = await getPickerCategories();
+
   return (
     <main className="px-7 py-9 max-w-lg mx-auto">
       <h1 className="font-display text-2xl mb-7">Add product</h1>
@@ -11,11 +14,12 @@ export default function NewProductPage() {
         </div>
         <div>
           <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">CATEGORY</label>
-          <select name="category" className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px]">
-            <option value="SHIRTS">Shirts</option>
-            <option value="OVERSHIRTS">Overshirts</option>
-            <option value="POLOS">Polos</option>
-            <option value="TROUSERS">Trousers</option>
+          <select name="categoryId" className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px]">
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
           </select>
         </div>
         <div>

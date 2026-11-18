@@ -1,14 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import type { Category } from "@prisma/client";
-import { formatINR } from "@/lib/money";
-import { CareTag } from "@/components/CareTag";
-import { ProductSwatchImage } from "@/components/ProductSwatchImage";
-import WishlistButton from "@/components/WishlistButton";
 import ProductCard from "@/components/ProductCard";
 import { getWishlistProductIds } from "@/lib/actions/wishlist";
-
-const CATEGORIES: Category[] = ["SHIRTS", "OVERSHIRTS", "POLOS", "TROUSERS"];
 
 export default async function ShopPage({
   searchParams,
@@ -16,23 +9,40 @@ export default async function ShopPage({
   searchParams: Promise<{ category?: string; q?: string }>;
 }) {
   const resolvedParams = await searchParams;
-  const activeCategory = resolvedParams.category as Category | undefined;
+  const rawCategoryParam = resolvedParams.category?.trim();
   const searchQuery = resolvedParams.q?.trim();
 
   let products: any[] = [];
   let wishlistSet = new Set<string>();
+  let categories: Array<{ id: string; slug: string; name: string; position: number }> = [];
+  let activeCategory: { id: string; slug: string; name: string } | undefined;
 
   try {
+    categories = await prisma.category.findMany({
+      where: { active: true },
+      orderBy: { position: "asc" },
+      select: { id: true, slug: true, name: true, position: true },
+    });
+
+    if (rawCategoryParam) {
+      const paramLower = rawCategoryParam.toLowerCase();
+      // Match against slug or name case-insensitively (supports old uppercase enum values)
+      activeCategory = categories.find(
+        (c) => c.slug.toLowerCase() === paramLower || c.name.toLowerCase() === paramLower
+      );
+    }
+
     const [dbProducts, wishlistIds] = await Promise.all([
       prisma.product.findMany({
         where: {
           status: "ACTIVE",
-          ...(activeCategory ? { category: activeCategory } : {}),
+          ...(activeCategory ? { categoryId: activeCategory.id } : {}),
           ...(searchQuery ? { name: { contains: searchQuery, mode: "insensitive" } } : {}),
         },
         include: {
           images: true,
           variants: true,
+          category: true,
           reviews: { select: { rating: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -66,15 +76,15 @@ export default async function ShopPage({
         >
           All
         </Link>
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <Link
-            key={c}
-            href={`/shop?category=${c}`}
+            key={c.id}
+            href={`/shop?category=${c.slug}`}
             className={`px-4 py-2 rounded-full border text-[12.5px] tracking-[0.02em] transition-colors ${
-              activeCategory === c ? "bg-ink text-paper border-ink" : "border-stone hover:border-ink"
+              activeCategory?.id === c.id ? "bg-ink text-paper border-ink" : "border-stone hover:border-ink"
             }`}
           >
-            {c[0] + c.slice(1).toLowerCase()}
+            {c.name}
           </Link>
         ))}
       </div>

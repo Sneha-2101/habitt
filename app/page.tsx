@@ -11,6 +11,7 @@ export default async function HomePage() {
     include: {
       images: true;
       variants: true;
+      category: true;
       reviews: { select: { rating: true } };
     };
   }>>> = [];
@@ -20,6 +21,7 @@ export default async function HomePage() {
       include: {
         images: true,
         variants: true,
+        category: true,
         reviews: { select: { rating: true } },
       },
       take: 8,

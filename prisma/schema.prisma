@@ -10,12 +10,25 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model Category {
+  id        String    @id @default(cuid())
+  slug      String    @unique
+  name      String
+  position  Int       @default(0)
+  sizes     String[]
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
 model Product {
   id          String           @id @default(cuid())
   name        String
   slug        String           @unique
   description String
-  category    Category
+  categoryId  String
+  category    Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   price       Int // paise
   status      ProductStatus    @default(DRAFT)
   images      ProductImage[]
@@ -39,26 +52,11 @@ model ProductVariant {
   id        String  @id @default(cuid())
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId String
-  size      Size
+  size      String
   stock     Int     @default(0)
   cartItems CartItem[]
 
   @@unique([productId, size])
-}
-
-enum Category {
-  SHIRTS
-  OVERSHIRTS
-  POLOS
-  TROUSERS
-}
-
-enum Size {
-  S
-  M
-  L
-  XL
-  XXL
 }
 
 enum ProductStatus {
@@ -121,11 +119,11 @@ enum PaymentMethod {
 model SiteSettings {
   id                     String   @id @default("default")
   codEnabled             Boolean  @default(true)
-  codOrderCap            Int      @default(500000) // in paise (e.g. 500000 = ₹5,000)
-  shippingFee            Int      @default(9900)   // in paise (e.g. 9900 = ₹99)
-  freeShippingThreshold  Int      @default(299900) // in paise (e.g. 299900 = ₹2,999)
+  codOrderCap            Int      @default(500000) // in paise (e.g. 500000 = â‚¹5,000)
+  shippingFee            Int      @default(9900)   // in paise (e.g. 9900 = â‚¹99)
+  freeShippingThreshold  Int      @default(299900) // in paise (e.g. 299900 = â‚¹2,999)
   codFeeEnabled          Boolean  @default(false)
-  codFee                 Int      @default(0)      // in paise (e.g. 5000 = ₹50)
+  codFee                 Int      @default(0)      // in paise (e.g. 5000 = â‚¹50)
   gstEnabled             Boolean  @default(false)
   gstRate                Float    @default(0.0)    // percentage (e.g. 18.0)
   gstin                  String?
@@ -161,7 +159,7 @@ model OrderItem {
   productId String
   variantId String
   name      String
-  size      Size
+  size      String
   unitPrice Int
   qty       Int
 }
@@ -199,8 +197,8 @@ enum FulfilmentStatus {
 
 // Single table for everyone who can log in. Customers get role CUSTOMER at
 // signup; STAFF/OWNER accounts are created manually (seed script or by an
-// OWNER) — there's no public "become an admin" path. Login is required to
-// buy, and the same /login page authenticates both — the header decides
+// OWNER) â€” there's no public "become an admin" path. Login is required to
+// buy, and the same /login page authenticates both â€” the header decides
 // whether to show the Admin link based on `role`.
 model User {
   id                     String                   @id @default(cuid())

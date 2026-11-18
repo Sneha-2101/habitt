@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getPickerCategories, sortSizes } from "@/lib/catalog/categories";
 import {
   updateProduct,
   updateVariantStock,
@@ -12,9 +13,25 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   const resolvedParams = await params;
   const product = await prisma.product.findUnique({
     where: { id: resolvedParams.id },
-    include: { variants: true, images: { orderBy: { position: "asc" } } },
+    include: { variants: true, images: { orderBy: { position: "asc" } }, category: true },
   });
   if (!product) notFound();
+
+  const pickerCategories = await getPickerCategories();
+  const allCategories = [...pickerCategories];
+  if (product.category && !allCategories.some((c) => c.id === product.categoryId)) {
+    allCategories.push(product.category);
+  }
+  allCategories.sort((a, b) => a.position - b.position);
+
+  const orderedSizes = sortSizes(
+    product.variants.map((v) => v.size),
+    product.category?.sizes ?? []
+  );
+  const sizeRank = new Map(orderedSizes.map((sz, idx) => [sz, idx]));
+  const sortedVariants = [...product.variants].sort(
+    (a, b) => (sizeRank.get(a.size) ?? 999) - (sizeRank.get(b.size) ?? 999)
+  );
 
   const updateWithId = updateProduct.bind(null, product.id);
   const archiveWithId = archiveProduct.bind(null, product.id);
@@ -31,11 +48,12 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         </div>
         <div>
           <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">CATEGORY</label>
-          <select name="category" defaultValue={product.category} className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px]">
-            <option value="SHIRTS">Shirts</option>
-            <option value="OVERSHIRTS">Overshirts</option>
-            <option value="POLOS">Polos</option>
-            <option value="TROUSERS">Trousers</option>
+          <select name="categoryId" defaultValue={product.categoryId} className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px]">
+            {allCategories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{!c.active ? " (Inactive)" : ""}
+              </option>
+            ))}
           </select>
         </div>
         <div>
@@ -102,7 +120,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
       {/* STOCK BY SIZE SECTION */}
       <h2 className="text-sm font-medium mb-3">Stock by size</h2>
       <div className="border border-stone mb-8">
-        {product.variants.map((v) => (
+        {sortedVariants.map((v) => (
           <form
             key={v.id}
             action={async (formData: FormData) => {

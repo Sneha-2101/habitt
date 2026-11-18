@@ -15,7 +15,6 @@ import { syncCartAction, saveCartAction, loadCartAction } from "@/lib/actions/ca
 import { createSession } from "@/lib/sessions";
 import * as sessionsModule from "@/lib/sessions";
 import * as ratelimitModule from "@/lib/ratelimit";
-import { Size } from "@prisma/client";
 
 describe("T61, T62: Cart Server Hardening", () => {
   beforeEach(async () => {
@@ -43,7 +42,7 @@ describe("T61, T62: Cart Server Hardening", () => {
 
     const { variants } = await createTestProduct({
       status: "ACTIVE",
-      variants: [{ size: Size.M, stock: 10 }],
+      variants: [{ size: "M", stock: 10 }],
     });
     const v = variants[0];
 
@@ -97,8 +96,8 @@ describe("T61, T62: Cart Server Hardening", () => {
     const { variants } = await createTestProduct({
       status: "ACTIVE",
       variants: [
-        { size: Size.M, stock: 20 },
-        { size: Size.L, stock: 20 },
+        { size: "M", stock: 20 },
+        { size: "L", stock: 20 },
       ],
     });
     const v1 = variants[0];
