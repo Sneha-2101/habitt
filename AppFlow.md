@@ -4,6 +4,7 @@
 Three columns: left nav (`shop` / `journal` / `about`), centered icon + lowercase wordmark linking home, right nav (`search` / `wishlist` / `admin` *(staff only)* / `account` / `cart`). Nav items are owner-editable (`NavLink`). `admin` renders only for `STAFF`/`OWNER` sessions. `account` opens the sign-in sheet when signed out and `/account` when signed in. The cart shows a small solid dot (not a number) when non-empty. An optional announcement bar sits above the header (`Banner`).
 
 ## Identity flows
+> **As built (M2b):** phone OTP is blocked on the **server** in production until `WHATSAPP_OTP_LIVE=true`: phone login, phone step-up and phone contact change all return "Phone verification isn't available yet. Please use your email." **Known UI gap:** `/login` still opens on the *phone* tab, so a production customer would first hit that message. Fix in M3 (default to the email tab and hide the phone tab until live). Everything below that mentions WhatsApp describes the state after Meta go-live.
 
 ### Guest to customer (at checkout)
 ```
@@ -24,12 +25,12 @@ Browse / search / wishlist / cart  — no account needed (cart lives in the brow
 ```
 Returning customers on a known device never see the sheet. A new device or cleared browser data costs one OTP. Customers can sign out manually or "sign out of all devices" from `/account`.
 
-### Step-up verification (customers)
-Changing the phone number or email on an account requires a fresh OTP to the *new* identifier (and to the old one if it is verified).
+### Step-up verification and contact change (customers) — as built
+Changing the phone number or email needs a fresh step-up OTP (to the account's own email or, once live, phone), then an OTP to the *new* identifier. The response is the same whether the new value is already registered or free ("If this can be used, we've sent a code to it"); accounts are never merged; an alert with no values goes to the old email. A phone-only customer chooses phone for step-up; with WhatsApp not live in production they see the unavailable message.
 
 ### Staff and owner
 ```
-/admin/login  — email only → OTP by email (address must be on the owner's allowlist)
+/staff/login  — email only → OTP by email (address must be on the owner's allowlist, kept in the `StaffAllowlist` table and editable at /admin/team)
  └─ session: 7 days sliding, 30 days absolute; new device → email alert to the owner
 Step-up (fresh OTP within the last 10 minutes) required for:
   refunds · changing settings (GST, shipping, COD, payments) · staff and role changes ·
@@ -94,6 +95,8 @@ COD is hidden or explained when ineligible: pincode not serviceable for COD, car
 8. GST extracted per line from the discounted GST-inclusive value; invoice breakup computed.
 9. Wallet credit applied last as a payment tender (it reduces the amount due, not the taxable value).
 Discounts are allocated to lines with largest-remainder rounding so lines always sum to the order totals.
+
+> **As built:** an order has one status (`PENDING`, `PAID`, `SHIPPED`, `DELIVERED`, `CANCELLED`, `FAILED`) and `paymentMethod` is `RAZORPAY`, `COD` or `STORE_CREDIT`. The `paymentStatus` / `fulfilmentStatus` words below (and `COD_PENDING`, `CONFIRMED`, `PACKED`) arrive with M3a (`Schema.md` E4). Checkout today has the coupon, store credit, shipping fee, COD fee/eligibility and free shipping on prepaid; offers, tax and the nine-step order are built in M3b–M3c.
 
 ## Prepaid payment flow (server-authoritative)
 1. Customer taps **Pay**; the client sends the cart, address, payment method and a client-generated **idempotency key**.

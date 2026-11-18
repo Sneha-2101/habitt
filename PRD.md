@@ -20,7 +20,7 @@ Habitt is a minimalist D2C clothing brand (shirts, overshirts, polos, trousers) 
 | **Owner** | brand owner | everything, including settings, staff, refunds, exports, metrics on revenue and profit |
 | **Influencer** (optional, read-only) | creators with a code | a private link showing their own orders and commission, no login required beyond the link |
 
-Customers and staff share one `User` table, distinguished by `role`. Customers log in with a **WhatsApp OTP** (primary) or **email OTP**. Staff and owner log in with **email OTP only**, restricted to addresses the owner has added. There are no passwords anywhere in the product.
+Customers and staff share one `User` table, distinguished by `role`. Customers log in with an **email OTP** at launch; a **WhatsApp OTP** is added when Meta verification and the template are approved (`WHATSAPP_OTP_LIVE`). Staff and owner log in with **email OTP only**, restricted to addresses the owner has added. There are no passwords anywhere in the product.
 
 ## Scope (all in scope for the first launch)
 
@@ -33,7 +33,7 @@ Customers and staff share one `User` table, distinguished by `role`. Customers l
 - Content pages (About, policies, FAQ, size guide) and a journal, all editable in admin.
 
 ### 2. Identity and account
-- Guest browsing and cart; OTP sign-in sheet at checkout (WhatsApp first, email fallback); returning customers are never asked again on the same device.
+- Guest browsing and cart; OTP sign-in sheet at checkout (email at launch; WhatsApp first with email fallback once live); returning customers are never asked again on the same device.
 - Account area: orders and tracking, addresses, wallet (credit, rewards, gift cards), wishlist, referral code, communication preferences, data export and account deletion, sign out and "sign out of all devices".
 - Customers verify again only to change their phone or email.
 

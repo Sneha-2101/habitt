@@ -9,17 +9,40 @@
 - Scope is frozen. New ideas go to the post-launch backlog unless they replace something in the plan.
 - Anything blocked on external paperwork ships **switched off behind a settings flag** and is enabled without a deploy once the dependency clears.
 
-## Status summary (honest baseline from the repo audit)
-| Original phase | Status |
-|---|---|
-| Phase 0 — Setup | Done |
-| Phase 1 — Storefront core | Done (gaps: no gallery, no sort/search, plain `<img>`, placeholder nav links) |
-| Phase 2 — Checkout & payments | Code-complete, **never tested end to end**; known defects (see M1) |
-| Phase 3 — Admin panel | Basic CRUD done; **no per-action authorization**, unrestricted order status changes |
-| Phase 4 — Hardening | **Partial.** Password hashing and mobile pass done; security, payment integrity and validation gaps remain |
-| Phase 5 — Launch | Not started |
+### Standing rules for every Angy prompt (learned the hard way)
+- Angy never runs `git commit/add/push/pull/merge/stash/reset/checkout`. Aarav does all git, straight to `main`, after a full phase.
+- Angy never reads or prints `.env` / `.env.local` values (names only, or "set"/"unset"/true/false).
+- Angy never runs `npm install/i/update/upgrade/audit fix` and never changes `package.json` or `package-lock.json`; `npx` only with `--no-install` (answer "n" to any download prompt). **Prisma stays 5.22.0.**
+- Migrations are hand-written SQL (no BOM) applied with `prisma migrate deploy`; never `migrate reset` or `db push`. Gate every database run with `npx --no-install prisma migrate status`. Test rows are prefixed `m1test` and only those are deleted.
+- Raw output after every phase: `tsc --noEmit`, lint (0 errors; baseline 41 warnings), unit tests, integration where relevant (start `next dev` first and prove it with the health route), build at the end. Any failed run makes the phase PARTIAL.
+- Angy must not edit a test or production file just to get green; it reports and stops. Every prompt asks for the full `git diff` of every **existing** file edited, a DONE/PARTIAL/NOT DONE table, `git status --short` and `git diff --stat`.
+- Angy's reports are unreliable (it has invented code quotes and edited tests to pass), so every report is cross-checked against the repo and the diff before anything is committed.
 
-Known defects the plan must close: fallback JWT secret; admin actions with no role check; no quantity validation (negative or fractional quantities and duplicate lines bypass stock and price checks); archived/draft products purchasable; unguarded stock decrement; orphaned Razorpay orders on retry; random 5-digit order ids with collision risk; no `payment.failed` handling; success page with no ownership check and a false "email sent" claim; shipping fee not shown in the pay button; unsanitized redirect; the seed admin password; lint not runnable; docs out of date.
+## Status summary (as built, after M2b)
+| Milestone | Status | Notes |
+|---|---|---|
+| M0 Paperwork | Ongoing (owner) | See the tracker below. |
+| M1 Foundation and hardening | **Done, committed** | Deviations from the plan: the `paymentStatus`/`fulfilmentStatus` split was **not** done (moved to M3a); Sentry is **not** installed (M8); CI exists but its first run has not been seen. |
+| M2a Identity core | **Done, committed** | Session table checked on every protected action, staff email-OTP login with an owner-editable allowlist, audit log, new-device alert, sign out everywhere, passwords and signup removed. |
+| M2b Cart, addresses, contact | **Done, committed** | Server cart and sync, address book, contact change, customer step-up, verified-at fields, reviewer login. |
+| M2 follow-ups (fix-4, fix-5, addendum, cart timeouts) | **Done** | `maskIdentifier` fix, deterministic T8, T10 settings isolation, stable Turnstile test env, env-only `WHATSAPP_OTP_LIVE` with a production gate on phone login, phone step-up and phone contact change, `$transaction` `maxWait`/`timeout` on cart actions. |
+| M2 staging exit check | **Deferred until after M8** | Run `M2-STAGING-EXIT-CHECKLIST.md` against a real staging deployment. |
+| M3 onwards | Not started | Re-planned below. |
+
+### Known issues carried into later milestones
+- **M3:** a coupon worth 0 does not count toward `timesUsed`; coupon codes are not forced uppercase on admin save; `create-order` matches an "already used" message string instead of a warning code; GST invoice maths is wrong and unnumbered; the free-shipping threshold uses the post-coupon subtotal; `/login` still opens on the phone tab.
+- **M4:** bulk fulfilment shows generic per-row errors (restore the reasons for staff).
+- **M7:** Meta Pixel loads without consent and `Purchase` refires on refresh; the header reads the session, so the whole site is dynamic (blocks ISR/SEO); a welcome-coupon email failure leaves a subscriber with no coupon.
+- **M8:** 41 lint warnings; 13 `npm audit` findings; CSP is report-only; verify and webhook transactions need `maxWait`/`timeout`; break-glass owner-recovery script; reviewer login must be disabled; real-provider tests (Upstash, Turnstile, Meta) never run live; `OtpCode.identifier` is stored raw; Prisma upgrade only as its own planned task.
+
+## Open decisions for the re-plan (confirm one at a time, before the milestone that needs them)
+| # | Decision | Recommended default | Needed by |
+|---|---|---|---|
+| D1 | Split `Order.status` into `paymentStatus` + `fulfilmentStatus` | Yes, in M3a, with a backfill migration | M3a |
+| D2 | Wallet: evolve `StoreCreditTransaction` / `storeCreditBalance` in place (add expiry) instead of creating `Wallet`/`WalletEntry` | Evolve in place | M6 |
+| D3 | Migrate `Coupon` rows into the new `Offer` model | Migrate in M3b | M3b |
+| D4 | Keep the typed `SiteSettings` singleton (new settings = new columns) instead of a key-value `Setting` table | Keep typed | M3a |
+| D5 | Split M3 into M3a (data model), M3b (offers and pricing), M3c (GST and invoices) | Split | now |
 
 ## External dependency tracker (owner-side, starts now, sets the launch date)
 | Dependency | Unblocks | Notes |
@@ -43,49 +66,54 @@ Known defects the plan must close: fallback JWT secret; admin actions with no ro
 ## M0 — Parallel paperwork (owner, continuous)
 Run the tracker above. Developer sends the owner the checklist and follows up weekly. **Exit:** GSTIN, domain, WhatsApp number, Meta/Google accounts and the policy decisions are in hand.
 
-## M1 — Foundation and hardening
-**Scope**
-- Baseline: install, validate, type-check, build; fix whatever fails.
-- Security: remove the JWT secret fallback; `requireUser`/`requireRole` guards; role checks inside every admin action and the admin order status action; `safeRedirect`; seed the owner from `OWNER_EMAIL` plus a temporary `SEED_OWNER_PASSWORD` (password login is removed in M2) and never overwrite an existing owner's password; confirm Next.js is on a patched 15.x.
-- Schema: split `Order.status` into `paymentStatus` and `fulfilmentStatus`; add `paymentMethod`, `idempotencyKey`; add `ProcessedWebhook` and `StockMovement`; `CHECK (stock >= 0)`; move to Prisma migrations.
-- Payments: shared `markOrderPaid`; guarded stock decrement; webhook de-duplication and `payment.failed`; ownership checks on verify and the success page; Razorpay order reuse on retry; zod-validated `create-order` (integer quantities, merged duplicates, active products only); idempotency keys; crypto-based display ids with collision retry; shared shipping calculation; stale-order cleanup job.
-- Checkout page: show shipping and total on the pay button, labels and validation, `payment.failed` handler, error handling.
-- Admin orders: legal transitions only; cancelling restocks; no manual "paid".
-- Infrastructure: Upstash rate limiting on `create-order`; Sentry; security headers (CSP in report-only); GitHub Actions CI; ESLint; Vitest with first tests; `.env.example`; README fixes.
-**Exit criteria:** Razorpay **test-mode** end-to-end run passes, including retry, double-click, payment failure and webhook-only confirmation; no negative stock possible; all guards verified by the read-only phase; CI green; staging deployed.
+## M1 — Foundation and hardening — DONE (committed)
+Built: payment integrity (`markOrderPaid`, guarded stock decrement, webhook de-duplication, `payment.failed`, idempotency keys, ownership checks, crypto display ids), shared quote engine (`lib/pricing/quote.ts`), Upstash rate limiting with per-policy fail mode, OTP hardening, launch settings in `SiteSettings`, security headers (CSP report-only), health route, CI workflow, Vitest suites, migrations replacing `db push`. **Not done and rescheduled:** status split (M3a), Sentry (M8), CI first run (M8).
 
-## M2 — Identity
-**Scope:** OTP challenge module with hashing, limits and Turnstile; WhatsApp and email providers plus console provider; Auth.js credentials provider; `Session` table with revocation; sliding sessions; sign-in sheet at checkout and `/login`; guest cart synced to a server `Cart` at sign-in; addresses; account area basics; step-up verification; staff/owner email-OTP login with allowlist; new-device alert; `AuditLog`; minimal `Setting` with feature flags; removal of password login and the seeded password; reviewer test-account flag.
-**Exit:** all login paths work on staging (console provider, email live; WhatsApp live only if Meta verification is complete); rate limits and neutral responses verified; sign out everywhere works.
+## M2 — Identity — DONE (committed) except the staging exit check
+Built: `Session` table checked on every protected action; customer sessions 365 days sliding, staff 7 days idle / 30 days absolute; staff email-OTP login at `/staff/login` with the `StaffAllowlist` (owner-editable at `/admin/team`); new-device alert; `AuditLog`; sign out everywhere; passwords, signup and bcrypt removed; server `Cart` and sync; address book (max 10); contact change; customer step-up; reviewer login (env flag); env-only `WHATSAPP_OTP_LIVE` with a production gate on every phone OTP path. **Deferred:** the staging exit check (`M2-STAGING-EXIT-CHECKLIST.md`, run after M8). **Decisions still standing:** email OTP only until Meta WhatsApp is live; never auto-merge accounts; never reveal whether an email or phone is registered.
 
-## M3 — Pricing and checkout
-**Scope:** `Category` table and owner-editable size sets; product fields (compare-at, cost, HSN, SEO, fabric/fit/care); variant color and SKU; `priceCart()` engine with unit tests; offers (coupons, automatic, combos, tiers, free shipping, gift, scheduled sale prices) with stacking rules and the coupon-vs-automatic comparison; cart UI with savings breakdown and nudges; prepaid discount; COD with eligibility and fee; wallet tender hook (balance zero until M6); shipping settings; GST rules, per-line tax, place of supply, invoice numbering and PDF (receipt mode until GSTIN); address book with pincode autofill; GSTIN field; consent records for checkout opt-ins; checkout steps from `AppFlow.md`.
-**Exit:** pricing and GST golden tests pass; staging test orders (prepaid and COD) produce correct totals and invoices; no total is ever computed on the client.
+## M3 — Catalog model, pricing and checkout (split into three parts)
+Each part ends with its own read-only verification and a commit. Migrations are hand-written SQL with backfills (see `Schema.md` Part 2).
 
-## M4 — Fulfilment and messages
-**Scope:** Shiprocket integration (serviceability, shipment creation, AWB, labels, tracking sync and webhook) with the manual fallback; COD confirmation flow; order timeline and public tracking page; cancel; returns and size exchanges with photos; refunds to source or wallet credit; credit notes; message templates and the notification matrix on WhatsApp and email; support tickets with 48-hour and one-month clocks; policy and legal page stubs and footer disclosures; `EventOutbox`; all scheduled jobs.
-**Exit:** a staged order moves through every state; a return and a refund complete with a credit note; templates submitted to Meta; grievance flow tested.
+### M3a — Data model
+**Scope:** `Category` table (seeded from the four enum values) and owner-editable size sets (E1); variant `color` and `sku` (E2); product fields: compare-at, cost, HSN, fabric/fit/care, size chart, SEO, `publishAt` (E3); **order status split** with backfill, all transition code and tests moved together (E4, D1); admin product form and storefront reads updated; `/login` defaults to the email tab and hides the phone tab until `WHATSAPP_OTP_LIVE` is true (small UI fix carried from M2).
+**Exit:** migrations apply to a copy of real data without loss; the full integration suite is green on the new states; no code reads the old `OrderStatus`.
+
+### M3b — Offers and pricing
+**Scope:** `Offer`, `OfferRedemption`, `OrderDiscount`; migrate `Coupon` rows and make the welcome and birthday coupons `Offer` rows (E6, D3); extend `lib/pricing/quote.ts` toward the nine-step order in `AppFlow.md` (sale prices, automatic offers and combos, one exclusive coupon with the better-of comparison message, global discount cap and cost floor, prepaid incentive = free shipping, COD fee and eligibility, store credit as the last tender); per-line discount allocation with largest-remainder rounding; the known coupon fixes (0-discount usage count, uppercase codes, warning code instead of message matching, free-shipping threshold basis); cart UI with the savings breakdown and nudges; `codBlocked` and the pending-COD cap.
+**Exit:** pricing golden tests pass; quote and `create-order` agree on every case; no total is ever computed on the client.
+
+### M3c — GST and invoices
+**Scope:** `GstRule`, `Invoice`, `CreditNote`, `InvoiceCounter`, per-line tax fields (E7); place of supply from `businessState` (Punjab) versus the shipping state; invoice numbering and a server-side PDF; receipt mode while `gstEnabled` is false; buyer GSTIN field; consent records for checkout opt-ins; checkout steps per `AppFlow.md` (address book with pincode autofill).
+**Blocked on:** the CA answers (bundle allocation, COD fee, shipping, gift cards and loyalty, invoice numbering, credit notes) and the GSTIN. Ships behind `gstEnabled`; the store must not take real orders with tax off.
+**Exit:** GST golden tests pass; staging prepaid and COD orders produce correct totals and invoices.
+
+## M4 — Fulfilment, returns, messages and support
+**Scope:** Shiprocket (serviceability, shipment, AWB, labels, tracking webhook and sync) with the manual fallback; `Shipment`/`ShipmentEvent` and the move of courier fields off `Order` (E11); COD confirmation flow; order timeline and public tracking page; cancel; returns and size exchanges (`Return`/`ReturnItem`/`Refund`, E10); refunds to source or wallet credit; credit notes; message templates and the notification matrix (email first; WhatsApp when Meta is live); support tickets with 48-hour and one-month clocks; policy and legal pages and footer disclosures (returns 7 days, company pays return shipping, refund **started** within 48 hours, no promise about bank credit time; maximum delivery 7 days; grievance officer); `EventOutbox`; restore per-row reasons in bulk fulfilment; **decide the scheduler** (Vercel Pro or an external caller of the cron routes with `CRON_SECRET`) and add the remaining jobs.
+**Exit:** a staged order moves through every state; a return and a refund complete with a credit note; templates submitted to Meta; the grievance flow is tested.
 
 ## M5 — Owner admin
-**Scope:** responsive admin shell (sidebar and bottom tabs), card-and-table list pattern, bottom-sheet actions; needs-attention inbox; orders tools (search, saved views, bulk actions, notes, contact buttons); product tools (bulk edit, CSV import/export, duplicate, scheduled publish, image reorder and bulk upload, stock history and stock-take); collections; settings screens for every key; content editor (home sections, banners, navigation, pages, FAQs, journal) with sanitization, preview and scheduling; customers and segments; staff and roles; audit log viewer; reports and metrics dashboard (sales, funnel, products, coupons, RTO, COD remittance, GST export, settlement reconciliation, profit); daily digest; PWA with push; data export; maintenance mode; command menu (desktop).
+**Scope:** responsive admin shell (sidebar and bottom tabs), card-and-table lists, bottom-sheet actions, needs-attention inbox; orders tools; product tools (bulk edit, CSV, duplicate, scheduled publish, image reorder and bulk upload, stock history and stock-take, `StockMovement` relation); collections; settings screens for every setting (typed `SiteSettings` columns, audit-logged saves, D4) including owner-editable business address, phone and emails (never hardcoded); content editor and the content tables (E13) with sanitisation, preview and scheduling; customers and segments; staff and roles; audit log viewer; reports and metrics; daily digest; PWA with push; data export; maintenance mode; command menu (desktop).
 **Exit:** every item on the PRD **no-code list** is changeable from the admin on a phone; owner walkthrough on staging signed off.
 
 ## M6 — Rewards
-**Scope:** wallet ledger with expiry and earliest-expiry spending; wallet as a checkout tender; loyalty release after the return window; referrals with fraud checks; gift cards (purchase product, delivery, redemption into wallet, liability report); refund-to-credit with optional bonus; influencer codes, tracked links, commission records, payout CSV and the optional read-only link.
-**Exit:** wallet balance always equals the ledger sum (tested); rewards only release after delivery plus return window; fraud checks tested.
+**Scope:** the one wallet, evolved in place (E9, D2): expiry and earliest-expiry spending on `StoreCreditTransaction`; wallet as a checkout tender (already partly present as `storeCreditApplied`); loyalty release after the return window; referrals with fraud checks; gift cards (purchase, delivery, redemption into the wallet, liability report); refund-to-credit with an optional bonus; influencer codes, tracked links, commission records, payout CSV.
+**Exit:** wallet balance always equals the ledger sum (tested); rewards release only after delivery plus the return window; fraud checks tested.
 
 ## M7 — Storefront polish and growth
-**Scope:** the applicable UX tips (skeletons, undo toasts, optimistic admin updates, interruptible animations, swipe-to-dismiss sheets, back-button-aware drawers, hit slop, safe areas, tabular numbers, balanced headings, optional view transitions); gallery, zoom, sort, filters and typo-tolerant search; size recommender; recently viewed and "complete the look"; wishlist; verified-buyer reviews with photos; back-in-stock requests; WhatsApp share; `next/image` with blur placeholders and ISR; SEO (metadata, JSON-LD, sitemap, robots, category URLs, redirects); consent banner and preferences, data export and deletion; attribution capture; first-party events; Meta Pixel and Conversions API with outbox; GA4/Ads; product feeds; campaign link builder, `?offer=CODE`, landing pages, link-in-bio; ad-spend entry and per-campaign ROAS and RTO; lifecycle messages (welcome, abandoned cart, back-in-stock, review request, win-back) with frequency caps; segments export; CSP enforced.
+**Scope:** UX items in `Design.md` (skeletons, undo toasts, optimistic admin updates, interruptible animations, swipe-to-dismiss sheets, back-button-aware drawers, safe areas, tabular numbers); gallery, zoom, sort, filters, typo-tolerant search; size recommender; recently viewed and "complete the look"; reviews with moderation, photos and verified buyers (E15); back-in-stock; WhatsApp share; `next/image` with blur placeholders; **make the header not read the session so pages can use ISR**; SEO (metadata, JSON-LD, sitemap, robots, category URLs, redirects); consent banner and preferences, data export and deletion; attribution capture; first-party events; **Meta Pixel only after consent, `Purchase` not refired on refresh**, Conversions API with the outbox; GA4/Ads; product feeds; campaign links, `?offer=CODE`, landing pages, link-in-bio; ad-spend entry; lifecycle messages with frequency caps; **welcome-coupon email failure retried** so a subscriber is never left without a coupon; CSP enforced after testing Razorpay, Meta Pixel, Turnstile and Supabase images.
 **Exit:** Lighthouse budgets pass on key pages; Rich Results validation passes for product pages; Events Manager shows deduplicated pixel and server events; consent changes take effect immediately.
 
 ## M8 — Launch readiness
-**Scope:** security review against `TechSpec.md`; Playwright suite green on staging; UAT checklist completed by the owner; legal and policy text reviewed by the CA or a lawyer; real catalog imported; live Razorpay, Shiprocket and WhatsApp keys configured; `gst.enabled = true` with the real GSTIN; reviewer account disabled; backups and restore drill; monitoring and alerts verified; runbook and admin guide written; soft launch with friends-and-family orders; ad pixel verified, then public launch and ads; account ownership (Vercel, Supabase, domain, Meta, Google, Razorpay, Shiprocket) transferred to the owner and support terms agreed.
+**Scope:** security review against `TechSpec.md`; **hash `OtpCode.identifier`** (E8); `maxWait`/`timeout` on the verify and webhook transactions; clear the 41 lint warnings and the 13 `npm audit` findings (never `audit fix`); break-glass owner-recovery script; Sentry and uptime alerts; real Turnstile keys and real-provider tests (Upstash, Turnstile, Meta); Playwright suite green on staging; CI runs on the Node version actually used and has been seen green; UAT checklist completed by the owner; legal and policy text reviewed by the CA or a lawyer; real catalog imported; live Razorpay, Shiprocket and WhatsApp keys; `gstEnabled` true with the real GSTIN; **reviewer login disabled**; backups and restore drill; runbook and admin guide; **run `M2-STAGING-EXIT-CHECKLIST.md`**; soft launch with friends-and-family orders; pixel verified, then public launch; account ownership (Vercel, Supabase, domain, Meta, Google, Razorpay, Shiprocket) transferred to the owner; Prisma upgrade only as its own planned task; merge `origin/main` with `-s ours` once and push (never force).
 **Exit:** a real prepaid and a real COD order complete end to end on production; the owner confirms they can operate the store unaided.
 
 ---
 
-## Feature flags (settings) used to ship around blocked dependencies
-`flags.whatsappOtp` (off until Meta verification) · `flags.cod` (off until Shiprocket KYC) · `gst.enabled` (off until GSTIN; store must not take real orders while off) · `flags.reviews` · `flags.wishlist` · `site.maintenanceMode` · `REVIEWER_OTP_ENABLED` (env).
+## Feature flags and switches (as built and planned)
+- **Environment (today):** `WHATSAPP_OTP_LIVE` (exact `"true"`; off until Meta verification and the template are approved), `REVIEWER_OTP_ENABLED` with `REVIEWER_OTP_CODE`, `REVIEWER_IDENTIFIER`, `REVIEWER_OTP_EXPIRES_AT` (must be off at launch), `OTP_DAILY_CAP`.
+- **`SiteSettings` columns (today):** `codEnabled` (COD), `gstEnabled` (off until GSTIN; the store must not take real orders while off), `codRequiresDeliveredOrder`, `freeShippingOnPrepaid`, `codFeeEnabled`.
+- **Planned columns (M5):** reviews on/off, wishlist on/off, maintenance mode, AI-crawler toggle.
 
 ## Definition of done (per milestone)
 1. All listed scope implemented and demonstrated on staging.

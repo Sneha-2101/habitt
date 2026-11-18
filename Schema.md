@@ -1,9 +1,76 @@
 # Schema — Habitt (Prisma / PostgreSQL via Supabase)
 
-> **Status:** target schema for the full launch scope (milestones M1–M7 in `ImplementationPlan.md`).
-> Every model below passes Prisma 5 validation. Models are introduced **milestone by milestone** —
-> an Angy prompt only adds the models listed for its milestone; it never creates the whole file at once.
-> The `generator` and `datasource` blocks stay as they are in `prisma/schema.prisma`.
+> **Status (reconciled after M2b):** this file has three layers.
+> **Part 1 — As built** is the real `prisma/schema.prisma` today (migrations `0_init` … `6_m2b_cart_address_contact`). When you need a real model, field or enum name, use Part 1.
+> **Part 2 — Evolution plan** says how each as-built model changes in later milestones.
+> **Part 3 — Target schema** is the original full-launch design, kept as the destination. Where Part 3 and Part 1 disagree about a name, Part 2 says which name wins. Angy prompts add only what a milestone needs and never recreate the whole file.
+> The `generator` and `datasource` blocks stay as they are in `prisma/schema.prisma`. Prisma is pinned to **5.22.0** (never upgrade as a side effect).
+
+---
+
+# Part 1 — As built (M2b)
+
+## Models and enums in the database today
+| Area | Models | Notes |
+|---|---|---|
+| Catalog | `Product`, `ProductImage`, `ProductVariant` | `Product.category` is the enum `Category` (`SHIRTS`, `OVERSHIRTS`, `POLOS`, `TROUSERS`). `ProductVariant.size` is the enum `Size` (`S`, `M`, `L`, `XL`, `XXL`); unique on `(productId, size)`. No color, SKU, compare-at price, cost price, HSN, fabric/fit/care, SEO fields or `publishAt` yet. `Product.price` is GST-inclusive paise. `ProductStatus`: `DRAFT`, `ACTIVE`, `ARCHIVED`. |
+| Orders | `Order`, `OrderItem`, `OrderStatusEvent`, `OrderNote` | **One** status enum: `OrderStatus` = `PENDING`, `PAID`, `SHIPPED`, `DELIVERED`, `CANCELLED`, `FAILED` (no `paymentStatus`/`fulfilmentStatus` split yet). `PaymentMethod` = `RAZORPAY`, `COD`, `STORE_CREDIT` (default `RAZORPAY`; **not** `PREPAID`). Courier fields live on `Order` (`courierName`, `awbNumber`, `shiprocketOrderId`, `trackingUrl`, `shippedAt`, `deliveredAt`). Refund fields on `Order` (`razorpayRefundId`, `refundedAt`, `refundAmount`). Also `couponCode`, `discountAmount`, `giftMessage`, `storeCreditApplied`, `idempotencyKey` (unique), `stockDeducted`, `abandonedEmailSentAt`. `OrderItem` snapshots `name`, `size`, `unitPrice`, `qty` only (no tax or discount allocation). No GST fields, invoices or credit notes. |
+| Money features | `Coupon`, `StoreCreditTransaction`, `User.storeCreditBalance` | `Coupon`: `PERCENT`/`FLAT` (`DiscountType`), `value`, `expiresAt`, `usageLimit`, `timesUsed`. The "wallet" is `User.storeCreditBalance` (paise) plus the ledger `StoreCreditTransaction` (`amount` signed, `reason`, `relatedOrderId`); **no expiry** yet. |
+| Settings | `SiteSettings` | A **typed singleton** row with `id = "default"`, read through `getSettings()`. There is no key-value `Setting` table. Columns: COD (`codEnabled`, `codOrderCap`, `codFeeEnabled`, `codFee`, `codRequiresDeliveredOrder`), shipping (`shippingFee`, `freeShippingThreshold`, `freeShippingOnPrepaid`, `freeReturnShipping`, `maxDeliveryDays`, `shiprocketPickupLocation`), GST (`gstEnabled`, `gstRate`, `gstin`), identity (`businessName`, `businessTagline`, `legalName`, `supportEmail`, `orderSenderEmail`, `businessAddress`, `businessPhone`, `businessState`, `businessPincode`, `whatsappSupportNumber`), operations (`lowStockThreshold`, `returnWindowDays`, `refundProcessingHours`, `abandonedCartDelayHours`), marketing (`welcomeCouponCode`, `welcomeCouponPercent`, `birthdayDiscountPercent`). `gstRate` is a single flat rate, **not** the per-HSN `GstRule` design. |
+| Identity | `User`, `Session`, `StaffAllowlist`, `OtpCode`, `AuditLog`, `Address` | See below. |
+| Cart | `Cart` (one per user), `CartItem` | `CartItem` has `cartId`, `productId`, `variantId`, `qty`; unique `(cartId, variantId)`. The guest cart lives in the browser (`habitt-cart`: items + `ownerId`) and syncs on login. |
+| Engagement | `Review`, `WishlistItem`, `StockNotification`, `NewsletterSubscriber`, `ReturnRequest` | `Review`: `rating`, `comment`, unique per user and product; no moderation, photos or verified-buyer link yet. `StockNotification`: `email`, `productId`, `variantId`, `notified`. `ReturnRequest`: `reason`, `adminNote`, `ReturnStatus` = `REQUESTED`, `APPROVED`, `REJECTED`, `REFUNDED`. |
+| Integrity | `ProcessedWebhook`, `StockMovement` | `StockMovement.variantId` is a plain string (no relation). `StockReason` = `SALE`, `COD_PLACED`, `STORE_CREDIT_PLACED`, `CANCEL`, `RETURN`, `RTO`, `MANUAL_ADJUST`, `OVERSOLD`. |
+
+## Identity models (as built)
+- `User`: `email?` and `phone?` (both unique), `name` (default `""`), `dateOfBirth?`, `emailVerifiedAt?`, `phoneVerifiedAt?`, `storeCreditBalance`, `role` (`CUSTOMER`/`STAFF`/`OWNER`), `status` (`ACTIVE`/`BLOCKED`/`DELETED`). No `codBlocked` or `referralCode` yet. No password column (passwords, signup and bcrypt were removed in M2a).
+- `Session`: `role`, `createdAt`, `lastSeenAt`, `expiresAt`, `absoluteExpiresAt?`, `revokedAt?`, `stepUpAt?`, `uaHash`, `ipPrefix`, `deviceLabel?`. Checked against the database on every protected action; role and status come from the DB row, not the JWT.
+- `StaffAllowlist`: `email` (unique), `role`, `active`, `addedById?`, `removedAt?`. Owner-editable at `/admin/team`.
+- `OtpCode`: `identifier` (**stored raw today**), `channel` (`OtpChannel` = `PHONE` | `EMAIL`), `code` (keyed HMAC hash, never the plain code), `expiresAt`, `attempts`, `verified`. This differs from the target `OtpChallenge` (which stores only an identifier hash); see E8 in Part 2.
+- `AuditLog`: `actorId?` (relation to `User`, `onDelete: SetNull`), `action`, `entity?`, `entityId?`, `meta` (Json; put before/after inside it), `ipPrefix?`.
+- `Address`: `fullName`, `phone`, `street`, `line2?`, `city`, `state`, `pincode`, `label` (default `"Home"`), `isDefault`. A hand-written **partial unique index** `Address_one_default_per_user` (one default per user) is in migration SQL, not in the Prisma schema. Maximum 10 addresses, enforced under an advisory lock.
+
+## Database-level guarantees that exist today
+1. `CHECK (stock >= 0)` on `ProductVariant` (constraint `ProductVariant_stock_nonnegative`, migration `1_m1_integrity`) plus a guarded decrement.
+2. Stock changes write `StockMovement` rows.
+3. `Order.idempotencyKey` and `Order.razorpayOrderId` are unique; a webhook event id is stored once in `ProcessedWebhook`.
+4. `Address_one_default_per_user` partial unique index; address and cart mutations run under per-user advisory locks.
+5. Prepaid orders become paid only through `lib/orders/mark-paid.ts`; allowed status moves are in `lib/orders/transitions.ts`.
+
+## Not built yet (do not assume these exist)
+`Category` table, color/SKU on variants, compare-at/cost/HSN/SEO product fields, `Offer`/`OrderDiscount`/`OfferRedemption`, any GST tables (`GstRule`, `Invoice`, `CreditNote`, `InvoiceCounter`), `Shipment`/`ShipmentEvent`, `Return`/`ReturnItem`/`Refund`, `Wallet`/`WalletEntry`, `GiftCard`, `Referral`, influencer tables, `Ticket`, message templates and logs, consent records, attribution and analytics tables, `Page`/`Article`/`HomeSection`/`Banner`/`NavLink`/`Faq`/`Collection`, `SavedView`, `Segment`, `PushSubscription`, `EventOutbox`, `AdSpend`.
+
+---
+
+# Part 2 — Evolution plan (as built → target)
+The recommended default is to **evolve what exists** instead of replacing it, so working code and its tests keep their names. Items marked **D#** are decisions the developer confirms before the milestone starts (see `ImplementationPlan.md`).
+
+| # | Change | Milestone | Notes |
+|---|---|---|---|
+| E1 | `Category` enum → `Category` table; `Size` enum → string with owner-editable size sets per category | M3a | Data migration seeds the four existing categories; `Product.category` becomes `categoryId`. |
+| E2 | `ProductVariant`: add `color` (default `""`) and `sku`; unique becomes `(productId, size, color)` | M3a | Add the same fields to `OrderItem` snapshots. |
+| E3 | `Product`: add `compareAtPrice`, `costPrice`, `hsn`, `fabric`, `fit`, `care`, `sizeChartUrl`, `seoTitle`, `seoDescription`, `publishAt` | M3a | |
+| E4 | `Order.status` → `paymentStatus` + `fulfilmentStatus` (**D1**, recommended: yes) | M3a | One-time backfill: `PENDING`→(`PENDING`,`CREATED`), `PAID`→(`PAID`,`PLACED`), `SHIPPED`→(paid or COD pending,`SHIPPED`), `DELIVERED`→(…,`DELIVERED`), `CANCELLED`→(…,`CANCELLED`), `FAILED`→(`FAILED`,`CREATED`). All transition code and tests change together. |
+| E5 | **Naming kept as built:** `PaymentMethod` stays `RAZORPAY` / `COD` / `STORE_CREDIT`; the target's `PREPAID` is only a documentation word for `RAZORPAY` | — | No rename migration. |
+| E6 | `Coupon` → `Offer` (kind `COUPON`) with `OfferRedemption` and `OrderDiscount` (**D3**, recommended: migrate); welcome and birthday coupons are created as `Offer` rows | M3b | `Order.couponCode`/`discountAmount` stay for history; new orders also get `OrderDiscount` rows. Fixes the known coupon bugs (0-discount usage count, uppercase codes, warning code instead of message matching). |
+| E7 | GST tables: `GstRule`, `Invoice`, `CreditNote`, `InvoiceCounter`; `OrderItem` tax and discount-allocation fields; `Order` tax totals (`taxableTotal`, `cgst`, `sgst`, `igst`) | M3c | Replaces the flat `SiteSettings.gstRate`. Blocked on CA answers; ships behind `gstEnabled`. |
+| E8 | `OtpCode` stays (target `OtpChallenge` is dropped). Add `identifierHash` and stop storing the raw `identifier`; add an optional `purpose` | M8 hardening | Needs a migration that hashes existing rows or lets them expire first. |
+| E9 | Wallet: **keep** `User.storeCreditBalance` and `StoreCreditTransaction` as the one wallet (**D2**, recommended: evolve in place); add `expiresAt`, `remaining`, and a typed `type` to the ledger. The target `Wallet`/`WalletEntry` names are retired | M6 | Balance must equal the ledger sum (tested). |
+| E10 | `ReturnRequest` → `Return` + `ReturnItem` + `Refund` (partial returns, exchanges, photos, refund method) | M4 | Backfill existing rows; `REFUNDED` becomes a `Refund` row. |
+| E11 | Courier and refund fields on `Order` → `Shipment`, `ShipmentEvent`, `Refund` | M4 | Backfill from `Order` columns; drop the columns later. |
+| E12 | `SiteSettings` stays the **typed singleton** (**D4**, recommended: keep). New settings are new columns added by migration with typed defaults; content lives in new tables. The target key-value `Setting` table is dropped | M3–M5 | Writes go through one server action that checks the role, validates with zod and writes an `AuditLog` row with before/after in `meta`. |
+| E13 | Content tables: `Page`, `Article`, `HomeSection`, `Banner`, `NavLink`, `Faq`, `Collection`, `CollectionProduct`, `SavedView`, `Segment`, `PushSubscription` | M5 | As in Part 3. |
+| E14 | `StockMovement`: add the relation to `ProductVariant`; add `STOCK_TAKE` to `StockReason` | M5 | |
+| E15 | `Review`: add `status` (moderation), `photos`, `orderItemId` (verified buyer), `title` | M7 | |
+| E16 | `StockNotification` (email) stays; add `userId`/`contact` for WhatsApp later | M7 | Target `StockNotifyRequest` name retired. |
+| E17 | `User`: add `codBlocked`, `referralCode` | M3b / M6 | |
+| E18 | New tables with no as-built equivalent: `Ticket`, `TicketMessage`, `MessageTemplate`, `MessageLog`, `EventOutbox`, `ConsentRecord`, `AttributionTouch`, `AnalyticsEvent`, `AdSpend`, `GiftCard`, `Referral`, `Influencer`, `InfluencerCommission` | M4–M7 | As in Part 3. |
+| E19 | `Session`, `StaffAllowlist` and the `AuditLog` shape (`meta`, `ipPrefix`) are **already built** and are the canonical versions; Part 3's simpler `Session`/`AuditLog` are superseded | — | |
+
+---
+
+# Part 3 — Target schema (planned destination)
+> Read with Part 2. Names here that conflict with Part 1 (`PREPAID`, `OtpChallenge`, `Wallet`/`WalletEntry`, `Setting`, `StockNotifyRequest`, the simple `Session`/`AuditLog`) are **not** used; the as-built names win.
 
 ## Conventions
 - **Money is always an integer in paise.** Never floats. Catalog prices are **GST-inclusive** selling prices.
@@ -12,7 +79,7 @@
 - **Snapshots, not joins, on orders.** `OrderItem` copies name, size, color, sku, hsn, price and tax at purchase time so later edits never change history.
 - Logging tables (`AuditLog`, `AnalyticsEvent`, `MessageLog`, `ConsentRecord`, `AttributionTouch`) keep plain `userId` strings with no foreign key, so deleting a user never breaks or cascades into audit history.
 - Hard deletes are forbidden for anything referenced by an order. Products are archived, never deleted.
-- Raw OTP codes and raw identifiers are never stored in `OtpChallenge`; only keyed hashes.
+- Raw OTP codes are never stored (only keyed hashes). Target: raw identifiers are not stored either (as built, `OtpCode.identifier` is still raw; fixed by E8).
 
 ## Milestone map (which models land when)
 | Milestone | Schema work |

@@ -1,5 +1,41 @@
 # TechSpec — Habitt
 
+## As-built status (after M2b) — read this first
+This section describes the code today. The rest of the file is the **target design** that later milestones build toward. Where the two disagree, this section wins until the milestone named in the last column ships.
+
+| Area | Target (text below) | As built today | Closes in |
+|---|---|---|---|
+| Module layout | `lib/auth/`, `lib/otp/`, `lib/gst/`, `lib/wallet/`, … | Mostly flat files: `lib/auth.ts`, `auth-authorize.ts`, `guards.ts`, `sessions.ts`, `otp.ts`, `otp-email.ts`, `whatsapp.ts`, `whatsapp-flag.ts`, `reviewer.ts`, `ratelimit.ts`, `turnstile.ts`, `safe-error.ts`, `safe-redirect.ts`, `mask.ts`, `client-ip.ts`, `audit.ts`, `settings.ts`, `money.ts`, `razorpay.ts`, `stock.ts`, `email.ts`; folders `lib/actions/` (server actions), `lib/orders/` (`mark-paid.ts`, `fail-order.ts`, `transitions.ts`), `lib/pricing/` (`quote.ts`, `shipping.ts`), `lib/shipping/` (`shiprocket.ts`), `lib/cart/` (`merge.ts`), `lib/validation/`. New code follows the target folders only when a module is split for a reason. | as needed |
+| Guards | `requireUser`, `requireRole`, `requireStepUp` | `requireUser`, `requireStaff` (role from the DB session row), `requireFreshStepUp`; middleware only does coarse routing (JWT role for `/admin`, login for `/checkout`). Real enforcement is the guards plus `app/admin/layout.tsx`. | — |
+| Settings | typed registry with a key-value `Setting` table | **Typed singleton** `SiteSettings` (`id = "default"`) via `getSettings()`; new settings are new columns (see `Schema.md` E12). Settings saves are not audit-logged yet (M5). | M5 |
+| Feature flags | `flags.*` rows in `Setting` | Environment variables: `WHATSAPP_OTP_LIVE` (exact string `"true"`), `REVIEWER_OTP_ENABLED` and its companions. Not editable from the admin. | — |
+| OTP storage | `OtpChallenge` with identifier hash | Table `OtpCode`: `code` is a keyed HMAC; `identifier` is still stored raw (`Schema.md` E8). Channels `PHONE` / `EMAIL`. | M8 |
+| OTP limits (as built) | 3 sends/15 min per identifier, 10/h per IP, 5 attempts per code, daily cap | `otpSendIdentifier` 3/15 min, `otpSendIp` 10/h, `otpVerifyIdentifier` 10/15 min, `otpVerifyIp` 30/15 min, `stepUpSend` 5/15 min, `linkIdentifier` 5/h, `staffOtpSendIdentifier` 3/15 min, `staffOtpSendIp` 10/h, `reviewerVerify` 5/15 min; 5 wrong attempts lock a code; global daily cap via `OTP_DAILY_CAP`. Policies fail **closed**, except `createOrder`, `checkoutQuote` and `cartSync`, which fail open. With no Upstash env vars an in-memory sliding window is used outside production; in production the closed policies fail closed. Other policies: `couponCheck`, `newsletterIp/Email`, `stockNotifyIp`, `signUpIp`. | — |
+| Verify order | — | `verifyOtp`: identifier limit → IP limit → reviewer branch (skipped for staff-allowlisted emails, counted under `reviewerVerify`) → database check. Every call site passes the IP. | — |
+| WhatsApp / phone OTP | WhatsApp primary, email fallback | **Email only in production** until Meta is live. `isPhoneOtpBlocked()` (`lib/whatsapp-flag.ts`) = production and `WHATSAPP_OTP_LIVE` not `"true"`; when blocked, phone login (`requestOtpAction`), phone step-up and phone contact change return one constant message (the `/login` page still defaults to the phone tab; fix in M3) (`PHONE_UNAVAILABLE_MESSAGE`) before any rate limit, DB write or send. Outside production the console fallback logs the code. Env names: `META_WHATSAPP_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_GRAPH_VERSION` (required in production; the `v20.0` dev default is probably stale — check Meta's changelog). | Meta go-live |
+| Staff login | `/admin/login` | **`/staff/login`**, email OTP, neutral response, allowlist enforced from the `StaffAllowlist` table (owner-editable at `/admin/team`: step-up, advisory lock, last-owner and self-removal protection). New-device alert by `uaHash`. | — |
+| Sessions | as below | As below: customers 365 days sliding; staff 7 days idle and 30 days absolute; JWT carries `sid`; role and status are read from the `Session`/`User` rows on every protected action; sign out everywhere. | — |
+| Customer step-up and contact change | — | Step-up by email or phone (phone gated as above). Contact change needs a fresh step-up, then an OTP to the **new** identifier; the response is neutral whether the new value is taken or free; accounts are never merged; an alert (with no values) goes to the **old** email. | — |
+| Cart | `Cart` + sync | Server `Cart`/`CartItem`. `components/CartSync.tsx`: signed out with an owner id → clear; same owner → load from server and replace local; guest → merge with per-variant MAX via `syncCartAction`; other user → clear and load; 1 s debounced save after the first sync. Cart actions use per-user advisory locks and `$transaction` options `maxWait: 10000, timeout: 20000`. | — |
+| Reviewer login | `REVIEWER_OTP_ENABLED` | Active only when `REVIEWER_OTP_ENABLED=true`, a 6-digit `REVIEWER_OTP_CODE`, `REVIEWER_IDENTIFIER` and a future `REVIEWER_OTP_EXPIRES_AT` are all set; customer-only, never staff; **must be off at launch.** | M8 |
+| Turnstile | required before every send | `lib/turnstile.ts`: no secret → allowed outside production, **fails closed in production**. Keys in `.env` are Cloudflare's always-pass test keys until real keys are set. Tests set `TURNSTILE_SECRET_KEY=""` (an empty value, not a deleted variable, so dotenv/Prisma cannot reload it). | staging |
+| Pricing engine | `priceCart()` in `lib/pricing` with nine steps | `lib/pricing/quote.ts`, shared by `/api/checkout/quote` and `/api/checkout/create-order`. Handles coupon (`Coupon` table), store credit, shipping (`lib/pricing/shipping.ts`), COD fee, free shipping on prepaid, COD eligibility (`codRequiresDeliveredOrder`, cap, enabled). **Not built:** offers engine, combos, tiers, prepaid discount percentage, global cap, per-line allocation, tax. The nine steps are built in M3b–M3c. Known issues: a coupon worth 0 does not count toward `timesUsed`; coupon codes are not forced uppercase on admin save; `create-order` matches an "already used" message string; the free-shipping threshold uses the post-coupon subtotal. | M3 |
+| GST / invoices | `lib/gst`, `GstRule`, `Invoice` | `SiteSettings.gstEnabled`, flat `gstRate`, `gstin`; the invoice route (`/api/orders/[id]/invoice`) exists but its tax maths is **wrong** and has no invoice numbering. | M3c |
+| Order states | `paymentStatus` + `fulfilmentStatus` | One `OrderStatus` enum; `PaymentMethod` = `RAZORPAY` / `COD` / `STORE_CREDIT`. `markOrderPaid` (`lib/orders/mark-paid.ts`) is the only function that marks a prepaid order paid; `transitions.ts` rejects illegal moves; cancel restocks. | M3a |
+| Webhooks | as below | Raw-body HMAC check; `ProcessedWebhook` de-duplication; `payment.failed` handled. The verify and webhook transactions still use default timeouts (bump planned). | M8 |
+| Scheduled jobs | 11 jobs (table below) | Three routes in `vercel.json`: `close-stale-orders` (every 30 min), `abandoned-cart` (hourly), `birthday-discount` (daily). All verify `CRON_SECRET`. These schedules probably exceed Vercel **Hobby** limits (daily only, non-commercial): choose Vercel Pro or an external scheduler that calls the routes with `CRON_SECRET`. | M4 / M8 |
+| Observability | Sentry, uptime on `/api/health` | `/api/health` exists. **Sentry is not installed** (no dependency, no env var). | M8 |
+| Security headers | CSP report-only then enforced | Headers are set in `next.config.mjs` (`headers()`); the CSP is **report-only** with `'unsafe-inline'` scripts. `eslint.ignoreDuringBuilds` is on, so lint runs only via `npm run lint` and CI. | M8 |
+| CI | install, validate, tsc, lint, tests, build | `.github/workflows/ci.yml` runs unit tests and the build on Node 22; **no integration tests and no Postgres service**; the first run has not been seen. Local Node is 24.8; the README says 20/22. | M8 |
+| Tests | Vitest, Playwright, Lighthouse | Vitest only: 20 unit files (90 tests) and 38 integration files (105 tests, about 20 minutes, `fileParallelism` off; the `http_*` tests need `next dev` on `localhost:3000`). `tests/setup.ts` loads `.env` then `.env.local` with override, keeps a shell-provided `AUTH_SECRET`, empties `TURNSTILE_SECRET_KEY`, sets `NODE_ENV=test`, and throws unless `RAZORPAY_KEY_ID` starts with `rzp_test_`. No Playwright or Lighthouse yet. Lint baseline: 41 warnings, 0 errors. | M8 |
+| Dependencies | — | Prisma and `@prisma/client` pinned at **5.22.0** (never upgrade as a side effect; 7/8 break the datasource config and the ts-node seed). `.npmrc` keeps `legacy-peer-deps=true` (Vitest 5 vs `@types/node` 20). 13 `npm audit` findings are left for M8 (never `audit fix`). | M8 |
+| Env names | see block below | As built: `AUTH_SECRET` (also legacy `NEXTAUTH_SECRET`/`NEXTAUTH_URL` in `.env.example`), `OTP_PEPPER`, `OTP_DAILY_CAP`, `CRON_SECRET`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `META_WHATSAPP_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_GRAPH_VERSION`, `WHATSAPP_OTP_LIVE`, `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_PICKUP_LOCATION`, `NEXT_PUBLIC_META_PIXEL_ID`, `TEST_BASE_URL`, plus the Supabase, Razorpay, Upstash, Turnstile and reviewer variables. The target names `EMAIL_FROM`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `OTP_PROVIDER`, `SENTRY_DSN` do not exist. | — |
+
+Production `DATABASE_URL` must use the Supabase transaction pooler (port 6543, `?pgbouncer=true&connection_limit=1`) with `DIRECT_URL` on 5432 for migrations. Integration failures that say `ENOTFOUND tenant/user` mean the pooler is unreachable or paused; gate runs with `npx --no-install prisma migrate status`.
+
+---
+
+
 ## Stack
 - **Frontend:** Next.js 15 (App Router), TypeScript, Tailwind CSS. Server Components for catalog pages (SEO, speed); Client Components for cart, checkout, sheets and admin forms. Keep Next.js on the latest patched 15.x (the middleware authorization-bypass advisory was fixed in 15.2.3; never run below it).
 - **Backend:** Next.js Route Handlers and Server Actions; scheduled work as secret-protected route handlers triggered by Vercel Cron.
@@ -15,7 +51,8 @@
 - **Hosting:** Vercel (paid plan for commercial use) and Supabase (paid plan for backups and no idle pausing) in the Mumbai region where available. Domain and accounts are owned by the business.
 - **Testing:** Vitest (unit), Playwright (end-to-end), Lighthouse CI (budgets).
 
-## Code organisation (`lib/` modules)
+## Code organisation (`lib/` modules) — target layout
+> As built this is mostly flat files; see the status table above.
 Each module has one job and is imported by routes and actions rather than duplicating logic.
 ```
 lib/auth/        session, requireUser, requireRole, requireStepUp, safeRedirect
@@ -35,7 +72,8 @@ lib/ratelimit/   Upstash wrapper with policy names
 ```
 Money helpers (`toPaise`, `formatINR`, `allocate`) live in `lib/money.ts` and are the only place that does rounding.
 
-## Environment variables
+## Environment variables — target list
+> See the as-built names in the status table above; names below that are not listed there are not used yet.
 ```
 # Core
 DATABASE_URL=  DIRECT_URL=  NEXT_PUBLIC_SITE_URL=
@@ -71,8 +109,8 @@ Secrets exist only in Vercel/Supabase environment settings, never in the repo. T
 - Expiry 10 minutes, single use, **5 verification attempts** per challenge, constant-time comparison. A new send invalidates earlier open challenges for that identifier.
 - Send limits: 30-second cooldown, 3 sends per 15 minutes per identifier, 10 per hour per IP, plus a daily global cap with an alert (guards against SMS/WhatsApp pumping). Turnstile is required before every send.
 - Responses are neutral: sending to an unknown email or phone looks identical to a known one.
-- **Channels:** WhatsApp **Authentication-category** template with the copy-code button (cheapest and approved fastest); email via Resend. If WhatsApp fails or the number is not on WhatsApp, the UI offers email. Channel selection is behind `flags.whatsappOtp`; until Meta business verification completes, only email works.
-- `OTP_PROVIDER=console` prints codes to server logs for development and staging. `REVIEWER_OTP_ENABLED` creates one fixed-code reviewer account for Razorpay's website review (login is required to pay); it must be disabled in production after approval.
+- **Channels:** WhatsApp **Authentication-category** template with the copy-code button (cheapest and approved fastest); email via Resend. If WhatsApp fails or the number is not on WhatsApp, the UI offers email. Phone OTP is controlled by the environment flag `WHATSAPP_OTP_LIVE`; until Meta business verification completes and the template is approved, **only email works in production** and phone paths return one clear message.
+- Outside production, when the live flag or credentials are missing, the code is printed to the server console (there is no `OTP_PROVIDER` variable). In production it fails closed and never logs a code. `REVIEWER_OTP_ENABLED` creates one fixed-code reviewer account for Razorpay's website review (login is required to pay); it must be disabled in production after approval.
 
 ### Sessions
 - On successful verification a `Session` row is created and a signed Auth.js JWT is issued carrying `sid`, `uid`, `role`. Cookie: `HttpOnly; Secure; SameSite=Lax`, long max-age (browsers cap cookie lifetime at roughly 400 days, so "never log out" means a sliding ~1 year renewed on use).
