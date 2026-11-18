@@ -4,6 +4,7 @@ import { requireStaff } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { releaseStock } from "@/lib/stock";
 import { canTransition } from "@/lib/orders/transitions";
+import { legacyStage } from "@/lib/orders/status-label";
 import { revalidatePath } from "next/cache";
 
 export async function markCodRefused(orderId: string, note?: string) {
@@ -22,19 +23,19 @@ export async function markCodRefused(orderId: string, note?: string) {
     throw new Error("Only COD orders can be marked as Refused / RTO");
   }
 
-  if (!canTransition("COD", order.status, "CANCELLED") || order.status === "DELIVERED") {
-    throw new Error(`Order cannot be marked refused from status ${order.status}`);
+  if (!canTransition("COD", order.fulfilmentStatus, "CANCELLED") || order.fulfilmentStatus === "DELIVERED") {
+    throw new Error(`Order cannot be marked refused from status ${legacyStage(order)}`);
   }
 
   const refusalNote = `[COD REFUSED / RTO] ${note?.trim() || "Delivery refused by customer at doorstep / Return to Origin"}`;
-  const priorStatus = order.status;
+  const priorFulfilmentStatus = order.fulfilmentStatus;
 
   await prisma.$transaction(async (tx) => {
     // 1. Update order status to CANCELLED atomically
     const updateRes = await tx.order.updateMany({
-      where: { id: orderId, status: priorStatus },
+      where: { id: orderId, fulfilmentStatus: priorFulfilmentStatus },
       data: {
-        status: "CANCELLED",
+        fulfilmentStatus: "CANCELLED",
         cancellationReason: refusalNote,
       },
     });
@@ -84,7 +85,8 @@ export async function markCodRefused(orderId: string, note?: string) {
     await tx.orderStatusEvent.create({
       data: {
         orderId,
-        status: "CANCELLED",
+        fulfilmentStatus: "CANCELLED",
+        paymentStatus: order.paymentStatus,
         note: refusalNote,
       },
     });

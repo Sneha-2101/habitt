@@ -18,7 +18,7 @@ import { signOutEverywhereAction } from "@/lib/actions/sessions";
 import { formatINR } from "@/lib/money";
 import { useCartStore } from "@/lib/cart-store";
 import OrderStatusTimeline from "./OrderStatusTimeline";
-import type { OrderStatus, ReturnStatus } from "@prisma/client";
+import type { ReturnStatus } from "@prisma/client";
 
 export interface AddressItem {
   id: string;
@@ -57,6 +57,10 @@ interface AccountClientProps {
     id: string;
     displayId: string;
     status: string;
+    statusLabel?: string;
+    paymentStatus?: string;
+    fulfilmentStatus?: string;
+    paymentMethod?: string;
     total: number;
     subtotal: number;
     shippingFee: number;
@@ -67,7 +71,9 @@ interface AccountClientProps {
     createdAt: Date;
     statusEvents?: Array<{
       id: string;
-      status: OrderStatus;
+      status?: string | null;
+      fulfilmentStatus?: string | null;
+      paymentStatus?: string | null;
       note?: string | null;
       createdAt: Date;
     }>;
@@ -750,7 +756,7 @@ export default function AccountClient({
                           : "bg-amber-100 text-amber-800"
                       }`}
                     >
-                      {o.status}
+                      {o.statusLabel || o.status}
                     </span>
                     <span className="font-mono font-medium text-[13.5px]">{formatINR(o.total)}</span>
                     <span className="text-xs text-stone-dark">{isExpanded ? "▲" : "▼"}</span>
@@ -766,7 +772,7 @@ export default function AccountClient({
                         Delivery Status
                       </p>
                       <OrderStatusTimeline
-                        currentStatus={o.status as OrderStatus}
+                        currentStatus={o.status}
                         events={o.statusEvents}
                         courierName={o.courierName}
                         awbNumber={o.awbNumber}

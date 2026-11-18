@@ -11,14 +11,16 @@ export async function markOrderPaid(
 ): Promise<{ updated: boolean }> {
   const now = new Date();
 
-  // 1. Atomic updateMany where id and status in [PENDING, FAILED] -> PAID
+  // 1. Atomic updateMany where id and paymentStatus in [PENDING, FAILED] + fulfilmentStatus CREATED -> PAID / PLACED
   const updateRes = await tx.order.updateMany({
     where: {
       id: orderId,
-      status: { in: ["PENDING", "FAILED"] },
+      paymentStatus: { in: ["PENDING", "FAILED"] },
+      fulfilmentStatus: "CREATED",
     },
     data: {
-      status: "PAID",
+      paymentStatus: "PAID",
+      fulfilmentStatus: "PLACED",
       paidAt: now,
       razorpayPaymentId,
     },
@@ -27,23 +29,30 @@ export async function markOrderPaid(
   if (updateRes.count === 0) {
     const current = await tx.order.findUnique({
       where: { id: orderId },
-      select: { id: true, status: true, total: true, storeCreditApplied: true, displayId: true },
+      select: {
+        id: true,
+        paymentStatus: true,
+        fulfilmentStatus: true,
+        total: true,
+        storeCreditApplied: true,
+        displayId: true,
+      },
     });
 
     if (!current) {
       return { updated: false };
     }
 
-    if (current.status === "PAID") {
+    if (current.paymentStatus === "PAID") {
       return { updated: false };
     }
 
-    if (current.status === "CANCELLED") {
+    if (current.fulfilmentStatus === "CANCELLED") {
       // Do NOT change status. Log note inside transaction.
       await tx.orderStatusEvent.create({
         data: {
           orderId,
-          status: "CANCELLED",
+          fulfilmentStatus: "CANCELLED",
           note: "Payment captured after cancellation — refund required",
         },
       });
@@ -63,7 +72,7 @@ export async function markOrderPaid(
           await prisma.orderStatusEvent.create({
             data: {
               orderId,
-              status: "CANCELLED",
+              fulfilmentStatus: "CANCELLED",
               note: `Auto-refunded ₹${(refundAmount / 100).toFixed(2)} via Razorpay for payment ${razorpayPaymentId}`,
             },
           });
@@ -72,7 +81,7 @@ export async function markOrderPaid(
           await prisma.orderStatusEvent.create({
             data: {
               orderId,
-              status: "CANCELLED",
+              fulfilmentStatus: "CANCELLED",
               note: `REFUND FAILED for payment ${razorpayPaymentId}: ${err?.message || err}`,
             },
           });
@@ -109,7 +118,8 @@ export async function markOrderPaid(
     await tx.orderStatusEvent.create({
       data: {
         orderId: order.id,
-        status: "PAID",
+        paymentStatus: "PAID",
+        fulfilmentStatus: "PLACED",
         note: `Payment captured via Razorpay (${razorpayPaymentId})`,
       },
     });

@@ -13,6 +13,9 @@ interface OrderRow {
   customerEmail?: string | null;
   total: number;
   status: string;
+  statusLabel?: string;
+  paymentStatus?: string;
+  fulfilmentStatus?: string;
   paymentMethod: string;
   createdAt: Date;
   itemCount: number;
@@ -31,7 +34,9 @@ export default function AdminOrdersClient({ orders }: AdminOrdersClientProps) {
   const [isPending, startTransition] = useTransition();
 
   const selectedOrders = orders.filter((o) => selectedIds.includes(o.id));
-  const paidSelectedOrders = selectedOrders.filter((o) => o.status === "PAID");
+  const paidSelectedOrders = selectedOrders.filter(
+    (o) => o.fulfilmentStatus === "PLACED" && o.paymentStatus === "PAID"
+  );
   const allSelected = orders.length > 0 && selectedIds.length === orders.length;
 
   function toggleSelectAll() {
@@ -251,14 +256,14 @@ export default function AdminOrdersClient({ orders }: AdminOrdersClientProps) {
               <span className="font-mono text-[12.5px]">{formatINR(o.total)}</span>
               <span
                 className={`text-[12.5px] font-medium ${
-                  o.status === "PAID" || o.status === "DELIVERED"
+                  o.fulfilmentStatus === "DELIVERED" || o.paymentStatus === "PAID" || o.status === "PAID" || o.status === "DELIVERED"
                     ? "text-moss"
-                    : o.status === "FAILED" || o.status === "CANCELLED"
+                    : o.fulfilmentStatus === "CANCELLED" || o.paymentStatus === "FAILED" || o.status === "FAILED" || o.status === "CANCELLED"
                     ? "text-clay"
                     : "text-ink"
                 }`}
               >
-                {o.status}
+                {o.statusLabel || o.status}
               </span>
             </div>
           );

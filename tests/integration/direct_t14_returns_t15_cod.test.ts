@@ -62,7 +62,7 @@ describe("T14 & T15: Returns and COD Refusal", () => {
     // 2. Deliver the order and create return request
     await prisma.order.update({
       where: { id: shippedOrder.id },
-      data: { status: "DELIVERED", deliveredAt: new Date() },
+      data: { fulfilmentStatus: "DELIVERED", deliveredAt: new Date() },
     });
 
     const returnReq = await requestReturn(shippedOrder.id, "Defective item");
@@ -86,7 +86,7 @@ describe("T14 & T15: Returns and COD Refusal", () => {
 
     // Order status is CANCELLED
     const cancelledOrder = await prisma.order.findUnique({ where: { id: shippedOrder.id } });
-    expect(cancelledOrder?.status).toBe("CANCELLED");
+    expect(cancelledOrder?.fulfilmentStatus).toBe("CANCELLED");
     expect(cancelledOrder?.stockDeducted).toBe(false);
 
     // Stock incremented from 3 to 4 (once only)
@@ -149,7 +149,7 @@ describe("T14 & T15: Returns and COD Refusal", () => {
 
     // Order status CANCELLED, stockDeducted false
     const cancelledCod = await prisma.order.findUnique({ where: { id: codOrder.id } });
-    expect(cancelledCod?.status).toBe("CANCELLED");
+    expect(cancelledCod?.fulfilmentStatus).toBe("CANCELLED");
     expect(cancelledCod?.stockDeducted).toBe(false);
 
     // Stock restored from 2 to 3

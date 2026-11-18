@@ -98,8 +98,10 @@ describe("T5 & T6: Oversell Clamp & Late Capture After Cancel", () => {
     // Both orders must be PAID
     const order1 = await prisma.order.findUnique({ where: { id: data1.orderId } });
     const order2 = await prisma.order.findUnique({ where: { id: data2.orderId } });
-    expect(order1?.status).toBe("PAID");
-    expect(order2?.status).toBe("PAID");
+    expect(order1?.paymentStatus).toBe("PAID");
+    expect(order1?.fulfilmentStatus).toBe("PLACED");
+    expect(order2?.paymentStatus).toBe("PAID");
+    expect(order2?.fulfilmentStatus).toBe("PLACED");
 
     // Stock must be 0, never negative
     const finalVariant = await prisma.productVariant.findUnique({ where: { id: variant.id } });
@@ -135,7 +137,7 @@ describe("T5 & T6: Oversell Clamp & Late Capture After Cancel", () => {
     // Cancel the order
     await prisma.order.update({
       where: { id: order.id },
-      data: { status: "CANCELLED", cancellationReason: "Customer changed mind" },
+      data: { fulfilmentStatus: "CANCELLED", cancellationReason: "Customer changed mind" },
     });
 
     // Call verify with fabricated payment id
@@ -155,7 +157,7 @@ describe("T5 & T6: Oversell Clamp & Late Capture After Cancel", () => {
 
     // Order must stay CANCELLED
     const checkedOrder = await prisma.order.findUnique({ where: { id: order.id } });
-    expect(checkedOrder?.status).toBe("CANCELLED");
+    expect(checkedOrder?.fulfilmentStatus).toBe("CANCELLED");
 
     // Stock unchanged (still 5)
     const checkedVariant = await prisma.productVariant.findUnique({ where: { id: variant.id } });

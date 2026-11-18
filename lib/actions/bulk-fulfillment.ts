@@ -22,7 +22,7 @@ export async function bulkMarkShipped(
   const orderIds = shipments.map((s) => s.orderId);
   const orders = await prisma.order.findMany({
     where: { id: { in: orderIds } },
-    select: { id: true, displayId: true, status: true, paymentMethod: true },
+    select: { id: true, displayId: true, paymentStatus: true, fulfilmentStatus: true, paymentMethod: true },
   });
 
   const orderMap = new Map(orders.map((o) => [o.id, o]));
@@ -43,12 +43,14 @@ export async function bulkMarkShipped(
     }
 
     const isCod = order.paymentMethod === "COD";
-    const requiredStatus = isCod ? "PENDING" : "PAID";
+    const canShip =
+      order.fulfilmentStatus === "PLACED" &&
+      (isCod ? order.paymentStatus === "COD_PENDING" : order.paymentStatus === "PAID");
 
-    if (order.status !== requiredStatus) {
+    if (!canShip) {
       skipped.push({
         orderId: item.orderId,
-        reason: `Illegal status ${order.status} for ${order.paymentMethod} order (must be ${requiredStatus})`,
+        reason: `Illegal status for ${order.paymentMethod} order (fulfilment: ${order.fulfilmentStatus}, payment: ${order.paymentStatus})`,
       });
       continue;
     }
@@ -60,9 +62,13 @@ export async function bulkMarkShipped(
     try {
       const updated = await prisma.$transaction(async (tx) => {
         const updateRes = await tx.order.updateMany({
-          where: { id: order.id, status: requiredStatus },
+          where: {
+            id: order.id,
+            fulfilmentStatus: "PLACED",
+            ...(isCod ? { paymentStatus: "COD_PENDING" } : { paymentStatus: "PAID" }),
+          },
           data: {
-            status: "SHIPPED",
+            fulfilmentStatus: "SHIPPED",
             shippedAt,
             courierName,
             awbNumber,
@@ -77,7 +83,8 @@ export async function bulkMarkShipped(
         await tx.orderStatusEvent.create({
           data: {
             orderId: order.id,
-            status: "SHIPPED",
+            fulfilmentStatus: "SHIPPED",
+            paymentStatus: order.paymentStatus,
             note: `Bulk dispatched via ${courierName} (AWB: ${awbNumber})`,
             createdAt: shippedAt,
           },

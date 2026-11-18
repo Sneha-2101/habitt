@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { requireStaff, UnauthorizedError, ForbiddenError } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { sanitizeCsvCell } from "@/lib/csv";
+import { buildOrderWhere } from "@/lib/orders/status-filter";
 
 export async function GET(req: Request) {
   try {
@@ -19,20 +19,14 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const statusParam = searchParams.get("status");
+  const paymentMethodParam = searchParams.get("paymentMethod");
   const queryParam = searchParams.get("q")?.trim() || "";
 
-  const whereClause: Prisma.OrderWhereInput = {
-    ...(statusParam ? { status: statusParam as never } : {}),
-    ...(queryParam
-      ? {
-          OR: [
-            { displayId: { contains: queryParam, mode: "insensitive" } },
-            { customerName: { contains: queryParam, mode: "insensitive" } },
-            { customerEmail: { contains: queryParam, mode: "insensitive" } },
-          ],
-        }
-      : {}),
-  };
+  const whereClause = buildOrderWhere({
+    status: statusParam,
+    paymentMethod: paymentMethodParam,
+    q: queryParam,
+  });
 
   const orders = await prisma.order.findMany({
     where: whereClause,
@@ -45,7 +39,8 @@ export async function GET(req: Request) {
     "Customer Name",
     "Email",
     "Phone",
-    "Status",
+    "Payment Status",
+    "Fulfilment Status",
     "Items Count",
     "Subtotal (INR)",
     "Shipping Fee (INR)",
@@ -62,7 +57,8 @@ export async function GET(req: Request) {
       sanitizeCsvCell(o.customerName || ""),
       sanitizeCsvCell(o.customerEmail || ""),
       sanitizeCsvCell(o.customerPhone || ""),
-      sanitizeCsvCell(o.status),
+      sanitizeCsvCell(o.paymentStatus),
+      sanitizeCsvCell(o.fulfilmentStatus),
       sanitizeCsvCell(itemCount),
       sanitizeCsvCell((o.subtotal / 100).toFixed(2)),
       sanitizeCsvCell((o.shippingFee / 100).toFixed(2)),

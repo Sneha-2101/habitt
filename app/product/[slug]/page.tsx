@@ -39,7 +39,10 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               productId: product.id,
               order: {
                 userId,
-                status: { in: ["PAID", "SHIPPED", "DELIVERED"] },
+                OR: [
+                  { fulfilmentStatus: { in: ["SHIPPED", "DELIVERED"] } },
+                  { fulfilmentStatus: "PLACED", paymentStatus: "PAID" },
+                ],
               },
             },
           })

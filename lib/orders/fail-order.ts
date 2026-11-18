@@ -10,10 +10,16 @@ export async function failOrder(
   order: OrderWithItems,
   note?: string
 ): Promise<{ updated: boolean }> {
-  // 1. Atomic conditional update PENDING -> FAILED
+  // 1. Atomic conditional update paymentStatus PENDING -> FAILED
   const result = await tx.order.updateMany({
-    where: { id: order.id, status: "PENDING" },
-    data: { status: "FAILED" },
+    where: {
+      id: order.id,
+      paymentStatus: "PENDING",
+      fulfilmentStatus: "CREATED",
+    },
+    data: {
+      paymentStatus: "FAILED",
+    },
   });
 
   if (result.count === 0) {
@@ -60,7 +66,7 @@ export async function failOrder(
   await tx.orderStatusEvent.create({
     data: {
       orderId: order.id,
-      status: "FAILED",
+      paymentStatus: "FAILED",
       note: note || "Order marked as failed",
     },
   });

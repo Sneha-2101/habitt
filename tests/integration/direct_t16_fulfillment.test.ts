@@ -95,7 +95,7 @@ describe("T16: Order Fulfillment Integrity", () => {
     await markOrderShipped(paidOrder.id, courierData);
 
     const shipped = await prisma.order.findUnique({ where: { id: paidOrder.id } });
-    expect(shipped?.status).toBe("SHIPPED");
+    expect(shipped?.fulfilmentStatus).toBe("SHIPPED");
     expect(shipped?.courierName).toBe("BlueDart");
     expect(shipped?.awbNumber).toBe("BD123456789");
     expect(shipped?.shippedAt).not.toBeNull();
@@ -131,7 +131,7 @@ describe("T16: Order Fulfillment Integrity", () => {
     await markOrderDelivered(shippedCod.id, "Delivered and cash collected");
 
     const deliveredCod = await prisma.order.findUnique({ where: { id: shippedCod.id } });
-    expect(deliveredCod?.status).toBe("DELIVERED");
+    expect(deliveredCod?.fulfilmentStatus).toBe("DELIVERED");
     expect(deliveredCod?.deliveredAt).not.toBeNull();
     expect(deliveredCod?.paidAt).not.toBeNull();
   });
@@ -193,16 +193,16 @@ describe("T16: Order Fulfillment Integrity", () => {
 
     // Verify legal rows became SHIPPED in DB
     const checkedPaid = await prisma.order.findUnique({ where: { id: legalPaid.id } });
-    expect(checkedPaid?.status).toBe("SHIPPED");
+    expect(checkedPaid?.fulfilmentStatus).toBe("SHIPPED");
 
     const checkedCod = await prisma.order.findUnique({ where: { id: legalCod.id } });
-    expect(checkedCod?.status).toBe("SHIPPED");
+    expect(checkedCod?.fulfilmentStatus).toBe("SHIPPED");
 
     // Verify illegal rows remained unchanged
     const checkedPending = await prisma.order.findUnique({ where: { id: illegalPending.id } });
-    expect(checkedPending?.status).toBe("PENDING");
+    expect(checkedPending?.fulfilmentStatus).toBe("CREATED");
 
     const checkedCancelled = await prisma.order.findUnique({ where: { id: illegalCancelled.id } });
-    expect(checkedCancelled?.status).toBe("CANCELLED");
+    expect(checkedCancelled?.fulfilmentStatus).toBe("CANCELLED");
   });
 });

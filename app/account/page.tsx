@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/sessions";
 import { prisma } from "@/lib/prisma";
 import AccountClient from "@/components/AccountClient";
 import AccountSignOutButton from "@/components/AccountSignOutButton";
+import { legacyStage, getOrderStatusLabel } from "@/lib/orders/status-label";
 
 export default async function AccountPage() {
   const sessionUser = await getSessionUser();
@@ -55,6 +56,8 @@ export default async function AccountPage() {
 
   const ordersWithStock = orders.map((o) => ({
     ...o,
+    status: legacyStage(o),
+    statusLabel: getOrderStatusLabel(o).label,
     items: o.items.map((item) => ({
       ...item,
       currentStock: variantStockMap.get(item.variantId) ?? 0,

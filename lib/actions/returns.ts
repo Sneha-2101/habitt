@@ -18,7 +18,7 @@ export async function requestReturn(orderId: string, reason: string) {
   if (!order) throw new Error("Order not found");
   if (order.userId !== userId) throw new Error("Unauthorized: Order does not belong to you.");
 
-  if (order.status !== "DELIVERED") {
+  if (order.fulfilmentStatus !== "DELIVERED") {
     throw new Error("Returns can only be requested for delivered orders.");
   }
 
@@ -55,7 +55,8 @@ export async function requestReturn(orderId: string, reason: string) {
   await prisma.orderStatusEvent.create({
     data: {
       orderId,
-      status: "DELIVERED",
+      fulfilmentStatus: "DELIVERED",
+      paymentStatus: order.paymentStatus,
       note: `Customer requested return / refund. Reason: ${reason.trim()}`,
     },
   });
@@ -97,9 +98,9 @@ export async function approveReturn(returnId: string, adminNote?: string) {
 
     // Atomic order status update DELIVERED -> CANCELLED
     const orderUpdateRes = await tx.order.updateMany({
-      where: { id: order.id, status: "DELIVERED" },
+      where: { id: order.id, fulfilmentStatus: "DELIVERED" },
       data: {
-        status: "CANCELLED",
+        fulfilmentStatus: "CANCELLED",
         cancellationReason: `Return approved: ${returnReq.reason}`,
       },
     });
@@ -156,7 +157,8 @@ export async function approveReturn(returnId: string, adminNote?: string) {
     await tx.orderStatusEvent.create({
       data: {
         orderId: order.id,
-        status: "CANCELLED",
+        fulfilmentStatus: "CANCELLED",
+        paymentStatus: order.paymentStatus,
         note: `Return approved & refunded by admin. Note: ${adminNote?.trim() || "Approved"}${isCod ? " (Issued Store Credit)" : ""}`,
       },
     });
@@ -175,19 +177,22 @@ export async function approveReturn(returnId: string, adminNote?: string) {
         },
       });
 
+      const nextPaymentStatus = razorpayAmountToRefund >= order.total ? "REFUNDED" : "PARTIALLY_REFUNDED";
       await prisma.order.update({
         where: { id: order.id },
         data: {
           razorpayRefundId: refund.id,
           refundedAt: new Date(),
           refundAmount: razorpayAmountToRefund,
+          paymentStatus: nextPaymentStatus,
         },
       });
 
       await prisma.orderStatusEvent.create({
         data: {
           orderId: order.id,
-          status: "CANCELLED",
+          fulfilmentStatus: "CANCELLED",
+          paymentStatus: nextPaymentStatus,
           note: `Razorpay refund processed: ${refund.id}`,
         },
       });
@@ -196,7 +201,8 @@ export async function approveReturn(returnId: string, adminNote?: string) {
       await prisma.orderStatusEvent.create({
         data: {
           orderId: order.id,
-          status: "CANCELLED",
+          fulfilmentStatus: "CANCELLED",
+          paymentStatus: order.paymentStatus,
           note: `REFUND FAILED – manual action required: ${err?.message || err}`,
         },
       });
@@ -251,7 +257,7 @@ export async function rejectReturn(returnId: string, adminNote: string) {
     await tx.orderStatusEvent.create({
       data: {
         orderId: returnReq.orderId,
-        status: "DELIVERED",
+        fulfilmentStatus: "DELIVERED",
         note: `Return request rejected by admin. Reason: ${adminNote.trim()}`,
       },
     });

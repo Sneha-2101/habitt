@@ -1,35 +1,90 @@
-import { OrderStatus, PaymentMethod } from "@prisma/client";
+import {
+  PaymentMethod,
+  PaymentStatus,
+  FulfilmentStatus,
+} from "@prisma/client";
 
-export const LEGAL_TRANSITIONS: Record<PaymentMethod, Partial<Record<OrderStatus, OrderStatus[]>>> = {
+export const LEGAL_FULFILMENT_TRANSITIONS: Record<
+  PaymentMethod,
+  Partial<Record<FulfilmentStatus, FulfilmentStatus[]>>
+> = {
   RAZORPAY: {
-    PENDING: ["PAID", "FAILED", "CANCELLED"],
-    FAILED: ["PAID"],
-    PAID: ["SHIPPED", "CANCELLED"],
+    CREATED: ["CANCELLED"],
+    PLACED: ["SHIPPED", "CANCELLED"],
     SHIPPED: ["DELIVERED"],
     DELIVERED: ["CANCELLED"], // Approved return only
   },
   COD: {
-    PENDING: ["SHIPPED", "CANCELLED"],
+    PLACED: ["SHIPPED", "CANCELLED"],
     SHIPPED: ["DELIVERED", "CANCELLED"], // Delivery refused / RTO
     DELIVERED: ["CANCELLED"], // Approved return only
   },
   STORE_CREDIT: {
-    PAID: ["SHIPPED", "CANCELLED"],
+    PLACED: ["SHIPPED", "CANCELLED"],
     SHIPPED: ["DELIVERED"],
     DELIVERED: ["CANCELLED"], // Approved return only
   },
 };
 
-export function canTransition(method: PaymentMethod, from: OrderStatus, to: OrderStatus): boolean {
-  const allowed = LEGAL_TRANSITIONS[method]?.[from];
+export const LEGAL_PAYMENT_TRANSITIONS: Partial<
+  Record<PaymentStatus, PaymentStatus[]>
+> = {
+  PENDING: ["PAID", "FAILED"],
+  FAILED: ["PAID"],
+  COD_PENDING: ["COD_COLLECTED"],
+  PAID: ["PARTIALLY_REFUNDED", "REFUNDED"],
+  COD_COLLECTED: ["PARTIALLY_REFUNDED", "REFUNDED"],
+  PARTIALLY_REFUNDED: ["REFUNDED"],
+};
+
+export function canFulfilmentTransition(
+  method: PaymentMethod,
+  from: FulfilmentStatus | string,
+  to: FulfilmentStatus | string
+): boolean {
+  const allowed = (
+    LEGAL_FULFILMENT_TRANSITIONS[method] as Record<string, string[] | undefined>
+  )?.[from];
   return !!allowed?.includes(to);
 }
 
-export function nextStatusOptions(order: { paymentMethod: PaymentMethod; status: OrderStatus }): OrderStatus[] {
-  const allowed = LEGAL_TRANSITIONS[order.paymentMethod]?.[order.status] || [];
-  // Admin manual dropdown must never show PAID, PENDING, or FAILED.
-  // DELIVERED -> CANCELLED is approved return only (handled in returns workflow).
+export function canPaymentTransition(
+  from: PaymentStatus,
+  to: PaymentStatus
+): boolean {
+  const allowed = LEGAL_PAYMENT_TRANSITIONS[from];
+  return !!allowed?.includes(to);
+}
+
+/**
+ * Fulfilment status transition check.
+ */
+export function canTransition(
+  method: PaymentMethod,
+  from: FulfilmentStatus | string,
+  to: FulfilmentStatus | string
+): boolean {
+  const allowed = (
+    LEGAL_FULFILMENT_TRANSITIONS[method] as Record<string, string[] | undefined>
+  )?.[from];
+  return !!allowed?.includes(to);
+}
+
+export function nextStatusOptions(order: {
+  paymentMethod: PaymentMethod;
+  fulfilmentStatus?: FulfilmentStatus;
+}): FulfilmentStatus[] {
+  const fStatus = order.fulfilmentStatus;
+
+  const allowed =
+    (
+      LEGAL_FULFILMENT_TRANSITIONS[order.paymentMethod] as Record<
+        string,
+        FulfilmentStatus[] | undefined
+      >
+    )?.[fStatus || ""] || [];
+
   return allowed.filter(
-    (s) => s !== "PAID" && s !== "PENDING" && s !== "FAILED" && !(order.status === "DELIVERED" && s === "CANCELLED")
+    (s) => !(fStatus === "DELIVERED" && s === "CANCELLED")
   );
 }

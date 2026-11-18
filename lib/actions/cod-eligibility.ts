@@ -39,7 +39,7 @@ export async function isEligibleForCod(
     const deliveredOrderCount = await prisma.order.count({
       where: {
         userId,
-        status: "DELIVERED",
+        fulfilmentStatus: "DELIVERED",
       },
     });
 

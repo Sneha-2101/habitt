@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma, Order, OrderItem, Size } from "@prisma/client";
+import { Prisma, Order, OrderItem, Size, PaymentStatus, FulfilmentStatus, PaymentMethod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
 import { getSessionUser } from "@/lib/sessions";
@@ -142,21 +142,25 @@ export async function POST(req: Request) {
   // 3. Idempotency Check: look up the order by idempotencyKey
   const checkExistingOrder = async (existing: {
     userId: string;
-    status: string;
+    paymentStatus: PaymentStatus;
+    fulfilmentStatus: FulfilmentStatus;
     total: number;
     storeCreditApplied?: number | null;
     razorpayOrderId?: string | null;
     displayId: string;
-    paymentMethod: string;
+    paymentMethod: PaymentMethod;
     id: string;
   }) => {
     if (existing.userId !== userId) {
       return NextResponse.json({ error: "Idempotency key belongs to another user" }, { status: 409 });
     }
-    if (existing.status === "PAID") {
+    if (existing.fulfilmentStatus === "CANCELLED" || existing.paymentStatus === "FAILED") {
+      return NextResponse.json({ error: "This checkout expired", retry: true }, { status: 409 });
+    }
+    if (existing.paymentStatus === "PAID") {
       return NextResponse.json({ alreadyPaid: true, orderId: existing.id });
     }
-    if (existing.status === "PENDING") {
+    if (existing.paymentStatus === "PENDING" || existing.paymentStatus === "COD_PENDING") {
       const existingPayable = Math.max(0, existing.total - (existing.storeCreditApplied || 0));
       // Same payable amount with existing razorpayOrderId -> return the same Razorpay order
       if (existingPayable === (total - (existing.storeCreditApplied || 0)) && existing.razorpayOrderId) {
@@ -187,9 +191,6 @@ export async function POST(req: Request) {
           currency: "INR",
         });
       }
-    }
-    if (existing.status === "FAILED" || existing.status === "CANCELLED") {
-      return NextResponse.json({ error: "This checkout expired", retry: true }, { status: 409 });
     }
     return null;
   };
@@ -222,7 +223,8 @@ export async function POST(req: Request) {
             where: {
               userId,
               couponCode: appliedCouponCode,
-              status: { notIn: ["CANCELLED", "FAILED"] },
+              paymentStatus: { not: "FAILED" },
+              fulfilmentStatus: { not: "CANCELLED" },
             },
           });
           if (priorUserOrder) {
@@ -288,8 +290,21 @@ export async function POST(req: Request) {
         }
 
         isZeroTotal = payable === 0;
-        const selectedPaymentMethod = isZeroTotal ? "STORE_CREDIT" : isCod ? "COD" : "RAZORPAY";
-        const initialStatus = isZeroTotal ? "PAID" : "PENDING";
+        const selectedPaymentMethod: PaymentMethod = isZeroTotal
+          ? "STORE_CREDIT"
+          : isCod
+          ? "COD"
+          : "RAZORPAY";
+        const initialPaymentStatus: PaymentStatus = isZeroTotal
+          ? "PAID"
+          : isCod
+          ? "COD_PENDING"
+          : "PENDING";
+        const initialFulfilmentStatus: FulfilmentStatus = isZeroTotal
+          ? "PLACED"
+          : isCod
+          ? "PLACED"
+          : "CREATED";
 
         // Create Order
         const newOrder = await tx.order.create({
@@ -308,7 +323,8 @@ export async function POST(req: Request) {
             couponCode: appliedCouponCode,
             discountAmount: discountAmount || null,
             giftMessage: data.giftMessage?.trim() || null,
-            status: initialStatus,
+            paymentStatus: initialPaymentStatus,
+            fulfilmentStatus: initialFulfilmentStatus,
             paymentMethod: selectedPaymentMethod,
             items: {
               create: orderItemsData.map((i) => ({
@@ -357,7 +373,8 @@ export async function POST(req: Request) {
           await tx.orderStatusEvent.create({
             data: {
               orderId: newOrder.id,
-              status: "PAID",
+              paymentStatus: "PAID",
+              fulfilmentStatus: "PLACED",
               note: `Paid in full using Store Credit (₹${(storeCreditApplied / 100).toFixed(2)})`,
             },
           });

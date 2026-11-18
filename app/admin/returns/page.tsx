@@ -15,7 +15,7 @@ export default async function AdminReturnsPage({
   const returnRequests = await prisma.returnRequest.findMany({
     where: statusFilter ? { status: statusFilter } : {},
     include: {
-      order: { select: { id: true, displayId: true, total: true, status: true } },
+      order: { select: { id: true, displayId: true, total: true, paymentStatus: true, fulfilmentStatus: true } },
       user: { select: { name: true, email: true, phone: true } },
     },
     orderBy: { createdAt: "desc" },

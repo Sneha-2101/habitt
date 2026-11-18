@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/guards";
+import { legacyStage } from "@/lib/orders/status-label";
 
 const addressSchema = z.object({
   line1: z.string().trim().min(1, "Address line 1 is required"),
@@ -47,16 +48,17 @@ export async function updateOrderShippingAddress(
   return await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({
       where: { id: orderId },
-      select: { id: true, status: true, shippingAddress: true },
+      select: { id: true, paymentStatus: true, fulfilmentStatus: true, paymentMethod: true, shippingAddress: true },
     });
 
     if (!order) {
       throw new Error(`Order ${orderId} not found`);
     }
 
-    if (order.status !== "PENDING" && order.status !== "PAID") {
+    const stage = legacyStage(order);
+    if (stage !== "PENDING" && stage !== "PAID") {
       throw new Error(
-        `Cannot update shipping address for order in status ${order.status}. Allowed only for PENDING or PAID.`
+        `Cannot update shipping address for order in status ${stage}. Allowed only for PENDING or PAID.`
       );
     }
 
@@ -91,7 +93,8 @@ export async function updateOrderShippingAddress(
     const updateRes = await tx.order.updateMany({
       where: {
         id: orderId,
-        status: { in: ["PENDING", "PAID"] },
+        fulfilmentStatus: { in: ["CREATED", "PLACED"] },
+        paymentStatus: { in: ["PENDING", "PAID", "COD_PENDING"] },
       },
       data: {
         shippingAddress: validatedAddress,
@@ -105,7 +108,8 @@ export async function updateOrderShippingAddress(
     await tx.orderStatusEvent.create({
       data: {
         orderId,
-        status: order.status,
+        fulfilmentStatus: order.fulfilmentStatus,
+        paymentStatus: order.paymentStatus,
         note: `Address edited by ${staffName}: ${truncatedOld} -> ${truncatedNew}`,
       },
     });

@@ -5,9 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
 import { releaseStock } from "@/lib/stock";
 import { canTransition } from "@/lib/orders/transitions";
+import { legacyStage } from "@/lib/orders/status-label";
 import { revalidatePath } from "next/cache";
 import { sendCancellationEmail } from "@/lib/email";
-import { OrderStatus } from "@prisma/client";
 
 export async function cancelOrderAsCustomer(orderId: string, reason: string) {
   const user = await requireUser();
@@ -21,22 +21,22 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
   if (order.userId !== user.id) throw new Error("Unauthorized: Order does not belong to you.");
 
   // Check legal transition
-  if (!canTransition(order.paymentMethod, order.status, "CANCELLED") || order.status === "DELIVERED") {
-    throw new Error(`Order cannot be cancelled from status ${order.status}`);
+  if (!canTransition(order.paymentMethod, order.fulfilmentStatus, "CANCELLED") || order.fulfilmentStatus === "DELIVERED") {
+    throw new Error(`Order cannot be cancelled from status ${legacyStage(order)}`);
   }
 
   const cancellationReason = reason?.trim() || "Cancelled by customer";
-  const priorStatus = order.status;
+  const priorFulfilmentStatus = order.fulfilmentStatus;
 
   // Claim first: atomic conditional update inside transaction
   await prisma.$transaction(async (tx) => {
     const updateRes = await tx.order.updateMany({
       where: {
         id: orderId,
-        status: priorStatus,
+        fulfilmentStatus: priorFulfilmentStatus,
       },
       data: {
-        status: "CANCELLED",
+        fulfilmentStatus: "CANCELLED",
         cancellationReason,
       },
     });
@@ -85,7 +85,8 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
     await tx.orderStatusEvent.create({
       data: {
         orderId,
-        status: "CANCELLED",
+        fulfilmentStatus: "CANCELLED",
+        paymentStatus: order.paymentStatus,
         note: `Cancelled by customer. Reason: ${cancellationReason}`,
       },
     });
@@ -96,7 +97,7 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
   const razorpayAmountToRefund = Math.max(0, order.total - storeCreditToRestore);
   const owesRazorpayRefund =
     order.paymentMethod === "RAZORPAY" &&
-    priorStatus === "PAID" &&
+    order.paymentStatus === "PAID" &&
     razorpayAmountToRefund > 0 &&
     order.razorpayPaymentId;
 
@@ -111,19 +112,22 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
         },
       });
 
+      const nextPaymentStatus = razorpayAmountToRefund >= order.total ? "REFUNDED" : "PARTIALLY_REFUNDED";
       await prisma.order.update({
         where: { id: orderId },
         data: {
           razorpayRefundId: refund.id,
           refundedAt: new Date(),
           refundAmount: razorpayAmountToRefund,
+          paymentStatus: nextPaymentStatus,
         },
       });
 
       await prisma.orderStatusEvent.create({
         data: {
           orderId,
-          status: "CANCELLED",
+          fulfilmentStatus: "CANCELLED",
+          paymentStatus: nextPaymentStatus,
           note: `Razorpay refund processed: ${refund.id} (₹${(razorpayAmountToRefund / 100).toFixed(2)})`,
         },
       });
@@ -132,7 +136,8 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
       await prisma.orderStatusEvent.create({
         data: {
           orderId,
-          status: "CANCELLED",
+          fulfilmentStatus: "CANCELLED",
+          paymentStatus: order.paymentStatus,
           note: `REFUND FAILED – manual action required: ${err?.message || err}`,
         },
       });
@@ -159,22 +164,22 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
 
   if (!order) throw new Error("Order not found");
 
-  if (!canTransition(order.paymentMethod, order.status, "CANCELLED") || order.status === "DELIVERED") {
-    throw new Error(`Order cannot be cancelled from status ${order.status}`);
+  if (!canTransition(order.paymentMethod, order.fulfilmentStatus, "CANCELLED") || order.fulfilmentStatus === "DELIVERED") {
+    throw new Error(`Order cannot be cancelled from status ${legacyStage(order)}`);
   }
 
   const cancellationReason = reason?.trim() || "Cancelled by admin";
-  const priorStatus = order.status;
+  const priorFulfilmentStatus = order.fulfilmentStatus;
 
   // Claim first: atomic conditional update inside transaction
   await prisma.$transaction(async (tx) => {
     const updateRes = await tx.order.updateMany({
       where: {
         id: orderId,
-        status: priorStatus,
+        fulfilmentStatus: priorFulfilmentStatus,
       },
       data: {
-        status: "CANCELLED",
+        fulfilmentStatus: "CANCELLED",
         cancellationReason,
       },
     });
@@ -223,7 +228,8 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
     await tx.orderStatusEvent.create({
       data: {
         orderId,
-        status: "CANCELLED",
+        fulfilmentStatus: "CANCELLED",
+        paymentStatus: order.paymentStatus,
         note: `Cancelled by admin. Reason: ${cancellationReason}`,
       },
     });
@@ -234,7 +240,7 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
   const razorpayAmountToRefund = Math.max(0, order.total - storeCreditToRestore);
   const owesRazorpayRefund =
     order.paymentMethod === "RAZORPAY" &&
-    priorStatus === "PAID" &&
+    order.paymentStatus === "PAID" &&
     razorpayAmountToRefund > 0 &&
     order.razorpayPaymentId;
 
@@ -249,19 +255,22 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
         },
       });
 
+      const nextPaymentStatus = razorpayAmountToRefund >= order.total ? "REFUNDED" : "PARTIALLY_REFUNDED";
       await prisma.order.update({
         where: { id: orderId },
         data: {
           razorpayRefundId: refund.id,
           refundedAt: new Date(),
           refundAmount: razorpayAmountToRefund,
+          paymentStatus: nextPaymentStatus,
         },
       });
 
       await prisma.orderStatusEvent.create({
         data: {
           orderId,
-          status: "CANCELLED",
+          fulfilmentStatus: "CANCELLED",
+          paymentStatus: nextPaymentStatus,
           note: `Razorpay refund processed: ${refund.id} (₹${(razorpayAmountToRefund / 100).toFixed(2)})`,
         },
       });
@@ -270,7 +279,8 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
       await prisma.orderStatusEvent.create({
         data: {
           orderId,
-          status: "CANCELLED",
+          fulfilmentStatus: "CANCELLED",
+          paymentStatus: order.paymentStatus,
           note: `REFUND FAILED – manual action required: ${err?.message || err}`,
         },
       });

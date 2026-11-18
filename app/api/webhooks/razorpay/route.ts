@@ -81,7 +81,8 @@ export async function POST(req: Request) {
             await tx.orderStatusEvent.create({
               data: {
                 orderId: order.id,
-                status: order.status,
+                paymentStatus: order.paymentStatus,
+                fulfilmentStatus: order.fulfilmentStatus,
                 note: `Payment attempt failed: ${errorDesc}`,
               },
             });

@@ -71,7 +71,7 @@ describe("T13: Cancellation Logic & Stock Integrity", () => {
 
     // Order status is CANCELLED
     const cancelledOrder = await prisma.order.findUnique({ where: { id: order.id } });
-    expect(cancelledOrder?.status).toBe("CANCELLED");
+    expect(cancelledOrder?.fulfilmentStatus).toBe("CANCELLED");
 
     // Stock must be UNCHANGED (still 5, NOT inflated to 7!)
     const checkedVariant = await prisma.productVariant.findUnique({ where: { id: variant.id } });
@@ -119,7 +119,7 @@ describe("T13: Cancellation Logic & Stock Integrity", () => {
 
     // Order updated: status CANCELLED, stockDeducted false, refundId recorded
     const cancelledOrder = await prisma.order.findUnique({ where: { id: order.id } });
-    expect(cancelledOrder?.status).toBe("CANCELLED");
+    expect(cancelledOrder?.fulfilmentStatus).toBe("CANCELLED");
     expect(cancelledOrder?.stockDeducted).toBe(false);
     expect(cancelledOrder?.razorpayRefundId).toBe("rfnd_m1test");
 
@@ -157,7 +157,7 @@ describe("T13: Cancellation Logic & Stock Integrity", () => {
 
     // Order is still CANCELLED
     const cancelledOrder = await prisma.order.findUnique({ where: { id: order.id } });
-    expect(cancelledOrder?.status).toBe("CANCELLED");
+    expect(cancelledOrder?.fulfilmentStatus).toBe("CANCELLED");
 
     // OrderStatusEvent logged with REFUND FAILED
     const events = await prisma.orderStatusEvent.findMany({ where: { orderId: order.id } });
@@ -228,7 +228,7 @@ describe("T13: Cancellation Logic & Stock Integrity", () => {
     mockCurrentUser = { id: ownerUser.id, role: "CUSTOMER" };
     await prisma.order.update({
       where: { id: order.id },
-      data: { status: "SHIPPED" },
+      data: { fulfilmentStatus: "SHIPPED" },
     });
 
     await expect(cancelOrderAsCustomer(order.id, "Cancel shipped")).rejects.toThrow(

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import OrderStatusTimeline from "@/components/OrderStatusTimeline";
 import TrackPurchasePixel from "@/components/TrackPurchasePixel";
+import { legacyStage } from "@/lib/orders/status-label";
 
 export default async function OrderSuccessPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -35,7 +36,7 @@ export default async function OrderSuccessPage({ params }: { params: Promise<{ i
       <div className="text-left p-6 border border-stone bg-white rounded-sm space-y-3">
         <h2 className="text-xs font-semibold text-stone-dark uppercase tracking-wider">Order & Shipping Status</h2>
         <OrderStatusTimeline
-          currentStatus={order.status}
+          currentStatus={legacyStage(order)}
           events={order.statusEvents}
           courierName={order.courierName}
           awbNumber={order.awbNumber}

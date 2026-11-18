@@ -88,7 +88,7 @@ describe("T28: COD Toggle and Eligibility Rules", () => {
     await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 100000 }],
-      status: "DELIVERED",
+      fulfilmentStatus: "DELIVERED",
     });
 
     const res = await isEligibleForCod(user.id, 100000);

@@ -38,7 +38,10 @@ export async function submitReview(productId: string, rating: number, comment: s
       productId,
       order: {
         userId,
-        status: { in: ["PAID", "SHIPPED", "DELIVERED"] },
+        OR: [
+          { fulfilmentStatus: { in: ["SHIPPED", "DELIVERED"] } },
+          { fulfilmentStatus: "PLACED", paymentStatus: "PAID" },
+        ],
       },
     },
   });

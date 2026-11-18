@@ -64,7 +64,8 @@ describe("T1 & T2: HTTP Checkout Happy Path & Concurrency", () => {
       where: { id: createData.orderId },
     });
     expect(pendingOrder).not.toBeNull();
-    expect(pendingOrder?.status).toBe("PENDING");
+    expect(pendingOrder?.paymentStatus).toBe("PENDING");
+    expect(pendingOrder?.fulfilmentStatus).toBe("CREATED");
     expect(pendingOrder?.stockDeducted).toBe(false);
 
     // Stock should not be deducted yet for Razorpay
@@ -96,7 +97,8 @@ describe("T1 & T2: HTTP Checkout Happy Path & Concurrency", () => {
     const paidOrder = await prisma.order.findUnique({
       where: { id: createData.orderId },
     });
-    expect(paidOrder?.status).toBe("PAID");
+    expect(paidOrder?.paymentStatus).toBe("PAID");
+    expect(paidOrder?.fulfilmentStatus).toBe("PLACED");
     expect(paidOrder?.stockDeducted).toBe(true);
     expect(paidOrder?.razorpayPaymentId).toBe(fabricatedPaymentId);
 
@@ -130,7 +132,8 @@ describe("T1 & T2: HTTP Checkout Happy Path & Concurrency", () => {
     const replayOrder = await prisma.order.findUnique({
       where: { id: createData.orderId },
     });
-    expect(replayOrder?.status).toBe("PAID");
+    expect(replayOrder?.paymentStatus).toBe("PAID");
+    expect(replayOrder?.fulfilmentStatus).toBe("PLACED");
 
     const variantAfterReplay = await prisma.productVariant.findUnique({ where: { id: variant.id } });
     expect(variantAfterReplay?.stock).toBe(3);
@@ -219,7 +222,8 @@ describe("T1 & T2: HTTP Checkout Happy Path & Concurrency", () => {
 
     // Assert final database state
     const finalOrder = await prisma.order.findUnique({ where: { id: order.id } });
-    expect(finalOrder?.status).toBe("PAID");
+    expect(finalOrder?.paymentStatus).toBe("PAID");
+    expect(finalOrder?.fulfilmentStatus).toBe("PLACED");
     expect(finalOrder?.stockDeducted).toBe(true);
 
     // Stock should be decremented exactly once: 10 - 2 = 8

@@ -283,7 +283,7 @@ describe("T3 & T4: HTTP Checkout Validation & Idempotency", () => {
     // 4. Same key after the order is FAILED -> 409 with retry: true
     await prisma.order.update({
       where: { idempotencyKey: parallelKey },
-      data: { status: "FAILED" },
+      data: { paymentStatus: "FAILED" },
     });
 
     const failedRetryCall = await fetch(`${BASE_URL}/api/checkout/create-order`, {

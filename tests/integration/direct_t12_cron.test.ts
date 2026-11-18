@@ -112,11 +112,11 @@ describe("T12: Cron Handlers Auth & Execution", () => {
 
     // Stale order should be FAILED
     const updatedStale = await prisma.order.findUnique({ where: { id: staleOrder.id } });
-    expect(updatedStale?.status).toBe("FAILED");
+    expect(updatedStale?.paymentStatus).toBe("FAILED");
 
     // Fresh order should still be PENDING
     const updatedFresh = await prisma.order.findUnique({ where: { id: freshOrder.id } });
-    expect(updatedFresh?.status).toBe("PENDING");
+    expect(updatedFresh?.paymentStatus).toBe("PENDING");
 
     // Store credit restored to user
     const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });

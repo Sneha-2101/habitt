@@ -2,40 +2,45 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import { revalidatePath } from "next/cache";
-import type { OrderStatus } from "@prisma/client";
+import type { FulfilmentStatus } from "@prisma/client";
 import { markOrderShipped, markOrderDelivered } from "@/lib/actions/fulfillment";
 import { cancelOrderAsAdmin } from "@/lib/actions/cancellation";
 import { addOrderNote } from "@/lib/actions/notes";
 import { requireStaff } from "@/lib/guards";
 import { canTransition, nextStatusOptions } from "@/lib/orders/transitions";
 import { updateOrderShippingAddress } from "@/lib/actions/order-address";
+import { getOrderStatusLabel } from "@/lib/orders/status-label";
 
 async function updateStatus(orderId: string, formData: FormData) {
   "use server";
   await requireStaff();
-  const targetStatus = formData.get("status") as OrderStatus;
+  const targetStatus = formData.get("status") as FulfilmentStatus;
 
-  // Never allow manual transition to PAID, PENDING, or FAILED
-  if (targetStatus === "PAID" || targetStatus === "PENDING" || targetStatus === "FAILED") {
+  // Never allow manual transition to PLACED or CREATED
+  if (targetStatus === "PLACED" || targetStatus === "CREATED") {
     throw new Error("Invalid manual status change");
   }
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { status: true, paymentMethod: true },
+    select: { fulfilmentStatus: true, paymentStatus: true, paymentMethod: true },
   });
   if (!order) throw new Error("Order not found");
 
-  if (!canTransition(order.paymentMethod, order.status, targetStatus)) {
-    throw new Error(`Illegal status transition from ${order.status} to ${targetStatus}`);
+  if (!canTransition(order.paymentMethod, order.fulfilmentStatus, targetStatus)) {
+    throw new Error(`Illegal status transition from ${order.fulfilmentStatus} to ${targetStatus}`);
   }
 
-  const priorStatus = order.status;
+  const priorStatus = order.fulfilmentStatus;
+  const isCod = order.paymentMethod === "COD";
 
   await prisma.$transaction(async (tx) => {
     const updateRes = await tx.order.updateMany({
-      where: { id: orderId, status: priorStatus },
-      data: { status: targetStatus },
+      where: { id: orderId, fulfilmentStatus: priorStatus },
+      data: {
+        fulfilmentStatus: targetStatus,
+        ...(targetStatus === "DELIVERED" && isCod ? { paymentStatus: "COD_COLLECTED", paidAt: new Date() } : {}),
+      },
     });
 
     if (updateRes.count === 0) {
@@ -45,7 +50,8 @@ async function updateStatus(orderId: string, formData: FormData) {
     await tx.orderStatusEvent.create({
       data: {
         orderId,
-        status: targetStatus,
+        fulfilmentStatus: targetStatus,
+        paymentStatus: targetStatus === "DELIVERED" && isCod ? "COD_COLLECTED" : order.paymentStatus,
         note: `Status updated manually to ${targetStatus}`,
       },
     });
@@ -72,7 +78,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
     "use server";
     await updateOrderShippingAddress(order.id, formData);
   };
-  const availableStatuses = nextStatusOptions({ paymentMethod: order.paymentMethod, status: order.status });
+  const availableStatuses = nextStatusOptions({ paymentMethod: order.paymentMethod, fulfilmentStatus: order.fulfilmentStatus });
 
   const variantIds = order.items.map((i) => i.variantId).filter(Boolean);
   const variants = await prisma.productVariant.findMany({
@@ -130,14 +136,14 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
           </span>
           <span
             className={`text-xs font-semibold px-2.5 py-1 rounded ${
-              order.status === "PAID" || order.status === "DELIVERED"
+              order.fulfilmentStatus === "DELIVERED" || order.paymentStatus === "PAID"
                 ? "bg-emerald-100 text-emerald-800"
-                : order.status === "SHIPPED"
+                : order.fulfilmentStatus === "SHIPPED"
                 ? "bg-blue-100 text-blue-800"
                 : "bg-amber-100 text-amber-800"
             }`}
           >
-            {order.status}
+            {getOrderStatusLabel(order).label}
           </span>
         </div>
       </div>
@@ -193,13 +199,13 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
       <div className="border border-stone bg-white p-5 rounded-sm text-[13px] space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-xs font-semibold tracking-wider text-stone-dark uppercase">Shipping Address</div>
-          {(order.status === "PENDING" || order.status === "PAID") && (
+          {(order.fulfilmentStatus === "CREATED" || order.fulfilmentStatus === "PLACED") && order.paymentStatus !== "FAILED" && (
             <span className="text-[11px] text-moss font-medium">Editable before dispatch</span>
           )}
         </div>
         <p className="text-ink">{formattedAddress || "Standard Delivery Address"}</p>
 
-        {(order.status === "PENDING" || order.status === "PAID") && (
+        {(order.fulfilmentStatus === "CREATED" || order.fulfilmentStatus === "PLACED") && order.paymentStatus !== "FAILED" && (
           <details className="mt-3 pt-3 border-t border-stone/40">
             <summary className="text-xs text-ink font-medium cursor-pointer hover:underline">
               ✏️ Edit Delivery Address
@@ -301,7 +307,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
         )}
 
         {/* Form to Mark Shipped */}
-        {order.status !== "SHIPPED" && order.status !== "DELIVERED" && order.status !== "CANCELLED" && (
+        {order.fulfilmentStatus !== "SHIPPED" && order.fulfilmentStatus !== "DELIVERED" && order.fulfilmentStatus !== "CANCELLED" && (
           <form
             action={async (formData: FormData) => {
               "use server";
@@ -350,7 +356,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
         )}
 
         {/* Form to Mark Delivered */}
-        {order.status === "SHIPPED" && (
+        {order.fulfilmentStatus === "SHIPPED" && (
           <form
             action={async (formData: FormData) => {
               "use server";
@@ -381,7 +387,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
         )}
 
         {/* Form to Mark COD Refused / RTO */}
-        {order.paymentMethod === "COD" && (order.status === "SHIPPED" || order.status === "PENDING") && (
+        {order.paymentMethod === "COD" && (order.fulfilmentStatus === "SHIPPED" || order.fulfilmentStatus === "PLACED") && (
           <form
             action={async (formData: FormData) => {
               "use server";
@@ -423,14 +429,14 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
             </button>
           </form>
         ) : (
-          <p className="text-[12.5px] text-stone-dark italic">No manual transitions available from current status ({order.status}).</p>
+          <p className="text-[12.5px] text-stone-dark italic">No manual transitions available from current status ({order.fulfilmentStatus}).</p>
         )}
       </div>
 
       {/* Admin Order Cancellation & Razorpay Refund */}
       <div className="border border-stone bg-white p-5 rounded-sm space-y-3">
         <h3 className="text-xs font-semibold text-stone-dark uppercase tracking-wider">Cancellation & Refund</h3>
-        {order.status === "CANCELLED" ? (
+        {order.fulfilmentStatus === "CANCELLED" ? (
           <div className="p-3.5 bg-red-50 border border-clay/30 rounded-sm text-xs space-y-1">
             <p className="font-semibold text-clay">Order Cancelled</p>
             {order.cancellationReason && <p className="text-stone-dark">Reason: {order.cancellationReason}</p>}
@@ -462,7 +468,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
               className="w-full px-3.5 py-2 border border-stone text-[13px] rounded-sm focus:outline-none focus:border-ink"
             />
             <button type="submit" className="px-4 py-2 bg-clay text-white text-[12.5px] font-medium rounded-sm">
-              CANCEL ORDER {order.paymentMethod !== "COD" && order.status === "PAID" ? "& TRIGGER RAZORPAY REFUND" : ""}
+              CANCEL ORDER {order.paymentMethod !== "COD" && order.paymentStatus === "PAID" ? "& TRIGGER RAZORPAY REFUND" : ""}
             </button>
           </form>
         )}
@@ -476,7 +482,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
             {order.statusEvents.map((evt) => (
               <div key={evt.id} className="flex items-start justify-between text-[13px] pb-3 border-b border-stone/30 last:border-0">
                 <div>
-                  <span className="font-semibold text-ink">{evt.status}</span>
+                  <span className="font-semibold text-ink">{evt.fulfilmentStatus ?? evt.paymentStatus}</span>
                   {evt.note && <p className="text-xs text-stone-dark mt-0.5">{evt.note}</p>}
                 </div>
                 <span className="text-[11px] text-stone-dark shrink-0">

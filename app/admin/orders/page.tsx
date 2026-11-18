@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import AdminOrdersClient from "@/components/AdminOrdersClient";
+import { legacyStage, getOrderStatusLabel } from "@/lib/orders/status-label";
+import { buildOrderWhere } from "@/lib/orders/status-filter";
 
 export default async function AdminOrdersPage({
   searchParams,
@@ -9,21 +11,12 @@ export default async function AdminOrdersPage({
 }) {
   const resolvedParams = await searchParams;
   const query = resolvedParams.q?.trim() || "";
-  const paymentMethodFilter = resolvedParams.paymentMethod?.trim();
 
-  const whereClause: any = {
-    ...(resolvedParams.status ? { status: resolvedParams.status as never } : {}),
-    ...(paymentMethodFilter ? { paymentMethod: paymentMethodFilter as never } : {}),
-    ...(query
-      ? {
-          OR: [
-            { displayId: { contains: query, mode: "insensitive" } },
-            { customerName: { contains: query, mode: "insensitive" } },
-            { customerEmail: { contains: query, mode: "insensitive" } },
-          ],
-        }
-      : {}),
-  };
+  const whereClause = buildOrderWhere({
+    status: resolvedParams.status,
+    paymentMethod: resolvedParams.paymentMethod,
+    q: query,
+  });
 
   const rawOrders = await prisma.order.findMany({
     where: whereClause,
@@ -39,7 +32,10 @@ export default async function AdminOrdersPage({
     customerPhone: o.customerPhone,
     customerEmail: o.customerEmail,
     total: o.total,
-    status: o.status,
+    status: legacyStage(o),
+    statusLabel: getOrderStatusLabel(o).label,
+    paymentStatus: o.paymentStatus,
+    fulfilmentStatus: o.fulfilmentStatus,
     paymentMethod: o.paymentMethod,
     createdAt: o.createdAt,
     itemCount: o.items.reduce((sum, item) => sum + item.qty, 0),

@@ -168,7 +168,8 @@ export async function calculateQuote({
             where: {
               userId,
               couponCode: couponRes.code,
-              status: { notIn: ["CANCELLED", "FAILED"] },
+              fulfilmentStatus: { not: "CANCELLED" },
+              paymentStatus: { not: "FAILED" },
             },
           });
           if (priorOrder) {

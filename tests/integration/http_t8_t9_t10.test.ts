@@ -293,7 +293,8 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
       expect(codOkData.isCod).toBe(true);
 
       const codOrder = await prisma.order.findUnique({ where: { id: codOkData.orderId } });
-      expect(codOrder?.status).toBe("PENDING");
+      expect(codOrder?.paymentStatus).toBe("COD_PENDING");
+      expect(codOrder?.fulfilmentStatus).toBe("PLACED");
       expect(codOrder?.stockDeducted).toBe(true);
       expect(codOrder?.paymentMethod).toBe("COD");
 

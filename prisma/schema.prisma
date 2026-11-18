@@ -80,7 +80,8 @@ model Order {
   subtotal          Int
   shippingFee       Int                @default(0)
   total             Int
-  status            OrderStatus        @default(PENDING)
+  paymentStatus     PaymentStatus      @default(PENDING)
+  fulfilmentStatus  FulfilmentStatus   @default(CREATED)
   paymentMethod     PaymentMethod      @default(RAZORPAY) // RAZORPAY or COD
   razorpayOrderId   String?            @unique
   razorpayPaymentId String?
@@ -107,6 +108,8 @@ model Order {
   abandonedEmailSentAt DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+
+  @@index([paymentStatus, fulfilmentStatus, createdAt])
 }
 
 enum PaymentMethod {
@@ -164,21 +167,34 @@ model OrderItem {
 }
 
 model OrderStatusEvent {
-  id        String      @id @default(cuid())
-  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderId   String
-  status    OrderStatus
-  note      String?
-  createdAt DateTime    @default(now())
+  id               String            @id @default(cuid())
+  order            Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId          String
+  paymentStatus    PaymentStatus?
+  fulfilmentStatus FulfilmentStatus?
+  note             String?
+  createdAt        DateTime          @default(now())
 }
 
-enum OrderStatus {
+enum PaymentStatus {
   PENDING
   PAID
+  FAILED
+  COD_PENDING
+  COD_COLLECTED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum FulfilmentStatus {
+  CREATED
+  PLACED
+  CONFIRMED
+  PACKED
   SHIPPED
   DELIVERED
   CANCELLED
-  FAILED
+  RTO
 }
 
 // Single table for everyone who can log in. Customers get role CUSTOMER at

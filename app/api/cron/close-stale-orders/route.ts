@@ -27,7 +27,8 @@ export async function GET(request: Request) {
     const staleOrders = await prisma.order.findMany({
       where: {
         paymentMethod: "RAZORPAY",
-        status: "PENDING",
+        paymentStatus: "PENDING",
+        fulfilmentStatus: "CREATED",
         createdAt: { lte: twoHoursAgo },
       },
       include: {

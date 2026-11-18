@@ -118,7 +118,8 @@ describe("T7: Razorpay Webhook Handling", () => {
 
     // Order should be PAID and stock deducted
     const paidOrder = await prisma.order.findUnique({ where: { id: order.id } });
-    expect(paidOrder?.status).toBe("PAID");
+    expect(paidOrder?.paymentStatus).toBe("PAID");
+    expect(paidOrder?.fulfilmentStatus).toBe("PLACED");
     expect(paidOrder?.stockDeducted).toBe(true);
 
     // 5. Replay same event id again -> 200 and no second processing
@@ -179,7 +180,8 @@ describe("T7: Razorpay Webhook Handling", () => {
 
     // Order status must remain PENDING
     const unchangedOrder = await prisma.order.findUnique({ where: { id: order2.id } });
-    expect(unchangedOrder?.status).toBe("PENDING");
+    expect(unchangedOrder?.paymentStatus).toBe("PENDING");
+    expect(unchangedOrder?.fulfilmentStatus).toBe("CREATED");
 
     // Note event added
     const statusEvents = await prisma.orderStatusEvent.findMany({

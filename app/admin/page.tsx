@@ -18,8 +18,8 @@ export default async function AdminDashboard() {
 
   try {
     const res = await Promise.all([
-      prisma.order.count({ where: { createdAt: { gte: startOfToday }, status: "PAID" } }),
-      prisma.order.findMany({ where: { createdAt: { gte: sevenDaysAgo }, status: "PAID" } }),
+      prisma.order.count({ where: { createdAt: { gte: startOfToday }, paymentStatus: "PAID", fulfilmentStatus: "PLACED" } }),
+      prisma.order.findMany({ where: { createdAt: { gte: sevenDaysAgo }, paymentStatus: "PAID", fulfilmentStatus: "PLACED" } }),
       prisma.productVariant.findMany({
         where: { stock: { lte: settings.lowStockThreshold } },
         include: { product: true },

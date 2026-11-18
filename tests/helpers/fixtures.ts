@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "./prisma";
 
-import { Size } from "@prisma/client";
+import { Size, FulfilmentStatus, PaymentStatus } from "@prisma/client";
 
 export function genId(prefix: string = "m1test"): string {
   return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
@@ -86,6 +86,8 @@ export async function createTestOrder(opts: {
   userId: string;
   items: Array<{ variantId: string; productId: string; qty: number; unitPrice: number; name?: string; size?: string }>;
   status?: "PENDING" | "PAID" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "FAILED";
+  paymentStatus?: PaymentStatus;
+  fulfilmentStatus?: FulfilmentStatus;
   paymentMethod?: "RAZORPAY" | "COD" | "STORE_CREDIT";
   stockDeducted?: boolean;
   storeCreditApplied?: number;
@@ -102,6 +104,72 @@ export async function createTestOrder(opts: {
   const displayId = `m1test_HB_${crypto.randomInt(100000, 999999)}`;
   const subtotal = opts.items.reduce((acc, it) => acc + it.unitPrice * it.qty, 0);
   const total = subtotal - (opts.discountAmount || 0);
+
+  const method = opts.paymentMethod ?? "RAZORPAY";
+  let derivedPaymentStatus: PaymentStatus;
+  let derivedFulfilmentStatus: FulfilmentStatus;
+
+  if (opts.paymentStatus && opts.fulfilmentStatus) {
+    derivedPaymentStatus = opts.paymentStatus;
+    derivedFulfilmentStatus = opts.fulfilmentStatus;
+  } else {
+    const legacy = opts.status ?? "PENDING";
+    if (method === "COD") {
+      switch (legacy) {
+        case "PENDING":
+          derivedPaymentStatus = "COD_PENDING";
+          derivedFulfilmentStatus = "PLACED";
+          break;
+        case "SHIPPED":
+          derivedPaymentStatus = "COD_PENDING";
+          derivedFulfilmentStatus = "SHIPPED";
+          break;
+        case "DELIVERED":
+          derivedPaymentStatus = "COD_COLLECTED";
+          derivedFulfilmentStatus = "DELIVERED";
+          break;
+        case "CANCELLED":
+          derivedPaymentStatus = "COD_PENDING";
+          derivedFulfilmentStatus = "CANCELLED";
+          break;
+        default:
+          derivedPaymentStatus = "COD_PENDING";
+          derivedFulfilmentStatus = "PLACED";
+      }
+    } else {
+      switch (legacy) {
+        case "PENDING":
+          derivedPaymentStatus = "PENDING";
+          derivedFulfilmentStatus = "CREATED";
+          break;
+        case "PAID":
+          derivedPaymentStatus = "PAID";
+          derivedFulfilmentStatus = "PLACED";
+          break;
+        case "SHIPPED":
+          derivedPaymentStatus = "PAID";
+          derivedFulfilmentStatus = "SHIPPED";
+          break;
+        case "DELIVERED":
+          derivedPaymentStatus = "PAID";
+          derivedFulfilmentStatus = "DELIVERED";
+          break;
+        case "CANCELLED":
+          derivedPaymentStatus = opts.paidAt ? "REFUNDED" : "PENDING";
+          derivedFulfilmentStatus = "CANCELLED";
+          break;
+        case "FAILED":
+          derivedPaymentStatus = "FAILED";
+          derivedFulfilmentStatus = "CREATED";
+          break;
+        default:
+          derivedPaymentStatus = "PENDING";
+          derivedFulfilmentStatus = "CREATED";
+      }
+    }
+    if (opts.paymentStatus) derivedPaymentStatus = opts.paymentStatus;
+    if (opts.fulfilmentStatus) derivedFulfilmentStatus = opts.fulfilmentStatus;
+  }
 
   return prisma.order.create({
     data: {
@@ -120,7 +188,8 @@ export async function createTestOrder(opts: {
       subtotal,
       shippingFee: 0,
       total,
-      status: opts.status ?? "PENDING",
+      paymentStatus: derivedPaymentStatus,
+      fulfilmentStatus: derivedFulfilmentStatus,
       paymentMethod: opts.paymentMethod ?? "RAZORPAY",
       stockDeducted: opts.stockDeducted ?? false,
       storeCreditApplied: opts.storeCreditApplied ?? 0,

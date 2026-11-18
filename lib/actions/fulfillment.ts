@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/guards";
 import { revalidatePath } from "next/cache";
 import { sendShipmentNotificationEmail, sendDeliveredEmail, sendReviewRequestEmail } from "@/lib/email";
+import { legacyStage } from "@/lib/orders/status-label";
 
 export async function markOrderShipped(
   orderId: string,
@@ -26,19 +27,25 @@ export async function markOrderShipped(
   if (!order) throw new Error("Order not found");
 
   const isCod = order.paymentMethod === "COD";
-  const requiredStatus = isCod ? "PENDING" : "PAID";
+  const canShip =
+    order.fulfilmentStatus === "PLACED" &&
+    (isCod ? order.paymentStatus === "COD_PENDING" : order.paymentStatus === "PAID");
 
-  if (order.status !== requiredStatus) {
-    throw new Error(`Order cannot be marked shipped from status ${order.status}`);
+  if (!canShip) {
+    throw new Error(`Order cannot be marked shipped from status ${legacyStage(order)}`);
   }
 
   const shippedAt = new Date();
 
   await prisma.$transaction(async (tx) => {
     const updateRes = await tx.order.updateMany({
-      where: { id: orderId, status: requiredStatus },
+      where: {
+        id: orderId,
+        fulfilmentStatus: "PLACED",
+        ...(isCod ? { paymentStatus: "COD_PENDING" } : { paymentStatus: "PAID" }),
+      },
       data: {
-        status: "SHIPPED",
+        fulfilmentStatus: "SHIPPED",
         shippedAt,
         courierName: data.courierName.trim(),
         awbNumber: data.awbNumber.trim(),
@@ -53,7 +60,8 @@ export async function markOrderShipped(
     await tx.orderStatusEvent.create({
       data: {
         orderId,
-        status: "SHIPPED",
+        fulfilmentStatus: "SHIPPED",
+        paymentStatus: order.paymentStatus,
         note: `Dispatched via ${data.courierName.trim()} (AWB: ${data.awbNumber.trim()})${data.note ? ` - ${data.note.trim()}` : ""}`,
       },
     });
@@ -76,8 +84,8 @@ export async function markOrderDelivered(orderId: string, note?: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) throw new Error("Order not found");
 
-  if (order.status !== "SHIPPED") {
-    throw new Error(`Order cannot be marked delivered from status ${order.status}`);
+  if (order.fulfilmentStatus !== "SHIPPED") {
+    throw new Error(`Order cannot be marked delivered from status ${legacyStage(order)}`);
   }
 
   const isCod = order.paymentMethod === "COD";
@@ -87,11 +95,11 @@ export async function markOrderDelivered(orderId: string, note?: string) {
 
   await prisma.$transaction(async (tx) => {
     const updateRes = await tx.order.updateMany({
-      where: { id: orderId, status: "SHIPPED" },
+      where: { id: orderId, fulfilmentStatus: "SHIPPED" },
       data: {
-        status: "DELIVERED",
+        fulfilmentStatus: "DELIVERED",
         deliveredAt,
-        ...(isCod ? { paidAt: deliveredAt } : {}),
+        ...(isCod ? { paymentStatus: "COD_COLLECTED", paidAt: deliveredAt } : {}),
       },
     });
 
@@ -102,7 +110,8 @@ export async function markOrderDelivered(orderId: string, note?: string) {
     await tx.orderStatusEvent.create({
       data: {
         orderId,
-        status: "DELIVERED",
+        fulfilmentStatus: "DELIVERED",
+        ...(isCod ? { paymentStatus: "COD_COLLECTED" } : { paymentStatus: order.paymentStatus }),
         note: note?.trim() || defaultNote,
       },
     });

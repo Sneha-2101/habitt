@@ -1,21 +1,25 @@
-import type { OrderStatus } from "@prisma/client";
+import { legacyEventStage } from "@/lib/orders/status-label";
+import type { FulfilmentStatus, PaymentStatus } from "@prisma/client";
+
+type StageKey = "PENDING" | "PAID" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "FAILED" | string;
 
 interface StatusEvent {
   id: string;
-  status: OrderStatus;
+  fulfilmentStatus?: FulfilmentStatus | string | null;
+  paymentStatus?: PaymentStatus | string | null;
   note?: string | null;
   createdAt: Date;
 }
 
 interface OrderStatusTimelineProps {
-  currentStatus: OrderStatus;
+  currentStatus: StageKey;
   events?: StatusEvent[];
   courierName?: string | null;
   awbNumber?: string | null;
   trackingUrl?: string | null;
 }
 
-const STAGES: { key: OrderStatus; label: string }[] = [
+const STAGES: { key: string; label: string }[] = [
   { key: "PENDING", label: "Placed" },
   { key: "PAID", label: "Paid" },
   { key: "SHIPPED", label: "Shipped" },
@@ -49,8 +53,8 @@ export default function OrderStatusTimeline({
   const currentStageIndex = stageIndexMap[currentStatus] ?? 0;
 
   // Find event timestamps for each stage if available
-  const getStageDate = (stageKey: OrderStatus) => {
-    const event = events.find((e) => e.status === stageKey);
+  const getStageDate = (stageKey: string) => {
+    const event = events.find((e) => legacyEventStage(e) === stageKey);
     return event?.createdAt ? new Date(event.createdAt) : null;
   };
 

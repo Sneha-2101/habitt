@@ -32,7 +32,8 @@ export async function GET(request: Request) {
     const abandonedOrders = await prisma.order.findMany({
       where: {
         paymentMethod: "RAZORPAY",
-        status: { in: ["PENDING", "FAILED"] },
+        paymentStatus: { in: ["PENDING", "FAILED"] },
+        fulfilmentStatus: "CREATED",
         createdAt: {
           lte: olderThan,
           gte: youngerThan,

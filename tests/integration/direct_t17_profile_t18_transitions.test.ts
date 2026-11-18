@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { prisma } from "../helpers/prisma";
 import { createTestUser, cleanupM1TestRows } from "../helpers/fixtures";
-import { canTransition } from "@/lib/orders/transitions";
-import { OrderStatus, PaymentMethod } from "@prisma/client";
+import { canTransition, canPaymentTransition } from "@/lib/orders/transitions";
+import { FulfilmentStatus, PaymentStatus } from "@prisma/client";
 
 // Setup mocks
 let mockCurrentUser: { id: string; role: string } = { id: "default_user", role: "CUSTOMER" };
@@ -53,13 +53,10 @@ describe("T17 & T18: Profile Phone Immunity & Transitions Matrix", () => {
 
   it("T18 transitions: table test for every legal move and sample of illegal moves per payment method", () => {
     // 1. RAZORPAY legal moves
-    const razorpayLegal: [OrderStatus, OrderStatus][] = [
-      ["PENDING", "PAID"],
-      ["PENDING", "FAILED"],
-      ["PENDING", "CANCELLED"],
-      ["FAILED", "PAID"],
-      ["PAID", "SHIPPED"],
-      ["PAID", "CANCELLED"],
+    const razorpayLegal: [FulfilmentStatus, FulfilmentStatus][] = [
+      ["CREATED", "CANCELLED"],
+      ["PLACED", "SHIPPED"],
+      ["PLACED", "CANCELLED"],
       ["SHIPPED", "DELIVERED"],
       ["DELIVERED", "CANCELLED"],
     ];
@@ -68,29 +65,27 @@ describe("T17 & T18: Profile Phone Immunity & Transitions Matrix", () => {
     }
 
     // RAZORPAY illegal moves
-    const razorpayIllegal: [OrderStatus, OrderStatus][] = [
-      ["PENDING", "SHIPPED"],
-      ["PENDING", "DELIVERED"],
-      ["FAILED", "SHIPPED"],
-      ["FAILED", "CANCELLED"],
-      ["PAID", "PENDING"],
-      ["PAID", "DELIVERED"],
-      ["SHIPPED", "PAID"],
+    const razorpayIllegal: [FulfilmentStatus, FulfilmentStatus][] = [
+      ["CREATED", "SHIPPED"],
+      ["CREATED", "DELIVERED"],
+      ["PLACED", "CREATED"],
+      ["PLACED", "DELIVERED"],
+      ["SHIPPED", "PLACED"],
       ["SHIPPED", "CANCELLED"],
-      ["CANCELLED", "PAID"],
+      ["CANCELLED", "PLACED"],
       ["CANCELLED", "SHIPPED"],
       ["CANCELLED", "DELIVERED"],
       ["DELIVERED", "SHIPPED"],
-      ["DELIVERED", "PAID"],
+      ["DELIVERED", "PLACED"],
     ];
     for (const [from, to] of razorpayIllegal) {
       expect(canTransition("RAZORPAY", from, to), `RAZORPAY illegal ${from}->${to}`).toBe(false);
     }
 
     // 2. COD legal moves
-    const codLegal: [OrderStatus, OrderStatus][] = [
-      ["PENDING", "SHIPPED"],
-      ["PENDING", "CANCELLED"],
+    const codLegal: [FulfilmentStatus, FulfilmentStatus][] = [
+      ["PLACED", "SHIPPED"],
+      ["PLACED", "CANCELLED"],
       ["SHIPPED", "DELIVERED"],
       ["SHIPPED", "CANCELLED"],
       ["DELIVERED", "CANCELLED"],
@@ -100,14 +95,12 @@ describe("T17 & T18: Profile Phone Immunity & Transitions Matrix", () => {
     }
 
     // COD illegal moves
-    const codIllegal: [OrderStatus, OrderStatus][] = [
-      ["PENDING", "PAID"],
-      ["PENDING", "DELIVERED"],
-      ["SHIPPED", "PENDING"],
-      ["SHIPPED", "PAID"],
-      ["CANCELLED", "PENDING"],
+    const codIllegal: [FulfilmentStatus, FulfilmentStatus][] = [
+      ["PLACED", "DELIVERED"],
+      ["SHIPPED", "PLACED"],
+      ["CANCELLED", "PLACED"],
       ["CANCELLED", "SHIPPED"],
-      ["DELIVERED", "PENDING"],
+      ["DELIVERED", "PLACED"],
       ["DELIVERED", "SHIPPED"],
     ];
     for (const [from, to] of codIllegal) {
@@ -115,9 +108,9 @@ describe("T17 & T18: Profile Phone Immunity & Transitions Matrix", () => {
     }
 
     // 3. STORE_CREDIT legal moves
-    const storeCreditLegal: [OrderStatus, OrderStatus][] = [
-      ["PAID", "SHIPPED"],
-      ["PAID", "CANCELLED"],
+    const storeCreditLegal: [FulfilmentStatus, FulfilmentStatus][] = [
+      ["PLACED", "SHIPPED"],
+      ["PLACED", "CANCELLED"],
       ["SHIPPED", "DELIVERED"],
       ["DELIVERED", "CANCELLED"],
     ];
@@ -126,17 +119,38 @@ describe("T17 & T18: Profile Phone Immunity & Transitions Matrix", () => {
     }
 
     // STORE_CREDIT illegal moves
-    const storeCreditIllegal: [OrderStatus, OrderStatus][] = [
-      ["PAID", "PENDING"],
-      ["PENDING", "PAID"],
-      ["PENDING", "SHIPPED"],
-      ["SHIPPED", "PAID"],
+    const storeCreditIllegal: [FulfilmentStatus, FulfilmentStatus][] = [
+      ["CREATED", "PLACED"],
+      ["CREATED", "SHIPPED"],
+      ["SHIPPED", "PLACED"],
       ["SHIPPED", "CANCELLED"],
-      ["CANCELLED", "PAID"],
+      ["CANCELLED", "PLACED"],
       ["CANCELLED", "SHIPPED"],
     ];
     for (const [from, to] of storeCreditIllegal) {
       expect(canTransition("STORE_CREDIT", from, to), `STORE_CREDIT illegal ${from}->${to}`).toBe(false);
+    }
+
+    // 4. Payment legal and illegal moves
+    const paymentLegal: [PaymentStatus, PaymentStatus][] = [
+      ["PENDING", "PAID"],
+      ["PENDING", "FAILED"],
+      ["FAILED", "PAID"],
+      ["COD_PENDING", "COD_COLLECTED"],
+      ["PAID", "PARTIALLY_REFUNDED"],
+      ["PAID", "REFUNDED"],
+    ];
+    for (const [from, to] of paymentLegal) {
+      expect(canPaymentTransition(from, to), `Payment legal ${from}->${to}`).toBe(true);
+    }
+
+    const paymentIllegal: [PaymentStatus, PaymentStatus][] = [
+      ["PAID", "PENDING"],
+      ["FAILED", "PENDING"],
+      ["REFUNDED", "PAID"],
+    ];
+    for (const [from, to] of paymentIllegal) {
+      expect(canPaymentTransition(from, to), `Payment illegal ${from}->${to}`).toBe(false);
     }
   });
 });
