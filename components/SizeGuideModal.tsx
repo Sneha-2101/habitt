@@ -2,10 +2,11 @@
 
 interface SizeGuideModalProps {
   category: string;
+  sizeChartUrl?: string | null;
   onClose: () => void;
 }
 
-export default function SizeGuideModal({ category, onClose }: SizeGuideModalProps) {
+export default function SizeGuideModal({ category, sizeChartUrl, onClose }: SizeGuideModalProps) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white border border-stone p-6 rounded-2xl max-w-md w-full relative shadow-2xl space-y-4 animate-in fade-in zoom-in duration-200">
@@ -64,6 +65,19 @@ export default function SizeGuideModal({ category, onClose }: SizeGuideModalProp
             </tbody>
           </table>
         </div>
+
+        {sizeChartUrl && (
+          <div className="pt-2 text-[12px]">
+            <a
+              href={sizeChartUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline text-ink hover:text-stone-dark font-medium"
+            >
+              View full size chart
+            </a>
+          </div>
+        )}
 
         <div className="pt-2 border-t border-stone/40 text-[11px] text-stone-dark">
           💡 <strong>Fit Tip:</strong> If you prefer a tailored fit, choose your exact size. For an oversized look, size up.

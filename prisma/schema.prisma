@@ -1,7 +1,8 @@
 // See Schema.md for the full rationale behind these models.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["omitApi"]
 }
 
 datasource db {
@@ -29,8 +30,18 @@ model Product {
   description String
   categoryId  String
   category    Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  price       Int // paise
-  status      ProductStatus    @default(DRAFT)
+  price          Int // paise
+  compareAtPrice Int?
+  costPrice      Int?
+  hsn            String?
+  fabric         String?
+  fit            String?
+  care           String?
+  sizeChartUrl   String?
+  seoTitle       String?
+  seoDescription String?
+  publishAt      DateTime?
+  status         ProductStatus    @default(DRAFT)
   images      ProductImage[]
   cartItems   CartItem[]
   variants    ProductVariant[]

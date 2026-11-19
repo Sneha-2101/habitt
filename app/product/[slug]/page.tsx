@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
+import { savingsPaise } from "@/lib/catalog/pricing-display";
 import { CareTag } from "@/components/CareTag";
 import ProductImageGallery from "@/components/ProductImageGallery";
 import AddToBagPanel from "@/components/AddToBagPanel";
@@ -12,6 +14,43 @@ import { getWishlistProductIds } from "@/lib/actions/wishlist";
 import { getReviewsForProduct, getAverageRating } from "@/lib/actions/reviews";
 import { auth } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const resolvedParams = await params;
+  const product = await prisma.product.findUnique({
+    where: { slug: resolvedParams.slug },
+    select: {
+      name: true,
+      description: true,
+      seoTitle: true,
+      seoDescription: true,
+      status: true,
+    },
+  });
+
+  if (!product || product.status !== "ACTIVE") {
+    return {
+      title: "Product Not Found — Habitt",
+    };
+  }
+
+  const title = product.seoTitle || `${product.name} — Habitt`;
+  const descRaw = product.seoDescription || product.description || "";
+  const description = descRaw.length > 155 ? descRaw.substring(0, 155) : descRaw;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+    },
+  };
+}
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
@@ -58,6 +97,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   ]);
 
   const isSaved = wishlistIds.includes(product.id);
+  const savings = savingsPaise(product.price, product.compareAtPrice);
 
   return (
     <main className="px-4 sm:px-7 py-10 max-w-5xl mx-auto">
@@ -87,8 +127,16 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           </div>
 
           <div className="flex items-center gap-3 mt-3">
-            <div className="font-mono text-lg font-medium">
-              {formatINR(product.price)}
+            <div className="flex items-center gap-2 font-mono text-lg font-medium">
+              <span>{formatINR(product.price)}</span>
+              {savings !== null && product.compareAtPrice && (
+                <>
+                  <span className="line-through text-stone-dark text-sm">
+                    {formatINR(product.compareAtPrice)}
+                  </span>
+                  <CareTag>SAVE {formatINR(savings)}</CareTag>
+                </>
+              )}
             </div>
             {ratingAggregate.count > 0 && (
               <div className="flex items-center gap-1 pl-3 border-l border-stone">
@@ -102,6 +150,34 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             {product.description}
           </p>
 
+          {(product.fabric || product.fit || product.care) && (
+            <details className="mt-4 border-t border-stone/50 pt-3 text-[13px] text-ink cursor-pointer">
+              <summary className="font-medium tracking-[0.04em] uppercase text-[11px] text-stone-dark hover:text-ink select-none">
+                Fabric & care
+              </summary>
+              <div className="mt-2 space-y-1 text-stone-dark text-[12.5px] cursor-default">
+                {product.fabric && (
+                  <div>
+                    <span className="font-medium text-ink">Fabric: </span>
+                    {product.fabric}
+                  </div>
+                )}
+                {product.fit && (
+                  <div>
+                    <span className="font-medium text-ink">Fit: </span>
+                    {product.fit}
+                  </div>
+                )}
+                {product.care && (
+                  <div>
+                    <span className="font-medium text-ink">Care: </span>
+                    {product.care}
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
+
           <AddToBagPanel
             productId={product.id}
             productName={product.name}
@@ -109,6 +185,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             category={product.category?.name?.toUpperCase() ?? ""}
             categorySizes={product.category?.sizes ?? []}
             variants={product.variants}
+            sizeChartUrl={product.sizeChartUrl}
             freeShippingThreshold={settings.freeShippingThreshold}
             freeShippingOnPrepaid={settings.freeShippingOnPrepaid}
           />

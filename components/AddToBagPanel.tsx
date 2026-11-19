@@ -20,6 +20,7 @@ export default function AddToBagPanel({
   category,
   categorySizes = [],
   variants,
+  sizeChartUrl,
   freeShippingThreshold = 299900,
   freeShippingOnPrepaid = true,
 }: {
@@ -29,6 +30,7 @@ export default function AddToBagPanel({
   category: string;
   categorySizes?: string[];
   variants: Variant[];
+  sizeChartUrl?: string | null;
   freeShippingThreshold?: number;
   freeShippingOnPrepaid?: boolean;
 }) {
@@ -174,7 +176,11 @@ export default function AddToBagPanel({
       </div>
 
       {showSizeGuide && (
-        <SizeGuideModal category={category} onClose={() => setShowSizeGuide(false)} />
+        <SizeGuideModal
+          category={category}
+          sizeChartUrl={sizeChartUrl}
+          onClose={() => setShowSizeGuide(false)}
+        />
       )}
     </>
   );

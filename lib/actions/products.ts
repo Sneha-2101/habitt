@@ -3,10 +3,12 @@
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { ProductStatus } from "@prisma/client";
+import { ProductStatus, Prisma, Product } from "@prisma/client";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireStaff } from "@/lib/guards";
 import { sendBackInStockEmail } from "@/lib/email";
+import { writeAudit } from "@/lib/audit";
+import { productMerchandiseFields, toProductFieldData } from "@/lib/catalog/product-fields";
 import { z } from "zod";
 
 function slugify(name: string) {
@@ -34,21 +36,51 @@ function getStoragePathFromUrl(url: string, bucket: string): string | null {
   return null;
 }
 
-const createProductSchema = z.object({
-  name: z.string().trim().min(1, "Product name is required"),
-  categoryId: z.string().min(1, "Product category is required"),
-  price: z.number().positive("Price must be greater than 0"),
-  stock: z.number().int("Stock must be an integer").min(0, "Stock cannot be negative").default(0),
-  description: z.string().default(""),
-});
+const createProductSchema = z
+  .object({
+    name: z.string().trim().min(1, "Product name is required"),
+    categoryId: z.string().min(1, "Product category is required"),
+    price: z.number().positive("Price must be greater than 0"),
+    stock: z.number().int("Stock must be an integer").min(0, "Stock cannot be negative").default(0),
+    description: z.string().default(""),
+    ...productMerchandiseFields,
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.compareAtRupees !== null &&
+      data.compareAtRupees !== undefined &&
+      data.compareAtRupees <= data.price
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["compareAtRupees"],
+        message: "Compare-at price must be greater than price",
+      });
+    }
+  });
 
-const updateProductSchema = z.object({
-  name: z.string().trim().min(1, "Product name is required"),
-  categoryId: z.string().min(1, "Product category is required"),
-  price: z.number().positive("Price must be greater than 0"),
-  description: z.string().default(""),
-  status: z.nativeEnum(ProductStatus, { errorMap: () => ({ message: "Invalid product status" }) }),
-});
+const updateProductSchema = z
+  .object({
+    name: z.string().trim().min(1, "Product name is required"),
+    categoryId: z.string().min(1, "Product category is required"),
+    price: z.number().positive("Price must be greater than 0"),
+    description: z.string().default(""),
+    status: z.nativeEnum(ProductStatus, { errorMap: () => ({ message: "Invalid product status" }) }),
+    ...productMerchandiseFields,
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.compareAtRupees !== null &&
+      data.compareAtRupees !== undefined &&
+      data.compareAtRupees <= data.price
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["compareAtRupees"],
+        message: "Compare-at price must be greater than price",
+      });
+    }
+  });
 
 const updateVariantStockSchema = z.object({
   variantId: z.string().min(1, "Variant ID is required"),
@@ -81,20 +113,43 @@ async function uploadFileToSupabase(file: File): Promise<string> {
 }
 
 export async function createProduct(formData: FormData) {
-  await requireStaff();
+  const user = await requireStaff();
 
   const rawPrice = formData.get("price");
   const priceNum = rawPrice !== null && rawPrice !== "" ? Number(rawPrice) : NaN;
   const rawStock = formData.get("stock");
   const stockNum = rawStock !== null && rawStock !== "" ? Number(rawStock) : 0;
 
-  const validated = createProductSchema.parse({
-    name: formData.get("name") as string,
-    categoryId: (formData.get("categoryId") || formData.get("category")) as string,
-    price: priceNum,
-    stock: stockNum,
-    description: (formData.get("description") as string) || "",
-  });
+  const rawCost =
+    user.role === "OWNER"
+      ? (formData.get("costRupees") ?? formData.get("cost"))
+      : undefined;
+
+  let validated: z.infer<typeof createProductSchema>;
+  try {
+    validated = createProductSchema.parse({
+      name: formData.get("name") as string,
+      categoryId: (formData.get("categoryId") || formData.get("category")) as string,
+      price: priceNum,
+      stock: stockNum,
+      description: (formData.get("description") as string) || "",
+      compareAtRupees: formData.get("compareAtRupees") ?? formData.get("compareAt"),
+      costRupees: rawCost,
+      hsn: formData.get("hsn"),
+      fabric: formData.get("fabric"),
+      fit: formData.get("fit"),
+      care: formData.get("care"),
+      sizeChartUrl: formData.get("sizeChartUrl"),
+      seoTitle: formData.get("seoTitle"),
+      seoDescription: formData.get("seoDescription"),
+    });
+  } catch (err: unknown) {
+    if (err instanceof z.ZodError) {
+      const msg = err.errors.map((e) => e.message).join(", ");
+      throw new Error(msg || "Invalid product data");
+    }
+    throw err;
+  }
 
   const category = await prisma.category.findUnique({
     where: { id: validated.categoryId },
@@ -106,16 +161,68 @@ export async function createProduct(formData: FormData) {
   const pricePaise = Math.round(validated.price * 100); // rupees -> paise
   const slug = await generateUniqueSlug(validated.name);
 
+  const fieldData = toProductFieldData(validated, {
+    includeCost: user.role === "OWNER",
+  });
+
+  const productData: Prisma.ProductUncheckedCreateInput = {
+    name: validated.name,
+    slug,
+    description: validated.description,
+    categoryId: validated.categoryId,
+    price: pricePaise,
+    status: "DRAFT",
+    compareAtPrice: fieldData.compareAtPrice,
+    hsn: fieldData.hsn,
+    fabric: fieldData.fabric,
+    fit: fieldData.fit,
+    care: fieldData.care,
+    sizeChartUrl: fieldData.sizeChartUrl,
+    seoTitle: fieldData.seoTitle,
+    seoDescription: fieldData.seoDescription,
+    variants: {
+      create: category.sizes.map((size) => ({ size, stock: validated.stock })),
+    },
+  };
+  if (user.role === "OWNER" && fieldData.costPrice !== undefined) {
+    productData.costPrice = fieldData.costPrice;
+  }
+
   const product = await prisma.product.create({
-    data: {
-      name: validated.name,
-      slug,
-      description: validated.description,
-      categoryId: validated.categoryId,
-      price: pricePaise,
-      status: "DRAFT",
-      variants: {
-        create: category.sizes.map((size) => ({ size, stock: validated.stock })),
+    data: productData,
+    ...(user.role === "OWNER" ? { omit: { costPrice: false } } : {}),
+  });
+
+  // Audit log product.create
+  await writeAudit({
+    actorId: user.id,
+    action: "product.create",
+    entity: "Product",
+    entityId: product.id,
+    meta: {
+      before: null,
+      after: {
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        price: product.price,
+        categoryId: product.categoryId,
+        compareAtPrice: product.compareAtPrice,
+        ...(user.role === "OWNER"
+          ? {
+              costPrice:
+                "costPrice" in product && typeof (product as Product).costPrice === "number"
+                  ? (product as Product).costPrice
+                  : null,
+            }
+          : {}),
+        hsn: product.hsn,
+        fabric: product.fabric,
+        fit: product.fit,
+        care: product.care,
+        sizeChartUrl: product.sizeChartUrl,
+        seoTitle: product.seoTitle,
+        seoDescription: product.seoDescription,
       },
     },
   });
@@ -140,30 +247,62 @@ export async function createProduct(formData: FormData) {
     }
   }
 
+  revalidatePath("/shop");
+  revalidatePath(`/product/${product.slug}`);
   revalidatePath("/admin/products");
   redirect(`/admin/products/${product.id}/edit`);
 }
 
 export async function updateProduct(productId: string, formData: FormData) {
-  await requireStaff();
+  const user = await requireStaff();
 
   const rawPrice = formData.get("price");
   const priceNum = rawPrice !== null && rawPrice !== "" ? Number(rawPrice) : NaN;
 
-  const validated = updateProductSchema.parse({
-    name: formData.get("name") as string,
-    categoryId: (formData.get("categoryId") || formData.get("category")) as string,
-    price: priceNum,
-    description: (formData.get("description") as string) || "",
-    status: formData.get("status"),
-  });
+  const hasCompareAt = formData.has("compareAtRupees") || formData.has("compareAt");
+  const rawCompareAt = hasCompareAt
+    ? (formData.get("compareAtRupees") ?? formData.get("compareAt"))
+    : undefined;
+
+  const hasCost = formData.has("costRupees") || formData.has("cost");
+  const rawCost =
+    user.role === "OWNER" && hasCost
+      ? (formData.get("costRupees") ?? formData.get("cost"))
+      : undefined;
+
+  let validated: z.infer<typeof updateProductSchema>;
+  try {
+    validated = updateProductSchema.parse({
+      name: formData.get("name") as string,
+      categoryId: (formData.get("categoryId") || formData.get("category")) as string,
+      price: priceNum,
+      description: (formData.get("description") as string) || "",
+      status: formData.get("status"),
+      compareAtRupees: rawCompareAt,
+      costRupees: rawCost,
+      hsn: formData.has("hsn") ? formData.get("hsn") : undefined,
+      fabric: formData.has("fabric") ? formData.get("fabric") : undefined,
+      fit: formData.has("fit") ? formData.get("fit") : undefined,
+      care: formData.has("care") ? formData.get("care") : undefined,
+      sizeChartUrl: formData.has("sizeChartUrl") ? formData.get("sizeChartUrl") : undefined,
+      seoTitle: formData.has("seoTitle") ? formData.get("seoTitle") : undefined,
+      seoDescription: formData.has("seoDescription") ? formData.get("seoDescription") : undefined,
+    });
+  } catch (err: unknown) {
+    if (err instanceof z.ZodError) {
+      const msg = err.errors.map((e) => e.message).join(", ");
+      throw new Error(msg || "Invalid product data");
+    }
+    throw err;
+  }
 
   const pricePaise = Math.round(validated.price * 100);
 
-  await prisma.$transaction(async (tx) => {
+  const { updatedProduct, beforeSnapshot } = await prisma.$transaction(async (tx) => {
     const current = await tx.product.findUnique({
       where: { id: productId },
       include: { variants: true },
+      ...(user.role === "OWNER" ? { omit: { costPrice: false } } : {}),
     });
     if (!current) throw new Error("Product not found");
 
@@ -184,18 +323,111 @@ export async function updateProduct(productId: string, formData: FormData) {
       }
     }
 
-    await tx.product.update({
-      where: { id: productId },
-      data: {
-        name: validated.name,
-        categoryId: validated.categoryId,
-        price: pricePaise,
-        description: validated.description,
-        status: validated.status,
-      },
+    // Effective compareAtPrice: newly submitted (if provided in form) or stored
+    const effectiveCompareAt =
+      hasCompareAt && validated.compareAtRupees !== undefined
+        ? (validated.compareAtRupees !== null ? Math.round(validated.compareAtRupees * 100) : null)
+        : current.compareAtPrice;
+
+    if (
+      effectiveCompareAt !== null &&
+      effectiveCompareAt !== undefined &&
+      pricePaise >= effectiveCompareAt
+    ) {
+      throw new Error("Price cannot be greater than or equal to compare-at price");
+    }
+
+    const fieldData = toProductFieldData(validated, {
+      includeCost: user.role === "OWNER",
     });
+
+    const updateData: Prisma.ProductUncheckedUpdateInput = {
+      name: validated.name,
+      categoryId: validated.categoryId,
+      price: pricePaise,
+      description: validated.description,
+      status: validated.status,
+    };
+
+    if (hasCompareAt) {
+      updateData.compareAtPrice = fieldData.compareAtPrice ?? null;
+    }
+    if (formData.has("hsn")) updateData.hsn = fieldData.hsn ?? null;
+    if (formData.has("fabric")) updateData.fabric = fieldData.fabric ?? null;
+    if (formData.has("fit")) updateData.fit = fieldData.fit ?? null;
+    if (formData.has("care")) updateData.care = fieldData.care ?? null;
+    if (formData.has("sizeChartUrl")) updateData.sizeChartUrl = fieldData.sizeChartUrl ?? null;
+    if (formData.has("seoTitle")) updateData.seoTitle = fieldData.seoTitle ?? null;
+    if (formData.has("seoDescription")) updateData.seoDescription = fieldData.seoDescription ?? null;
+
+    if (user.role === "OWNER" && hasCost && fieldData.costPrice !== undefined) {
+      updateData.costPrice = fieldData.costPrice;
+    }
+
+    const before = {
+      name: current.name,
+      price: current.price,
+      categoryId: current.categoryId,
+      compareAtPrice: current.compareAtPrice,
+      ...(user.role === "OWNER"
+        ? {
+            costPrice:
+              "costPrice" in current && typeof (current as Product).costPrice === "number"
+                ? (current as Product).costPrice
+                : null,
+          }
+        : {}),
+      hsn: current.hsn,
+      fabric: current.fabric,
+      fit: current.fit,
+      care: current.care,
+      sizeChartUrl: current.sizeChartUrl,
+      seoTitle: current.seoTitle,
+      seoDescription: current.seoDescription,
+    };
+
+    const updated = await tx.product.update({
+      where: { id: productId },
+      data: updateData,
+      ...(user.role === "OWNER" ? { omit: { costPrice: false } } : {}),
+    });
+
+    return { updatedProduct: updated, beforeSnapshot: before };
   });
 
+  await writeAudit({
+    actorId: user.id,
+    action: "product.update",
+    entity: "Product",
+    entityId: productId,
+    meta: {
+      before: beforeSnapshot as Prisma.InputJsonObject,
+      after: {
+        name: updatedProduct.name,
+        price: updatedProduct.price,
+        categoryId: updatedProduct.categoryId,
+        compareAtPrice: updatedProduct.compareAtPrice,
+        ...(user.role === "OWNER"
+          ? {
+              costPrice:
+                "costPrice" in updatedProduct && typeof updatedProduct.costPrice === "number"
+                  ? updatedProduct.costPrice
+                  : null,
+            }
+          : {}),
+        hsn: updatedProduct.hsn,
+        fabric: updatedProduct.fabric,
+        fit: updatedProduct.fit,
+        care: updatedProduct.care,
+        sizeChartUrl: updatedProduct.sizeChartUrl,
+        seoTitle: updatedProduct.seoTitle,
+        seoDescription: updatedProduct.seoDescription,
+      },
+    },
+  });
+
+  revalidatePath("/shop");
+  revalidatePath(`/product/${updatedProduct.slug}`);
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${productId}/edit`);
 }

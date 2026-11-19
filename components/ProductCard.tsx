@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { formatINR } from "@/lib/money";
+import { savingsPaise } from "@/lib/catalog/pricing-display";
 import { CareTag } from "@/components/CareTag";
 import { ProductSwatchImage } from "@/components/ProductSwatchImage";
 import WishlistButton from "@/components/WishlistButton";
@@ -14,6 +15,7 @@ interface ProductCardProps {
     name: string;
     slug: string;
     price: number;
+    compareAtPrice?: number | null;
     category: string | { name: string };
     images?: Array<{ url: string }>;
     variants?: Array<{ id: string; size: string; stock: number }>;
@@ -41,6 +43,8 @@ export default function ProductCard({ product, initialSaved = false, lowStockThr
   const categoryName = typeof product.category === "string"
     ? product.category
     : product.category?.name || "";
+
+  const savings = savingsPaise(product.price, product.compareAtPrice);
 
   return (
     <>
@@ -80,7 +84,17 @@ export default function ProductCard({ product, initialSaved = false, lowStockThr
             </div>
 
             <div className="flex items-center justify-between mt-3 font-mono text-[13px]">
-              <span>{formatINR(product.price)}</span>
+              <div className="flex items-center gap-2">
+                <span>{formatINR(product.price)}</span>
+                {savings !== null && product.compareAtPrice && (
+                  <>
+                    <span className="line-through text-stone-dark font-mono">
+                      {formatINR(product.compareAtPrice)}
+                    </span>
+                    <CareTag>SAVE {formatINR(savings)}</CareTag>
+                  </>
+                )}
+              </div>
 
               {/* SINGLE VISUAL SIGNAL: Low Stock OR Star Rating (Never both) */}
               {lowestStock !== null ? (

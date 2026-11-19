@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "./prisma";
 
-import { FulfilmentStatus, PaymentStatus } from "@prisma/client";
+import { FulfilmentStatus, PaymentStatus, Prisma } from "@prisma/client";
 
 export function genId(prefix: string = "m1test"): string {
   return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
@@ -23,6 +23,8 @@ export async function createTestUser(overrides: Partial<Parameters<typeof prisma
 
 export async function createTestProduct(opts?: {
   price?: number;
+  compareAtPrice?: number | null;
+  costPrice?: number | null;
   status?: "ACTIVE" | "DRAFT" | "ARCHIVED";
   categoryId?: string;
   variants?: Array<{ size: string; stock: number }>;
@@ -40,16 +42,25 @@ export async function createTestProduct(opts?: {
     categoryId = defaultCat?.id ?? "cat_shirts";
   }
 
+  const productData: Prisma.ProductUncheckedCreateInput = {
+    id,
+    name: `Test Product ${id}`,
+    slug,
+    description: "Test product description",
+    price,
+    status,
+    categoryId,
+  };
+  if (opts?.compareAtPrice !== undefined) {
+    productData.compareAtPrice = opts.compareAtPrice;
+  }
+  if (opts?.costPrice !== undefined) {
+    productData.costPrice = opts.costPrice;
+  }
+
   const product = await prisma.product.create({
-    data: {
-      id,
-      name: `Test Product ${id}`,
-      slug,
-      description: "Test product description",
-      price,
-      status,
-      categoryId,
-    },
+    data: productData,
+    ...(opts?.costPrice !== undefined ? { omit: { costPrice: false } } : {}),
   });
 
   const variantsData = opts?.variants ?? [{ size: "M", stock: 5 }];

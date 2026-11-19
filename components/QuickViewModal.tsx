@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { formatINR } from "@/lib/money";
+import { savingsPaise } from "@/lib/catalog/pricing-display";
+import { CareTag } from "@/components/CareTag";
 import { useCartStore } from "@/lib/cart-store";
 
 interface QuickViewModalProps {
@@ -10,6 +12,7 @@ interface QuickViewModalProps {
     name: string;
     slug: string;
     price: number;
+    compareAtPrice?: number | null;
     category: string | { name: string };
     images?: Array<{ url: string }>;
     variants?: Array<{ id: string; size: string; stock: number }>;
@@ -22,6 +25,7 @@ export default function QuickViewModal({ product, onClose }: QuickViewModalProps
   const variants = product.variants || [];
   const [selectedSize, setSelectedSize] = useState<string>(variants.find((v) => v.stock > 0)?.size || variants[0]?.size || "M");
   const [added, setAdded] = useState(false);
+  const savings = savingsPaise(product.price, product.compareAtPrice);
 
   const selectedVariant = variants.find((v) => v.size === selectedSize);
   const isOutOfStock = !selectedVariant || selectedVariant.stock <= 0;
@@ -70,7 +74,17 @@ export default function QuickViewModal({ product, onClose }: QuickViewModalProps
                 {typeof product.category === "string" ? product.category.toUpperCase() : product.category?.name?.toUpperCase()}
               </span>
               <h3 className="font-display text-xl text-ink font-medium mt-0.5">{product.name}</h3>
-              <p className="font-mono text-base font-semibold text-ink mt-2">{formatINR(product.price)}</p>
+              <div className="flex items-center gap-2 mt-2 font-mono">
+                <span className="text-base font-semibold text-ink">{formatINR(product.price)}</span>
+                {savings !== null && product.compareAtPrice && (
+                  <>
+                    <span className="line-through text-stone-dark text-sm">
+                      {formatINR(product.compareAtPrice)}
+                    </span>
+                    <CareTag>SAVE {formatINR(savings)}</CareTag>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Size Selector */}

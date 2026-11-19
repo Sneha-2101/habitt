@@ -1,8 +1,18 @@
 import { PrismaClient } from "@prisma/client";
 
-// Global singleton to prevent pool exhaustion across tests
-const globalForPrisma = global as unknown as { testPrisma: PrismaClient };
+function createTestPrismaClient() {
+  return new PrismaClient({
+    omit: {
+      product: {
+        costPrice: true,
+      },
+    },
+  });
+}
 
-export const prisma = globalForPrisma.testPrisma || new PrismaClient();
+// Global singleton to prevent pool exhaustion across tests
+const globalForPrisma = global as unknown as { testPrisma?: ReturnType<typeof createTestPrismaClient> };
+
+export const prisma = globalForPrisma.testPrisma ?? createTestPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.testPrisma = prisma;
