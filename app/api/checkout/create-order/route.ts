@@ -332,6 +332,8 @@ export async function POST(req: Request) {
                 variantId: i.variantId,
                 name: i.name,
                 size: i.size,
+                color: i.color ?? "",
+                sku: i.sku ?? null,
                 unitPrice: i.unitPrice,
                 qty: i.qty,
               })),

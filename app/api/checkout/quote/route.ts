@@ -71,6 +71,12 @@ export async function POST(req: Request) {
     useStoreCredit: data.useStoreCredit,
   });
 
-  return NextResponse.json(quote);
+  const sanitizedItems = quote.items.map((i) => {
+    const copy = { ...i };
+    delete copy.sku;
+    return copy;
+  });
+
+  return NextResponse.json({ ...quote, items: sanitizedItems });
 }
 

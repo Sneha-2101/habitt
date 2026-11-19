@@ -184,7 +184,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             price={product.price}
             category={product.category?.name?.toUpperCase() ?? ""}
             categorySizes={product.category?.sizes ?? []}
-            variants={product.variants}
+            variants={product.variants.map((v) => ({
+              id: v.id,
+              size: v.size,
+              color: v.color,
+              colorHex: v.colorHex,
+              stock: v.stock,
+            }))}
             sizeChartUrl={product.sizeChartUrl}
             freeShippingThreshold={settings.freeShippingThreshold}
             freeShippingOnPrepaid={settings.freeShippingOnPrepaid}

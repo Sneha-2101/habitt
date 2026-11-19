@@ -69,7 +69,7 @@ export async function sendOrderConfirmationEmail(orderId: string) {
       .map(
         (item) => `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${escapeHtml(item.name)} (${escapeHtml(item.size)})</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">${escapeHtml(item.name)} (${escapeHtml(item.size)}${item.color ? ` · ${escapeHtml(item.color)}` : ""})</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${escapeHtml(item.qty)}</td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">₹${((item.unitPrice * item.qty) / 100).toFixed(2)}</td>
         </tr>

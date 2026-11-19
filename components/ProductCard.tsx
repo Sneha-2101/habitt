@@ -18,7 +18,7 @@ interface ProductCardProps {
     compareAtPrice?: number | null;
     category: string | { name: string };
     images?: Array<{ url: string }>;
-    variants?: Array<{ id: string; size: string; stock: number }>;
+    variants?: Array<{ id: string; size: string; stock: number; color?: string; colorHex?: string | null }>;
     reviews?: Array<{ rating: number }>;
   };
   initialSaved?: boolean;

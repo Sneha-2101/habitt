@@ -9,6 +9,13 @@ import {
   addProductImage,
   deleteProductImage,
 } from "@/lib/actions/products";
+import {
+  nameDefaultColorAction,
+  addColorAction,
+  renameColorAction,
+  removeColorAction,
+  setVariantSkuAction,
+} from "@/lib/actions/variants";
 
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireStaff();
@@ -28,14 +35,59 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   }
   allCategories.sort((a, b) => a.position - b.position);
 
-  const orderedSizes = sortSizes(
-    product.variants.map((v) => v.size),
-    product.category?.sizes ?? []
+  const usedVariantIds = new Set(
+    (
+      await prisma.orderItem.findMany({
+        where: { variantId: { in: product.variants.map((v) => v.id) } },
+        select: { variantId: true },
+      })
+    ).map((oi) => oi.variantId)
   );
-  const sizeRank = new Map(orderedSizes.map((sz, idx) => [sz, idx]));
-  const sortedVariants = [...product.variants].sort(
-    (a, b) => (sizeRank.get(a.size) ?? 999) - (sizeRank.get(b.size) ?? 999)
-  );
+
+  const colorMap = new Map<
+    string,
+    {
+      color: string;
+      colorHex: string | null;
+      variants: typeof product.variants;
+    }
+  >();
+
+  for (const v of product.variants) {
+    const cName = v.color || "";
+    if (!colorMap.has(cName)) {
+      colorMap.set(cName, {
+        color: cName,
+        colorHex: v.colorHex,
+        variants: [],
+      });
+    }
+    const entry = colorMap.get(cName)!;
+    if (!entry.colorHex && v.colorHex) entry.colorHex = v.colorHex;
+    entry.variants.push(v);
+  }
+
+  const categorySizes = product.category?.sizes ?? [];
+  const colorGroups = Array.from(colorMap.values()).map((cg) => {
+    const orderedSizes = sortSizes(
+      cg.variants.map((v) => v.size),
+      categorySizes
+    );
+    const sizeRank = new Map(orderedSizes.map((sz, idx) => [sz, idx]));
+    const sorted = [...cg.variants].sort(
+      (a, b) => (sizeRank.get(a.size) ?? 999) - (sizeRank.get(b.size) ?? 999)
+    );
+    return {
+      ...cg,
+      variants: sorted,
+    };
+  });
+
+  const isOnlyColor = colorGroups.length <= 1;
+  const hasOnlyNoColor =
+    product.variants.length > 0 && product.variants.every((v) => v.color === "");
+  const hasNamedColors =
+    product.variants.length > 0 && product.variants.every((v) => v.color !== "");
 
   const updateWithId = updateProduct.bind(null, product.id);
   const archiveWithId = archiveProduct.bind(null, product.id);
@@ -254,26 +306,238 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         </form>
       </div>
 
-      {/* STOCK BY SIZE SECTION */}
-      <h2 className="text-sm font-medium mb-3">Stock by size</h2>
-      <div className="border border-stone mb-8">
-        {sortedVariants.map((v) => (
+      {/* "NAME THIS COLOR" FORM (ONLY WHEN PRODUCT HAS ONLY NO-COLOR VARIANTS) */}
+      {hasOnlyNoColor && (
+        <div className="border border-stone p-4 bg-card mb-8">
+          <h2 className="text-sm font-medium mb-1">Name this color</h2>
+          <p className="text-[12px] text-stone-dark mb-3">
+            This product currently has no color specified. Name the default color to enable color variants.
+          </p>
           <form
-            key={v.id}
             action={async (formData: FormData) => {
               "use server";
-              await updateVariantStock(v.id, Number(formData.get("stock")));
+              await nameDefaultColorAction(
+                product.id,
+                formData.get("name") as string,
+                (formData.get("hex") as string) || null
+              );
             }}
-            className="flex justify-between items-center px-4 py-2.5 border-b border-stone last:border-0 text-[13px]"
+            className="flex flex-col sm:flex-row gap-2"
           >
-            <span>{v.size}</span>
-            <div className="flex items-center gap-2">
-              <input name="stock" type="number" defaultValue={v.stock} className="w-16 px-2 py-1 border border-stone text-[13px]" />
-              <button type="submit" className="text-[11.5px] underline">Update</button>
-            </div>
+            <input
+              name="name"
+              type="text"
+              required
+              placeholder="Color name (e.g. Navy)"
+              className="h-[44px] px-3.5 border border-stone bg-white text-[13.5px] rounded-none flex-1"
+            />
+            <input
+              name="hex"
+              type="text"
+              placeholder="#RRGGBB (optional)"
+              className="h-[44px] w-full sm:w-36 px-3.5 border border-stone bg-white text-[13.5px] rounded-none"
+            />
+            <button
+              type="submit"
+              className="h-[44px] px-5 bg-ink text-paper text-[12px] font-medium tracking-[0.04em] rounded-none"
+            >
+              Name color
+            </button>
           </form>
-        ))}
+        </div>
+      )}
+
+      {/* VARIANTS BY COLOR SECTION */}
+      <h2 className="text-sm font-medium mb-3">Variants & Stock by Color</h2>
+      <div className="space-y-6 mb-8">
+        {colorGroups.map((cg) => {
+          const hasOrders = cg.variants.some((v) => usedVariantIds.has(v.id));
+          const cannotRemoveReason = isOnlyColor
+            ? "Cannot remove the only color"
+            : hasOrders
+            ? "Referenced by existing orders"
+            : null;
+
+          return (
+            <div key={cg.color || "__no_color"} className="border border-stone bg-card">
+              {/* Color Header & Management */}
+              <div className="p-4 border-b border-stone bg-paper/50 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {cg.colorHex && (
+                      <span
+                        className="inline-block w-4 h-4 border border-stone"
+                        style={{ backgroundColor: cg.colorHex }}
+                      />
+                    )}
+                    <span className="font-medium text-[14px]">
+                      {cg.color === "" ? "No color" : cg.color}
+                    </span>
+                    {cg.colorHex && (
+                      <span className="text-[11px] font-mono text-stone-dark">({cg.colorHex})</span>
+                    )}
+                  </div>
+                  <form
+                    action={async () => {
+                      "use server";
+                      await removeColorAction(product.id, cg.color);
+                    }}
+                  >
+                    <button
+                      type="submit"
+                      disabled={!!cannotRemoveReason}
+                      title={cannotRemoveReason ?? undefined}
+                      className="h-[44px] px-2 text-clay hover:opacity-80 text-[12px] underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                    >
+                      Remove color{cannotRemoveReason ? ` (${cannotRemoveReason})` : ""}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Rename Color Form */}
+                <form
+                  action={async (formData: FormData) => {
+                    "use server";
+                    await renameColorAction(
+                      product.id,
+                      cg.color,
+                      formData.get("name") as string,
+                      (formData.get("hex") as string) || null
+                    );
+                  }}
+                  className="flex flex-col sm:flex-row gap-2 pt-1 border-t border-stone/40"
+                >
+                  <input
+                    name="name"
+                    type="text"
+                    defaultValue={cg.color}
+                    required
+                    placeholder="Color name"
+                    className="h-[44px] px-3 border border-stone bg-white text-[13px] rounded-none flex-1"
+                  />
+                  <input
+                    name="hex"
+                    type="text"
+                    defaultValue={cg.colorHex ?? ""}
+                    placeholder="#RRGGBB"
+                    className="h-[44px] w-full sm:w-32 px-3 border border-stone bg-white text-[13px] rounded-none"
+                  />
+                  <button
+                    type="submit"
+                    className="h-[44px] px-4 bg-stone/30 hover:bg-stone/50 text-[12px] font-medium tracking-[0.04em] rounded-none"
+                  >
+                    Rename
+                  </button>
+                </form>
+              </div>
+
+              {/* Variant Rows (Sizes & Stock & SKU) */}
+              <div className="divide-y divide-stone">
+                {cg.variants.map((v) => (
+                  <div
+                    key={v.id}
+                    className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] bg-white"
+                  >
+                    <span className="font-mono font-medium text-[14px] w-12">{v.size}</span>
+                    <div className="flex flex-wrap items-center gap-4">
+                      {/* Existing stock form */}
+                      <form
+                        action={async (formData: FormData) => {
+                          "use server";
+                          await updateVariantStock(v.id, Number(formData.get("stock")));
+                        }}
+                        className="flex items-center gap-1.5"
+                      >
+                        <label className="text-[11px] text-stone-dark">Stock:</label>
+                        <input
+                          name="stock"
+                          type="number"
+                          defaultValue={v.stock}
+                          className="w-16 h-[44px] px-2 py-1 border border-stone text-[13px] rounded-none text-center"
+                        />
+                        <button type="submit" className="h-[44px] px-2 text-[11.5px] underline">
+                          Update
+                        </button>
+                      </form>
+
+                      {/* Optional SKU form */}
+                      <form
+                        action={async (formData: FormData) => {
+                          "use server";
+                          await setVariantSkuAction(v.id, (formData.get("sku") as string) || null);
+                        }}
+                        className="flex items-center gap-1.5"
+                      >
+                        <label className="text-[11px] text-stone-dark">SKU:</label>
+                        <input
+                          name="sku"
+                          type="text"
+                          defaultValue={v.sku ?? ""}
+                          placeholder="Optional SKU"
+                          className="w-28 h-[44px] px-2 py-1 border border-stone text-[12px] font-mono uppercase rounded-none"
+                        />
+                        <button type="submit" className="h-[44px] px-2 text-[11.5px] underline">
+                          Save SKU
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
+
+      {/* "ADD ANOTHER COLOR" FORM (ONLY WHEN PRODUCT ALREADY HAS NAMED COLORS) */}
+      {hasNamedColors && (
+        <div className="border border-stone p-4 bg-card mb-8">
+          <h2 className="text-sm font-medium mb-1">Add another color</h2>
+          <p className="text-[12px] text-stone-dark mb-3">
+            Add a new color variation with initial stock across all sizes.
+          </p>
+          <form
+            action={async (formData: FormData) => {
+              "use server";
+              await addColorAction(
+                product.id,
+                formData.get("name") as string,
+                (formData.get("hex") as string) || null,
+                Number(formData.get("stock") || 0)
+              );
+            }}
+            className="flex flex-col sm:flex-row gap-2"
+          >
+            <input
+              name="name"
+              type="text"
+              required
+              placeholder="Color name (e.g. Olive)"
+              className="h-[44px] px-3.5 border border-stone bg-white text-[13.5px] rounded-none flex-1"
+            />
+            <input
+              name="hex"
+              type="text"
+              placeholder="#RRGGBB (optional)"
+              className="h-[44px] w-full sm:w-36 px-3.5 border border-stone bg-white text-[13.5px] rounded-none"
+            />
+            <input
+              name="stock"
+              type="number"
+              min="0"
+              defaultValue="0"
+              placeholder="Initial stock"
+              className="h-[44px] w-full sm:w-28 px-3.5 border border-stone bg-white text-[13.5px] rounded-none"
+            />
+            <button
+              type="submit"
+              className="h-[44px] px-5 bg-ink text-paper text-[12px] font-medium tracking-[0.04em] rounded-none"
+            >
+              Add color
+            </button>
+          </form>
+        </div>
+      )}
 
       <form action={archiveWithId}>
         <button type="submit" className="text-clay text-[12.5px] underline">

@@ -65,8 +65,8 @@ export default function CartDrawer({
                 key={item.variantId}
                 className="flex gap-3 mb-4 pb-4 border-b border-stone"
               >
-                <div className="w-16 h-20 bg-card border border-stone/50 flex-shrink-0 flex items-center justify-center text-[10px] font-mono text-stone-dark">
-                  {item.size}
+                <div className="w-16 h-20 bg-card border border-stone/50 flex-shrink-0 flex items-center justify-center text-[10px] font-mono text-stone-dark text-center px-1">
+                  {item.color ? `${item.size} · ${item.color}` : item.size}
                 </div>
                 <div className="flex-1 flex flex-col justify-between">
                   <div>
@@ -82,7 +82,9 @@ export default function CartDrawer({
                         </svg>
                       </button>
                     </div>
-                    <div className="text-[11.5px] text-stone-dark mt-0.5">Size {item.size}</div>
+                    <div className="text-[11.5px] text-stone-dark mt-0.5">
+                      Size {item.color ? `${item.size} · ${item.color}` : item.size}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-2 border border-stone px-2 py-0.5">

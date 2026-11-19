@@ -90,6 +90,7 @@ interface AccountClientProps {
       variantId: string;
       name: string;
       size: string;
+      color?: string;
       unitPrice: number;
       qty: number;
       currentStock?: number;
@@ -257,20 +258,20 @@ export default function AccountClient({
   const [returnErrorMsg, setReturnErrorMsg] = useState<string | null>(null);
   const [isPendingReturn, startReturnTransition] = useTransition();
 
-  function handleReorder(items: Array<{ productId: string; variantId: string; name: string; size: string; unitPrice: number; qty: number; currentStock?: number }>) {
+  function handleReorder(items: Array<{ productId: string; variantId: string; name: string; size: string; color?: string; unitPrice: number; qty: number; currentStock?: number }>) {
     const warnings: string[] = [];
     let addedCount = 0;
 
     items.forEach((item) => {
       const stock = item.currentStock ?? 99;
       if (stock <= 0) {
-        warnings.push(`Skipped "${item.name}" (Size ${item.size}) — currently out of stock.`);
+        warnings.push(`Skipped "${item.name}" (Size ${item.size}${item.color ? ` · ${item.color}` : ""}) — currently out of stock.`);
         return;
       }
 
       const availableQty = Math.min(item.qty, stock);
       if (availableQty < item.qty) {
-        warnings.push(`Added "${item.name}" (Size ${item.size}) with available stock of ${availableQty} (requested ${item.qty}).`);
+        warnings.push(`Added "${item.name}" (Size ${item.size}${item.color ? ` · ${item.color}` : ""}) with available stock of ${availableQty} (requested ${item.qty}).`);
       }
 
       addCartItem({
@@ -278,6 +279,7 @@ export default function AccountClient({
         variantId: item.variantId,
         name: item.name,
         size: item.size,
+        color: item.color || undefined,
         unitPrice: item.unitPrice,
         qty: availableQty,
       });
@@ -788,7 +790,7 @@ export default function AccountClient({
                         <div key={item.id} className="flex justify-between p-3 text-[13px]">
                           <div>
                             <p className="font-medium text-ink">{item.name}</p>
-                            <p className="text-xs text-stone-dark">Size: {item.size} • Qty: {item.qty}</p>
+                            <p className="text-xs text-stone-dark">Size: {item.size}{item.color ? ` · ${item.color}` : ""} • Qty: {item.qty}</p>
                           </div>
                           <p className="font-mono font-medium text-ink">{formatINR(item.unitPrice * item.qty)}</p>
                         </div>

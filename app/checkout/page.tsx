@@ -611,7 +611,7 @@ export default function CheckoutPage() {
         {items.map((i) => (
           <div key={i.variantId} className="flex justify-between text-xs">
             <span>
-              {i.name} ({i.size}) × {i.qty}
+              {i.name} ({i.size}{i.color ? ` · ${i.color}` : ""}) × {i.qty}
             </span>
             <span className="font-mono">{formatINR(i.unitPrice * i.qty)}</span>
           </div>

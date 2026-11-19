@@ -24,6 +24,8 @@ export interface QuoteItemDetail {
   variantId: string;
   name: string;
   size: string;
+  color?: string;
+  sku?: string | null;
   unitPrice: number;
   qty: number;
   lineTotal: number;
@@ -151,6 +153,8 @@ export async function calculateQuote({
       variantId: variant.id,
       name: product.name,
       size: variant.size,
+      color: variant.color,
+      sku: variant.sku,
       unitPrice: product.price,
       qty: item.qty,
       lineTotal,

@@ -156,7 +156,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
           return (
             <div key={i.id} className="flex justify-between items-center text-[13px] mb-2 pb-2 border-b border-stone/30 last:border-0">
               <div>
-                <span>{i.name} — {i.size} × {i.qty}</span>
+                <span>{i.name} — {i.size}{i.color ? ` · ${i.color}` : ""} × {i.qty}</span>
                 {currentStock !== undefined && (
                   <span
                     className={`ml-2 text-[11px] font-mono px-1.5 py-0.5 rounded ${

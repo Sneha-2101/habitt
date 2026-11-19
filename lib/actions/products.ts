@@ -520,7 +520,8 @@ export async function updateVariantStock(variantId: string, stock: number) {
     });
 
     for (const notif of pendingNotifications) {
-      sendBackInStockEmail(notif.email, variant.product.name, variant.product.slug, variant.size).catch((err) => {
+      const sizeLabel = variant.color ? `${variant.size} · ${variant.color}` : variant.size;
+      sendBackInStockEmail(notif.email, variant.product.name, variant.product.slug, sizeLabel).catch((err) => {
         console.error(`Failed to send back-in-stock email to ${notif.email}:`, err);
       });
       await prisma.stockNotification.update({

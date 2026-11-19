@@ -60,6 +60,7 @@ export default async function AccountPage() {
     statusLabel: getOrderStatusLabel(o).label,
     items: o.items.map((item) => ({
       ...item,
+      color: item.color,
       currentStock: variantStockMap.get(item.variantId) ?? 0,
     })),
   }));

@@ -8,6 +8,7 @@ export interface CartItem {
   variantId: string;
   name: string;
   size: string;
+  color?: string;
   unitPrice: number; // paise
   qty: number;
 }

@@ -41,7 +41,7 @@ export default async function ShopPage({
         },
         include: {
           images: true,
-          variants: true,
+          variants: { select: { id: true, size: true, color: true, colorHex: true, stock: true } },
           category: true,
           reviews: { select: { rating: true } },
         },

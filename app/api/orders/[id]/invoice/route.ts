@@ -52,7 +52,7 @@ export async function GET(
     .map(
       (item) => `
       <tr>
-        <td style="padding: 10px; border-bottom: 1px solid #e5e5e5; font-size: 13px;">${escapeHtml(item.name)} (${escapeHtml(item.size)})</td>
+        <td style="padding: 10px; border-bottom: 1px solid #e5e5e5; font-size: 13px;">${escapeHtml(item.name)} (${escapeHtml(item.size)}${item.color ? ` · ${escapeHtml(item.color)}` : ""})</td>
         <td style="padding: 10px; border-bottom: 1px solid #e5e5e5; font-size: 13px; text-align: center;">${escapeHtml(item.qty)}</td>
         <td style="padding: 10px; border-bottom: 1px solid #e5e5e5; font-size: 13px; text-align: right;">${formatINR(item.unitPrice)}</td>
         <td style="padding: 10px; border-bottom: 1px solid #e5e5e5; font-size: 13px; text-align: right; font-family: monospace;">${formatINR(item.unitPrice * item.qty)}</td>

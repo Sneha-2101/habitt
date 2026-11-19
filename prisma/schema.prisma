@@ -64,10 +64,13 @@ model ProductVariant {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId String
   size      String
+  color     String  @default("")
+  colorHex  String?
+  sku       String? @unique
   stock     Int     @default(0)
   cartItems CartItem[]
 
-  @@unique([productId, size])
+  @@unique([productId, size, color])
 }
 
 enum ProductStatus {
@@ -171,6 +174,8 @@ model OrderItem {
   variantId String
   name      String
   size      String
+  color     String  @default("")
+  sku       String?
   unitPrice Int
   qty       Int
 }

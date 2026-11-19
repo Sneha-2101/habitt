@@ -27,7 +27,13 @@ export async function createTestProduct(opts?: {
   costPrice?: number | null;
   status?: "ACTIVE" | "DRAFT" | "ARCHIVED";
   categoryId?: string;
-  variants?: Array<{ size: string; stock: number }>;
+  variants?: Array<{
+    size: string;
+    stock: number;
+    color?: string;
+    colorHex?: string | null;
+    sku?: string | null;
+  }>;
 }) {
   const id = genId("m1test_prod");
   const slug = `m1test-prod-${crypto.randomBytes(4).toString("hex")}`;
@@ -73,6 +79,9 @@ export async function createTestProduct(opts?: {
         productId: product.id,
         size: v.size,
         stock: v.stock,
+        color: v.color ?? "",
+        colorHex: v.colorHex ?? null,
+        sku: v.sku ?? null,
       },
     });
     createdVariants.push(variant);

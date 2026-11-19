@@ -66,7 +66,7 @@ export default async function AdminDashboard() {
           <div className="border border-stone bg-white">
             {lowStock.map((v) => (
               <div key={v.id} className="flex justify-between px-4 py-3 text-[13px] border-b border-stone last:border-0">
-                <span>{v.product.name} — {v.size}</span>
+                <span>{v.product.name} — {v.size}{v.color ? ` · ${v.color}` : ""}</span>
                 <span className="text-clay font-medium">{v.stock} left</span>
               </div>
             ))}
