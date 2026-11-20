@@ -21,6 +21,7 @@ model Category {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   products  Product[]
+  offerTargets OfferTarget[]
 }
 
 model Product {
@@ -47,6 +48,8 @@ model Product {
   variants    ProductVariant[]
   wishlistItems WishlistItem[]
   reviews     Review[]
+  collections ProductCollection[]
+  offerTargets OfferTarget[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 }
@@ -111,6 +114,8 @@ model Order {
   statusEvents      OrderStatusEvent[]
   returnRequests    ReturnRequest[]
   notes             OrderNote[]
+  discounts         OrderDiscount[]
+  offerRedemptions  OfferRedemption[]
   couponCode        String?
   discountAmount    Int?
   giftMessage       String?
@@ -167,17 +172,20 @@ model SiteSettings {
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderId   String
-  productId String
-  variantId String
-  name      String
-  size      String
-  color     String  @default("")
-  sku       String?
-  unitPrice Int
-  qty       Int
+  id            String          @id @default(cuid())
+  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId       String
+  productId     String
+  variantId     String
+  name          String
+  size          String
+  color         String          @default("")
+  sku           String?
+  unitPrice     Int
+  qty           Int
+  discountPaise Int             @default(0)
+  isGift        Boolean         @default(false)
+  discounts     OrderDiscount[]
 }
 
 model OrderStatusEvent {
@@ -236,6 +244,7 @@ model User {
   storeCreditTransactions StoreCreditTransaction[]
   sessions               Session[]
   auditLogs              AuditLog[]
+  offerRedemptions       OfferRedemption[]
   createdAt              DateTime                 @default(now())
 }
 
@@ -483,3 +492,119 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([action, createdAt])
 }
+
+model Collection {
+  id           String              @id @default(cuid())
+  slug         String              @unique
+  name         String
+  position     Int                 @default(0)
+  active       Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  products     ProductCollection[]
+  offerTargets OfferTarget[]
+}
+
+model ProductCollection {
+  productId    String
+  collectionId String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([productId, collectionId])
+}
+
+enum OfferKind {
+  PERCENT_OFF
+  FLAT_OFF
+  TIER
+  COMBO_ANY
+  COMBO_SLOTS
+  GIFT
+}
+
+enum OfferAudience {
+  ALL
+  FIRST_ORDER
+  BIRTHDAY
+}
+
+model Offer {
+  id                 String            @id @default(cuid())
+  name               String
+  kind               OfferKind
+  code               String?           @unique
+  active             Boolean           @default(false)
+  startsAt           DateTime?
+  endsAt             DateTime?
+  minCartPaise       Int               @default(0)
+  maxUsesTotal       Int?
+  maxUsesPerCustomer Int?
+  timesUsed          Int               @default(0)
+  priority           Int               @default(100)
+  audience           OfferAudience     @default(ALL)
+  config             Json
+  legacyCouponId     String?           @unique
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  targets            OfferTarget[]
+  redemptions        OfferRedemption[]
+  discounts          OrderDiscount[]
+}
+
+model OfferTarget {
+  id           String      @id @default(cuid())
+  offer        Offer       @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  offerId      String
+  category     Category?   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  categoryId   String?
+  product      Product?    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId    String?
+  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  collectionId String?
+
+  @@unique([offerId, categoryId])
+  @@unique([offerId, productId])
+  @@unique([offerId, collectionId])
+}
+
+model OfferRedemption {
+  id          String   @id @default(cuid())
+  offer       Offer    @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  offerId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId     String
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId      String?
+  amountPaise Int
+  createdAt   DateTime @default(now())
+
+  @@unique([offerId, orderId])
+}
+
+enum OrderDiscountKind {
+  PERCENT_OFF
+  FLAT_OFF
+  TIER
+  COMBO_ANY
+  COMBO_SLOTS
+  GIFT_STOCK
+  GIFT_TEXT
+  COUPON_PERCENT
+  COUPON_FLAT
+}
+
+model OrderDiscount {
+  id          String            @id @default(cuid())
+  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId     String
+  offer       Offer?            @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  offerId     String?
+  label       String
+  kind        OrderDiscountKind
+  amountPaise Int               @default(0)
+  orderItem   OrderItem?        @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  orderItemId String?
+  createdAt   DateTime          @default(now())
+}
+

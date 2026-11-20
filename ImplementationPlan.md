@@ -18,16 +18,22 @@
 - Angy must not edit a test or production file just to get green; it reports and stops. Every prompt asks for the full `git diff` of every **existing** file edited, a DONE/PARTIAL/NOT DONE table, `git status --short` and `git diff --stat`.
 - Angy's reports are unreliable (it has invented code quotes and edited tests to pass), so every report is cross-checked against the repo and the diff before anything is committed.
 
-## Status summary (as built, after M2b)
+## Status summary (as built, after M3a)
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Paperwork | Ongoing (owner) | See the tracker below. |
-| M1 Foundation and hardening | **Done, committed** | Deviations from the plan: the `paymentStatus`/`fulfilmentStatus` split was **not** done (moved to M3a); Sentry is **not** installed (M8); CI exists but its first run has not been seen. |
+| M1 Foundation and hardening | **Done, committed** | Deviations from the plan: the `paymentStatus`/`fulfilmentStatus` split was moved to M3a; Sentry is in M8; CI exists. |
 | M2a Identity core | **Done, committed** | Session table checked on every protected action, staff email-OTP login with an owner-editable allowlist, audit log, new-device alert, sign out everywhere, passwords and signup removed. |
 | M2b Cart, addresses, contact | **Done, committed** | Server cart and sync, address book, contact change, customer step-up, verified-at fields, reviewer login. |
 | M2 follow-ups (fix-4, fix-5, addendum, cart timeouts) | **Done** | `maskIdentifier` fix, deterministic T8, T10 settings isolation, stable Turnstile test env, env-only `WHATSAPP_OTP_LIVE` with a production gate on phone login, phone step-up and phone contact change, `$transaction` `maxWait`/`timeout` on cart actions. |
 | M2 staging exit check | **Deferred until after M8** | Run `M2-STAGING-EXIT-CHECKLIST.md` against a real staging deployment. |
-| M3 onwards | Not started | Re-planned below. |
+| M3a-1 Order status split | **Done, committed** | Split `Order.status` into `paymentStatus` + `fulfilmentStatus` (migrations 7-8). |
+| M3a-2 Category table & sizes | **Done, committed** | Dynamic `Category` table + sizes array (migrations 9-10). |
+| M3a-2b Product merchandising fields | **Done, committed** | Compare-at, cost price (Prisma `omitApi`), HSN, fabric/fit/care, size chart, SEO (migration 11). |
+| M3a-2c Variants & order snapshots | **Done, committed** | Size x color x SKU variants and `OrderItem` snapshots (migration 12). |
+| M3b-1 Collections & Offers foundation | **In Progress** | Schema, pure validation, admin UI, coupon backfill. |
+| M3b-2 Offers evaluation engine | **Planned** | Pricing quote engine multi-step evaluation, order creation integration, coupon retirement. |
+| M3c onwards | Not started | Re-planned below. |
 
 ### Known issues carried into later milestones
 - **M3:** a coupon worth 0 does not count toward `timesUsed`; coupon codes are not forced uppercase on admin save; `create-order` matches an "already used" message string instead of a warning code; GST invoice maths is wrong and unnumbered; the free-shipping threshold uses the post-coupon subtotal; `/login` still opens on the phone tab.
@@ -75,13 +81,36 @@ Built: `Session` table checked on every protected action; customer sessions 365 
 ## M3 — Catalog model, pricing and checkout (split into three parts)
 Each part ends with its own read-only verification and a commit. Migrations are hand-written SQL with backfills (see `Schema.md` Part 2).
 
-### M3a — Data model
+### M3a — Data model — DONE (committed)
 **Scope:** `Category` table (seeded from the four enum values) and owner-editable size sets (E1); variant `color` and `sku` (E2); product fields: compare-at, cost, HSN, fabric/fit/care, size chart, SEO, `publishAt` (E3); **order status split** with backfill, all transition code and tests moved together (E4, D1); admin product form and storefront reads updated; `/login` defaults to the email tab and hides the phone tab until `WHATSAPP_OTP_LIVE` is true (small UI fix carried from M2).
-**Exit:** migrations apply to a copy of real data without loss; the full integration suite is green on the new states; no code reads the old `OrderStatus`.
+Completed in sub-phases:
+- M3a-1: Split `Order.status` into `paymentStatus` + `fulfilmentStatus` (migrations 7-8).
+- M3a-2: Dynamic `Category` table with position and sizes array (migrations 9-10).
+- M3a-2b: Product merchandising fields, compare-at, cost price (Prisma `omitApi`), fabric/fit/care, SEO (migration 11).
+- M3a-2c: Variants size x color x SKU, `OrderItem` snapshots (migration 12).
 
 ### M3b — Offers and pricing
-**Scope:** `Offer`, `OfferRedemption`, `OrderDiscount`; migrate `Coupon` rows and make the welcome and birthday coupons `Offer` rows (E6, D3); extend `lib/pricing/quote.ts` toward the nine-step order in `AppFlow.md` (sale prices, automatic offers and combos, one exclusive coupon with the better-of comparison message, global discount cap and cost floor, prepaid incentive = free shipping, COD fee and eligibility, store credit as the last tender); per-line discount allocation with largest-remainder rounding; the known coupon fixes (0-discount usage count, uppercase codes, warning code instead of message matching, free-shipping threshold basis); cart UI with the savings breakdown and nudges; `codBlocked` and the pending-COD cap.
-**Exit:** pricing golden tests pass; quote and `create-order` agree on every case; no total is ever computed on the client.
+Split into M3b-1 (foundation) and M3b-2 (engine):
+
+#### M3b-1 — Collections + Offers foundation (In Progress)
+- **Schema & Migrations:**
+  - `Collection` and `ProductCollection` join table.
+  - `OfferKind` enum: `PERCENT_OFF`, `FLAT_OFF`, `TIER`, `COMBO_ANY`, `COMBO_SLOTS`, `GIFT`.
+  - `OfferAudience` enum: `ALL`, `FIRST_ORDER`, `BIRTHDAY`.
+  - `Offer` model (name, kind, code, active, dates, usage limits, priority, audience, config Jsonb, legacyCouponId).
+  - `OfferTarget` (offerId, categoryId, productId, collectionId with check `num_nonnulls = 1`).
+  - `OfferRedemption` (offerId, orderId, userId, amountPaise).
+  - `OrderDiscountKind` enum and `OrderDiscount` model.
+  - `OrderItem` discountPaise and isGift fields.
+  - Backfill migration: `Coupon` rows backfilled into `Offer` with legacyCouponId.
+- **Pure Validation:** `lib/offers/schema.ts` (Zod schemas for config unions, cross-field rules, describeOffer helper).
+- **Server Actions:** `lib/actions/collections.ts`, `lib/actions/offers.ts` (requireStaff, audit logs, atomic target updates).
+- **Admin UI:** Collections manager (`/admin/collections`), Offers manager (`/admin/offers`, `/new`, `/[id]`), product form collections multi-select.
+
+#### M3b-2 — Offers evaluation engine (Planned)
+- Multi-step offer evaluation engine in `lib/pricing/quote.ts` (combos, tiers, automatic offers, exclusive coupon code with better-of comparison, gift items, per-line discount allocation).
+- Order checkout integration (`OrderDiscount` records, `OfferRedemption` records, safe discount allocation).
+- Deprecation and dropping of legacy `Coupon` table and legacy coupon admin.
 
 ### M3c — GST and invoices
 **Scope:** `GstRule`, `Invoice`, `CreditNote`, `InvoiceCounter`, per-line tax fields (E7); place of supply from `businessState` (Punjab) versus the shipping state; invoice numbering and a server-side PDF; receipt mode while `gstEnabled` is false; buyer GSTIN field; consent records for checkout opt-ins; checkout steps per `AppFlow.md` (address book with pincode autofill).

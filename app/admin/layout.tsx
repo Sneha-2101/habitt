@@ -41,6 +41,12 @@ export default async function AdminLayout({
               <Link href="/admin/categories" className="hover:text-ink transition-colors">
                 Categories
               </Link>
+              <Link href="/admin/collections" className="hover:text-ink transition-colors">
+                Collections
+              </Link>
+              <Link href="/admin/offers" className="hover:text-ink transition-colors">
+                Offers
+              </Link>
               <Link href="/admin/returns" className="hover:text-ink transition-colors">
                 Returns
               </Link>

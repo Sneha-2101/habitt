@@ -392,6 +392,16 @@ export async function updateProduct(productId: string, formData: FormData) {
       ...(user.role === "OWNER" ? { omit: { costPrice: false } } : {}),
     });
 
+    if (formData.has("hasCollections")) {
+      const collectionIds = formData.getAll("collectionIds").map(String).filter(Boolean);
+      await tx.productCollection.deleteMany({ where: { productId } });
+      if (collectionIds.length > 0) {
+        await tx.productCollection.createMany({
+          data: collectionIds.map((cId) => ({ productId, collectionId: cId })),
+        });
+      }
+    }
+
     return { updatedProduct: updated, beforeSnapshot: before };
   });
 

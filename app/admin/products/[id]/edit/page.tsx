@@ -23,10 +23,21 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   const resolvedParams = await params;
   const product = await prisma.product.findUnique({
     where: { id: resolvedParams.id },
-    include: { variants: true, images: { orderBy: { position: "asc" } }, category: true },
+    include: {
+      variants: true,
+      images: { orderBy: { position: "asc" } },
+      category: true,
+      collections: { select: { collectionId: true } },
+    },
     ...(isOwner ? { omit: { costPrice: false } } : {}),
   });
   if (!product) notFound();
+
+  const allCollections = await prisma.collection.findMany({
+    orderBy: { position: "asc" },
+    select: { id: true, name: true, slug: true, active: true },
+  });
+  const assignedCollectionIds = new Set(product.collections.map((c) => c.collectionId));
 
   const pickerCategories = await getPickerCategories();
   const allCategories = [...pickerCategories];
@@ -120,6 +131,30 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">COLLECTIONS</label>
+          <input type="hidden" name="hasCollections" value="1" />
+          <div className="border border-stone bg-card p-3 max-h-48 overflow-y-auto space-y-2">
+            {allCollections.length === 0 ? (
+              <p className="text-xs text-stone-dark">No collections created yet.</p>
+            ) : (
+              allCollections.map((col) => (
+                <label key={col.id} className="flex items-center space-x-2 text-xs text-ink cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="collectionIds"
+                    value={col.id}
+                    defaultChecked={assignedCollectionIds.has(col.id)}
+                    className="rounded border-stone text-ink focus:ring-0"
+                  />
+                  <span>
+                    {col.name} {!col.active && <span className="text-stone-dark">(Inactive)</span>}
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
         </div>
         <div>
           <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">PRICE (₹)</label>

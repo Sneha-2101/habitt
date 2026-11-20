@@ -339,6 +339,69 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
+  // 6b. Offers & Collections cleanup
+  await prisma.orderDiscount.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.offerRedemption.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { offerId: { startsWith: "m1test" } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.offerTarget.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { offerId: { startsWith: "m1test" } },
+        { categoryId: { startsWith: "m1test" } },
+        { productId: { startsWith: "m1test" } },
+        { collectionId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.productCollection.deleteMany({
+    where: {
+      OR: [
+        { productId: { startsWith: "m1test" } },
+        { collectionId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.offer.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { name: { startsWith: "m1test" } },
+        { code: { startsWith: "m1test" } },
+        { code: { startsWith: "M1TEST" } },
+        { legacyCouponId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.collection.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { slug: { startsWith: "m1test" } },
+        { name: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
   // 7. Order
   await prisma.order.deleteMany({
     where: {
@@ -521,6 +584,12 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     storeCreditTransactions: await prisma.storeCreditTransaction.count({ where: { id: { startsWith: "m1test" } } }),
     stockMovements: await prisma.stockMovement.count({ where: { id: { startsWith: "m1test" } } }),
     processedWebhooks: await prisma.processedWebhook.count({ where: { id: { startsWith: "m1test" } } }),
+    orderDiscounts: await prisma.orderDiscount.count({ where: { id: { startsWith: "m1test" } } }),
+    offerRedemptions: await prisma.offerRedemption.count({ where: { id: { startsWith: "m1test" } } }),
+    offerTargets: await prisma.offerTarget.count({ where: { id: { startsWith: "m1test" } } }),
+    productCollections: await prisma.productCollection.count({ where: { OR: [{ productId: { startsWith: "m1test" } }, { collectionId: { startsWith: "m1test" } }] } }),
+    offers: await prisma.offer.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { code: { startsWith: "m1test" } }, { code: { startsWith: "M1TEST" } }] } }),
+    collections: await prisma.collection.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { slug: { startsWith: "m1test" } }] } }),
     orders: await prisma.order.count({ where: { id: { startsWith: "m1test" } } }),
     coupons: await prisma.coupon.count({ where: { id: { startsWith: "m1test" } } }),
     productVariants: await prisma.productVariant.count({ where: { id: { startsWith: "m1test" } } }),
