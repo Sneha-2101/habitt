@@ -14,6 +14,7 @@ import { getWishlistProductIds } from "@/lib/actions/wishlist";
 import { getReviewsForProduct, getAverageRating } from "@/lib/actions/reviews";
 import { auth } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
+import { getActiveAutomaticOfferBadges, resolveOfferBadge } from "@/lib/offers/load";
 
 export async function generateMetadata({
   params,
@@ -57,16 +58,29 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const session = await auth(); // display only
   const userId = session?.user?.id;
 
-  const [product, wishlistIds, settings] = await Promise.all([
+  const [product, wishlistIds, settings, offerBadges] = await Promise.all([
     prisma.product.findUnique({
       where: { slug: resolvedParams.slug },
-      include: { images: true, variants: true, category: true },
+      include: {
+        images: true,
+        variants: true,
+        category: true,
+        collections: { select: { collectionId: true } },
+      },
     }),
     getWishlistProductIds(),
     getSettings(),
+    getActiveAutomaticOfferBadges(),
   ]);
 
   if (!product || product.status !== "ACTIVE") notFound();
+
+  const offerBadge = resolveOfferBadge(
+    product.id,
+    product.categoryId,
+    product.collections.map((c) => c.collectionId),
+    offerBadges
+  );
 
   const [reviews, ratingAggregate, hasPurchased, hasReviewed] = await Promise.all([
     getReviewsForProduct(product.id),
@@ -125,6 +139,14 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               <CareTag>{product.category?.name?.toUpperCase() ?? ""}</CareTag>
             </div>
           </div>
+
+          {offerBadge && (
+            <div className="mt-2">
+              <span className="inline-block px-2.5 py-0.5 bg-ink text-white text-[11px] font-medium tracking-wide uppercase rounded-sm">
+                {offerBadge}
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center gap-3 mt-3">
             <div className="flex items-center gap-2 font-mono text-lg font-medium">

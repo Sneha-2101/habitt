@@ -21,7 +21,6 @@ describe("Final Cleanup Check", () => {
       offers: await prisma.offer.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { code: { startsWith: "m1test" } }, { code: { startsWith: "M1TEST" } }] } }),
       collections: await prisma.collection.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { slug: { startsWith: "m1test" } }] } }),
       orders: await prisma.order.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }, { displayId: { startsWith: "m1test" } }] } }),
-      coupons: await prisma.coupon.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { code: { startsWith: "m1test" } }] } }),
       productVariants: await prisma.productVariant.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { productId: { startsWith: "m1test" } }] } }),
       products: await prisma.product.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { slug: { startsWith: "m1test" } }] } }),
       reviews: await prisma.review.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),

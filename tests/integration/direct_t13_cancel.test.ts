@@ -64,7 +64,7 @@ describe("T13: Cancellation Logic & Stock Integrity", () => {
       paymentMethod: "RAZORPAY",
       stockDeducted: false,
       storeCreditApplied: 10000,
-      couponCode: coupon.code,
+      couponCode: coupon.code ?? undefined,
     });
 
     await cancelOrderAsCustomer(order.id, "Customer changed mind");
@@ -86,7 +86,7 @@ describe("T13: Cancellation Logic & Stock Integrity", () => {
     expect(updatedUser?.storeCreditBalance).toBe(10000);
 
     // Coupon usage released
-    const updatedCoupon = await prisma.coupon.findUnique({ where: { id: coupon.id } });
+    const updatedCoupon = await prisma.offer.findUnique({ where: { id: coupon.id } });
     expect(updatedCoupon?.timesUsed).toBe(0);
 
     // Refund was NOT called because it wasn't paid

@@ -56,29 +56,35 @@ export async function GET(request: Request) {
     for (const user of birthdayUsers) {
       if (!user.email) continue;
 
-      // Check if coupon already generated for this user this year
+      // Check if offer already generated for this user this year
       const userTag = user.id.slice(-6).toUpperCase();
       const codePrefix = `BDAY-${currentYear}-${userTag}`;
-      const existingCoupon = await prisma.coupon.findFirst({
+      const existingOffer = await prisma.offer.findFirst({
         where: {
           code: { startsWith: codePrefix },
         },
       });
 
-      if (existingCoupon) continue;
+      if (existingOffer) continue;
 
       const randomSuffix = crypto.randomBytes(2).toString("hex").toUpperCase();
       const code = `${codePrefix}-${randomSuffix}`;
       const expiresAt = new Date(today);
       expiresAt.setDate(expiresAt.getDate() + 30); // 30 days validity
 
-      await prisma.coupon.create({
+      await prisma.offer.create({
         data: {
+          name: `Birthday ${discountPercent}% Off`,
+          kind: "PERCENT_OFF",
           code,
-          discountType: "PERCENT",
-          value: discountPercent,
-          usageLimit: 1,
-          expiresAt,
+          active: true,
+          startsAt: new Date(today),
+          endsAt: expiresAt,
+          audience: "BIRTHDAY",
+          maxUsesTotal: 1,
+          maxUsesPerCustomer: 1,
+          priority: 100,
+          config: { percent: discountPercent },
         },
       });
 

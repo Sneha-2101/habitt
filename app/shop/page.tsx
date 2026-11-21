@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import ProductCard from "@/components/ProductCard";
 import { getWishlistProductIds } from "@/lib/actions/wishlist";
+import { getActiveAutomaticOfferBadges, resolveOfferBadge } from "@/lib/offers/load";
 
 export default async function ShopPage({
   searchParams,
@@ -32,7 +33,7 @@ export default async function ShopPage({
       );
     }
 
-    const [dbProducts, wishlistIds] = await Promise.all([
+    const [dbProducts, wishlistIds, offerBadges] = await Promise.all([
       prisma.product.findMany({
         where: {
           status: "ACTIVE",
@@ -43,13 +44,23 @@ export default async function ShopPage({
           images: true,
           variants: { select: { id: true, size: true, color: true, colorHex: true, stock: true } },
           category: true,
+          collections: { select: { collectionId: true } },
           reviews: { select: { rating: true } },
         },
         orderBy: { createdAt: "desc" },
       }),
       getWishlistProductIds(),
+      getActiveAutomaticOfferBadges(),
     ]);
-    products = dbProducts;
+    products = dbProducts.map((p) => ({
+      ...p,
+      offerBadge: resolveOfferBadge(
+        p.id,
+        p.categoryId,
+        p.collections.map((c: { collectionId: string }) => c.collectionId),
+        offerBadges
+      ),
+    }));
     wishlistSet = new Set(wishlistIds);
   } catch (err) {
     console.error("ShopPage products fetch error:", err);

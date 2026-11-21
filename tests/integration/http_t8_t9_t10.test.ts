@@ -140,7 +140,7 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
     const statusesA = [resA1.status, resA2.status].sort();
     expect(statusesA).toEqual([200, 409]);
 
-    const checkedCoupon1 = await prisma.coupon.findUnique({ where: { id: couponLimit1.id } });
+    const checkedCoupon1 = await prisma.offer.findUnique({ where: { id: couponLimit1.id } });
     expect(checkedCoupon1?.timesUsed).toBe(1);
 
     // Part B: Coupon with usageLimit = null
@@ -164,7 +164,7 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
     expect(resB1.status).toBe(200);
     const dataB1 = await resB1.json();
 
-    const checkedCouponB1 = await prisma.coupon.findUnique({ where: { id: couponUnlimited.id } });
+    const checkedCouponB1 = await prisma.offer.findUnique({ where: { id: couponUnlimited.id } });
     expect(checkedCouponB1?.timesUsed).toBe(1);
 
     // Second order by same user with same coupon -> 409
@@ -196,7 +196,7 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
     });
 
     // Check that timesUsed decreased to 0
-    const checkedCouponB2 = await prisma.coupon.findUnique({ where: { id: couponUnlimited.id } });
+    const checkedCouponB2 = await prisma.offer.findUnique({ where: { id: couponUnlimited.id } });
     expect(checkedCouponB2?.timesUsed).toBe(0);
 
     // User can now use the coupon again -> 200
@@ -216,7 +216,7 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
     });
     expect(resB3.status).toBe(200);
 
-    const checkedCouponB3 = await prisma.coupon.findUnique({ where: { id: couponUnlimited.id } });
+    const checkedCouponB3 = await prisma.offer.findUnique({ where: { id: couponUnlimited.id } });
     expect(checkedCouponB3?.timesUsed).toBe(1);
   });
 

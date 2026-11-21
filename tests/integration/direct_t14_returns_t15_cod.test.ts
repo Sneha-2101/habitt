@@ -142,7 +142,7 @@ describe("T14 & T15: Returns and COD Refusal", () => {
       paymentMethod: "COD",
       stockDeducted: true,
       storeCreditApplied: 15000,
-      couponCode: coupon.code,
+      couponCode: coupon.code ?? undefined,
     });
 
     await markCodRefused(codOrder.id, "Customer rejected delivery at door");
@@ -167,7 +167,7 @@ describe("T14 & T15: Returns and COD Refusal", () => {
     expect(updatedUser?.storeCreditBalance).toBe(15000);
 
     // Coupon released back to 0
-    const updatedCoupon = await prisma.coupon.findUnique({ where: { id: coupon.id } });
+    const updatedCoupon = await prisma.offer.findUnique({ where: { id: coupon.id } });
     expect(updatedCoupon?.timesUsed).toBe(0);
 
     // 3. Second call throws

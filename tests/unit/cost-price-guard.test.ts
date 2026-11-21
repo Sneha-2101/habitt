@@ -14,6 +14,7 @@ const COST_PRICE_WHITELIST = [
   "lib/actions/products.ts",
   "lib/catalog/product-fields.ts",
   "lib/prisma.ts",
+  "lib/offers/load.ts",
   "app/admin/products/",
 ];
 

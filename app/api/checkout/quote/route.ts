@@ -77,6 +77,24 @@ export async function POST(req: Request) {
     return copy;
   });
 
-  return NextResponse.json({ ...quote, items: sanitizedItems });
+  const sanitizedAppliedOffers = (quote.appliedOffers || []).map((a) => ({
+    offerId: a.offerId,
+    label: a.label,
+    amountPaise: a.amountPaise,
+    kind: a.kind,
+  }));
+
+  const sanitizedGifts = (quote.gifts || []).map((g) => ({
+    label: g.label,
+    qty: g.qty,
+    type: g.type,
+  }));
+
+  return NextResponse.json({
+    ...quote,
+    items: sanitizedItems,
+    appliedOffers: sanitizedAppliedOffers,
+    gifts: sanitizedGifts,
+  });
 }
 

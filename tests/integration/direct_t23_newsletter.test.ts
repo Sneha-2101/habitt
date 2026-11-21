@@ -10,14 +10,14 @@ describe("T23: Newsletter Subscription & Coupon Generation", () => {
   beforeEach(async () => {
     resetMemoryLimits();
     await cleanupM1TestRows();
-    await prisma.coupon.deleteMany({
+    await prisma.offer.deleteMany({
       where: { code: { startsWith: "WELCOME-" } },
     });
   });
 
   afterEach(async () => {
     resetMemoryLimits();
-    await prisma.coupon.deleteMany({
+    await prisma.offer.deleteMany({
       where: { code: { startsWith: "WELCOME-" } },
     });
     await cleanupM1TestRows();
@@ -40,17 +40,17 @@ describe("T23: Newsletter Subscription & Coupon Generation", () => {
     expect(subscriber?.consentedAt).toBeInstanceOf(Date);
 
     // Verify newly generated welcome coupon
-    const couponsAfter1 = await prisma.coupon.findMany({
+    const couponsAfter1 = await prisma.offer.findMany({
       where: { code: { startsWith: "WELCOME-" } },
     });
     expect(couponsAfter1.length).toBe(1);
     const welcomeCoupon = couponsAfter1[0];
 
     // New coupon has usageLimit: 1 and 30-day expiry
-    expect(welcomeCoupon.usageLimit).toBe(1);
+    expect(welcomeCoupon.maxUsesTotal).toBe(1);
     expect(welcomeCoupon.timesUsed).toBe(0);
-    expect(welcomeCoupon.expiresAt).not.toBeNull();
-    const expiryDiffDays = (welcomeCoupon.expiresAt!.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    expect(welcomeCoupon.endsAt).not.toBeNull();
+    const expiryDiffDays = (welcomeCoupon.endsAt!.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     expect(Math.round(expiryDiffDays)).toBeGreaterThanOrEqual(29);
     expect(Math.round(expiryDiffDays)).toBeLessThanOrEqual(31);
 
@@ -61,7 +61,7 @@ describe("T23: Newsletter Subscription & Coupon Generation", () => {
     expect((res2 as any).code).toBeUndefined();
 
     // No second coupon must be created
-    const couponsAfter2 = await prisma.coupon.findMany({
+    const couponsAfter2 = await prisma.offer.findMany({
       where: { code: { startsWith: "WELCOME-" } },
     });
     expect(couponsAfter2.length).toBe(1);

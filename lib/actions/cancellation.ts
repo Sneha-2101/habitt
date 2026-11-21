@@ -8,6 +8,7 @@ import { canTransition } from "@/lib/orders/transitions";
 import { legacyStage } from "@/lib/orders/status-label";
 import { revalidatePath } from "next/cache";
 import { sendCancellationEmail } from "@/lib/email";
+import { releaseOfferUsage } from "@/lib/offers/release";
 
 export async function cancelOrderAsCustomer(orderId: string, reason: string) {
   const user = await requireUser();
@@ -74,13 +75,8 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
       });
     }
 
-    // Release coupon usage
-    if (order.couponCode) {
-      await tx.coupon.updateMany({
-        where: { code: order.couponCode, timesUsed: { gt: 0 } },
-        data: { timesUsed: { decrement: 1 } },
-      });
-    }
+    // Release offer usage and redemptions
+    await releaseOfferUsage(tx, order.id);
 
     await tx.orderStatusEvent.create({
       data: {
@@ -217,13 +213,8 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
       });
     }
 
-    // Release coupon usage
-    if (order.couponCode) {
-      await tx.coupon.updateMany({
-        where: { code: order.couponCode, timesUsed: { gt: 0 } },
-        data: { timesUsed: { decrement: 1 } },
-      });
-    }
+    // Release offer usage and redemptions
+    await releaseOfferUsage(tx, order.id);
 
     await tx.orderStatusEvent.create({
       data: {

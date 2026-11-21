@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma, Order, OrderItem, PaymentStatus, FulfilmentStatus, PaymentMethod } from "@prisma/client";
+import { Prisma, Order, OrderItem, PaymentStatus, FulfilmentStatus, PaymentMethod, OrderDiscountKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
 import { getSessionUser } from "@/lib/sessions";
@@ -17,10 +17,12 @@ class StoreCreditConflictError extends Error {
   }
 }
 
-class CouponConflictError extends Error {
-  constructor(message = "Coupon no longer available") {
+class OfferConflictError extends Error {
+  code: string;
+  constructor(code = "OFFER_LIMIT_REACHED", message = "Offer is no longer available") {
     super(message);
-    this.name = "CouponConflictError";
+    this.name = "OfferConflictError";
+    this.code = code;
   }
 }
 
@@ -110,17 +112,18 @@ export async function POST(req: Request) {
   // Check structured warnings from quote engine
   for (const w of quote.warnings) {
     if (w.type === "MAX_QTY_EXCEEDED") {
-      return NextResponse.json({ error: w.message }, { status: 400 });
+      return NextResponse.json({ error: w.message, code: "MAX_QTY_EXCEEDED" }, { status: 400 });
     }
     if (w.type === "ITEM_UNAVAILABLE" || w.type === "STOCK_EXCEEDED") {
-      return NextResponse.json({ error: w.message }, { status: 409 });
+      return NextResponse.json({ error: w.message, code: w.code || "STOCK_EXCEEDED" }, { status: 409 });
     }
     if (w.type === "INVALID_COUPON") {
-      const status = w.message.includes("already used") ? 409 : 400;
-      return NextResponse.json({ error: w.message }, { status });
+      const isLimit = w.code === "COUPON_LIMIT_REACHED" || w.code === "OFFER_LIMIT_REACHED";
+      const status = isLimit ? 409 : 400;
+      return NextResponse.json({ error: w.message, code: w.code || "INVALID_COUPON" }, { status });
     }
     if (w.type === "EMPTY_CART") {
-      return NextResponse.json({ error: w.message }, { status: 400 });
+      return NextResponse.json({ error: w.message, code: "EMPTY_CART" }, { status: 400 });
     }
   }
 
@@ -135,7 +138,12 @@ export async function POST(req: Request) {
   const subtotal = quote.subtotal;
   const shippingFee = quote.shippingFee;
   const discountAmount = quote.discount;
-  const appliedCouponCode = discountAmount > 0 ? (data.couponCode?.trim().toUpperCase() || undefined) : undefined;
+  const appliedCouponCode =
+    quote.couponResult?.accepted && data.couponCode
+      ? data.couponCode.trim().toUpperCase()
+      : discountAmount > 0 && data.couponCode
+      ? data.couponCode.trim().toUpperCase()
+      : undefined;
   const total = quote.total;
   const orderItemsData = quote.items;
 
@@ -205,7 +213,7 @@ export async function POST(req: Request) {
     if (res) return res;
   }
 
-  // 4. Create Order inside Transaction with guarded coupon increment, store credit debit, and strict stock reservation
+  // 4. Create Order inside Transaction with guarded offer limit checks, store credit debit, and strict stock reservation
   let createdOrder: (Order & { items: OrderItem[] }) | null = null;
   let payable = total;
   let storeCreditApplied = 0;
@@ -217,48 +225,67 @@ export async function POST(req: Request) {
       const displayId = generateDisplayId();
 
       createdOrder = await prisma.$transaction(async (tx) => {
-        // 4a. Check coupon user reuse inside transaction
-        if (appliedCouponCode) {
-          const priorUserOrder = await tx.order.findFirst({
-            where: {
-              userId,
-              couponCode: appliedCouponCode,
-              paymentStatus: { not: "FAILED" },
-              fulfilmentStatus: { not: "CANCELLED" },
-            },
-          });
-          if (priorUserOrder) {
-            throw new CouponConflictError("You have already used this coupon code.");
-          }
-
-          const coupon = await tx.coupon.findUnique({
-            where: { code: appliedCouponCode },
-          });
-
-          if (!coupon) {
-            throw new CouponConflictError("Coupon no longer available");
-          }
-
-          if (coupon.expiresAt && coupon.expiresAt < new Date()) {
-            throw new CouponConflictError("Coupon has expired");
-          }
-
-          if (coupon.usageLimit !== null) {
-            const inc = await tx.coupon.updateMany({
-              where: {
-                id: coupon.id,
-                timesUsed: { lt: coupon.usageLimit },
-              },
-              data: { timesUsed: { increment: 1 } },
+        // 4a. Re-check usage limits per applied offer inside transaction (atomic update/check)
+        const candidateOffers = new Map<string, { offerId: string; amountPaise: number }>();
+        for (const applied of quote.appliedOffers) {
+          if (applied.offerId) {
+            const existing = candidateOffers.get(applied.offerId);
+            candidateOffers.set(applied.offerId, {
+              offerId: applied.offerId,
+              amountPaise: (existing?.amountPaise || 0) + applied.amountPaise,
             });
-            if (inc.count === 0) {
-              throw new CouponConflictError("Coupon usage limit has been reached");
+          }
+        }
+        for (const g of quote.gifts) {
+          if (g.offerId && !candidateOffers.has(g.offerId)) {
+            candidateOffers.set(g.offerId, { offerId: g.offerId, amountPaise: 0 });
+          }
+        }
+
+        for (const item of candidateOffers.values()) {
+          const offer = await tx.offer.findUnique({
+            where: { id: item.offerId },
+          });
+
+          if (!offer || !offer.active) {
+            throw new OfferConflictError("OFFER_LIMIT_REACHED", "Offer is no longer available");
+          }
+
+          if (offer.endsAt && offer.endsAt < new Date()) {
+            throw new OfferConflictError("OFFER_LIMIT_REACHED", "Offer has expired");
+          }
+
+          if (item.amountPaise > 0) {
+            const count = await tx.$executeRaw`
+              UPDATE "Offer"
+              SET "timesUsed" = "timesUsed" + 1
+              WHERE "id" = ${offer.id}
+                AND "active" = true
+                AND ("maxUsesTotal" IS NULL OR "timesUsed" < "maxUsesTotal")
+            `;
+            if (count === 0) {
+              throw new OfferConflictError("OFFER_LIMIT_REACHED", "Offer total usage limit has been reached");
             }
-          } else {
-            await tx.coupon.update({
-              where: { id: coupon.id },
-              data: { timesUsed: { increment: 1 } },
+          }
+
+          if (offer.maxUsesPerCustomer !== null && userId) {
+            await tx.$queryRaw`SELECT "id" FROM "Offer" WHERE "id" = ${offer.id} FOR UPDATE`;
+            const customerUses = await tx.offerRedemption.count({
+              where: {
+                userId,
+                offerId: offer.id,
+                order: {
+                  paymentStatus: { not: "FAILED" },
+                  fulfilmentStatus: { not: "CANCELLED" },
+                },
+              },
             });
+            if (customerUses >= offer.maxUsesPerCustomer) {
+              throw new OfferConflictError(
+                "OFFER_LIMIT_REACHED",
+                offer.code ? "You have already used this coupon code." : "You have reached the usage limit for this offer"
+              );
+            }
           }
         }
 
@@ -306,6 +333,58 @@ export async function POST(req: Request) {
           ? "PLACED"
           : "CREATED";
 
+        // Prepare OrderItem data: normal lines with discountPaise + stock gifts
+        const lineItemsToCreate: {
+          productId: string;
+          variantId: string;
+          name: string;
+          size: string;
+          color: string;
+          sku: string | null;
+          unitPrice: number;
+          qty: number;
+          discountPaise: number;
+          isGift: boolean;
+        }[] = orderItemsData.map((i) => ({
+          productId: i.productId,
+          variantId: i.variantId,
+          name: i.name,
+          size: i.size,
+          color: i.color ?? "",
+          sku: i.sku ?? null,
+          unitPrice: i.unitPrice,
+          qty: i.qty,
+          discountPaise: i.discountPaise || 0,
+          isGift: false,
+        }));
+
+        // Stock gifts: variant gifts become 0-rupee lines with isGift true
+        const giftVariantItems: typeof lineItemsToCreate = [];
+        for (const g of quote.gifts) {
+          if (g.type === "VARIANT" && g.variantId) {
+            const v = await tx.productVariant.findUnique({
+              where: { id: g.variantId },
+              include: { product: true },
+            });
+            if (v && v.stock >= g.qty) {
+              giftVariantItems.push({
+                productId: v.productId,
+                variantId: v.id,
+                name: v.product.name,
+                size: v.size,
+                color: v.color || "",
+                sku: v.sku || null,
+                unitPrice: 0,
+                qty: g.qty,
+                discountPaise: 0,
+                isGift: true,
+              });
+            }
+          }
+        }
+
+        const allItemsToCreate = [...lineItemsToCreate, ...giftVariantItems];
+
         // Create Order
         const newOrder = await tx.order.create({
           data: {
@@ -327,20 +406,78 @@ export async function POST(req: Request) {
             fulfilmentStatus: initialFulfilmentStatus,
             paymentMethod: selectedPaymentMethod,
             items: {
-              create: orderItemsData.map((i) => ({
-                productId: i.productId,
-                variantId: i.variantId,
-                name: i.name,
-                size: i.size,
-                color: i.color ?? "",
-                sku: i.sku ?? null,
-                unitPrice: i.unitPrice,
-                qty: i.qty,
-              })),
+              create: allItemsToCreate,
             },
           },
           include: { items: true },
         });
+
+        // Write OrderDiscount rows
+        for (const applied of quote.appliedOffers) {
+          let kind: OrderDiscountKind = applied.kind as OrderDiscountKind;
+          if (appliedCouponCode && (applied.kind === "PERCENT_OFF" || applied.kind === "FLAT_OFF")) {
+            kind = applied.kind === "PERCENT_OFF" ? "COUPON_PERCENT" : "COUPON_FLAT";
+          }
+
+          await tx.orderDiscount.create({
+            data: {
+              orderId: newOrder.id,
+              offerId: applied.offerId,
+              label: applied.label,
+              kind,
+              amountPaise: applied.amountPaise,
+            },
+          });
+        }
+
+        // Text gift OrderDiscount rows
+        for (const g of quote.gifts) {
+          if (g.type === "TEXT" && g.text) {
+            await tx.orderDiscount.create({
+              data: {
+                orderId: newOrder.id,
+                offerId: g.offerId,
+                label: g.label,
+                kind: "GIFT_TEXT",
+                amountPaise: 0,
+              },
+            });
+          } else if (g.type === "VARIANT" && g.variantId) {
+            const giftItem = newOrder.items.find((item) => item.isGift && item.variantId === g.variantId);
+            await tx.orderDiscount.create({
+              data: {
+                orderId: newOrder.id,
+                offerId: g.offerId,
+                label: g.label,
+                kind: "GIFT_STOCK",
+                amountPaise: 0,
+                orderItemId: giftItem?.id || null,
+              },
+            });
+          }
+        }
+
+        // Write OfferRedemption rows (unique offerId + orderId)
+        const redeemedOfferMap = new Map<string, number>();
+        for (const a of quote.appliedOffers) {
+          redeemedOfferMap.set(a.offerId, (redeemedOfferMap.get(a.offerId) || 0) + a.amountPaise);
+        }
+        for (const g of quote.gifts) {
+          if (!redeemedOfferMap.has(g.offerId)) {
+            redeemedOfferMap.set(g.offerId, 0);
+          }
+        }
+
+        for (const [offerId, amountPaise] of redeemedOfferMap.entries()) {
+          await tx.offerRedemption.create({
+            data: {
+              offerId,
+              orderId: newOrder.id,
+              userId: userId || null,
+              amountPaise,
+            },
+          });
+        }
 
         // Record store credit transaction if applied
         if (storeCreditApplied > 0) {
@@ -360,7 +497,7 @@ export async function POST(req: Request) {
         if (isCod || isZeroTotal) {
           await reserveStock(
             tx,
-            orderItemsData.map((i) => ({ variantId: i.variantId, qty: i.qty })),
+            allItemsToCreate.map((i) => ({ variantId: i.variantId, qty: i.qty })),
             isCod ? "COD_PLACED" : "STORE_CREDIT_PLACED",
             { refType: "Order", refId: newOrder.id }
           );
@@ -387,13 +524,17 @@ export async function POST(req: Request) {
 
       break; // Transaction succeeded
     } catch (err: unknown) {
-      if (err instanceof StoreCreditConflictError || err instanceof CouponConflictError) {
-        return NextResponse.json({ error: err.message }, { status: 409 });
+      if (err instanceof StoreCreditConflictError) {
+        return NextResponse.json({ error: err.message, code: "STORE_CREDIT_CONFLICT" }, { status: 409 });
+      }
+
+      if (err instanceof OfferConflictError) {
+        return NextResponse.json({ error: err.message, code: err.code }, { status: 409 });
       }
 
       if (err instanceof InsufficientStockError) {
         return NextResponse.json(
-          { error: "One or more items in your cart is no longer available" },
+          { error: "One or more items in your cart is no longer available", code: "INSUFFICIENT_STOCK" },
           { status: 409 }
         );
       }

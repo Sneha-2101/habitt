@@ -6,7 +6,6 @@ import { useSession } from "next-auth/react";
 import Script from "next/script";
 import { useCartStore } from "@/lib/cart-store";
 import { formatINR } from "@/lib/money";
-import { validateCoupon } from "@/lib/actions/coupons";
 import { ShippingNote } from "@/lib/pricing/shipping";
 
 declare global {
@@ -47,7 +46,19 @@ interface QuoteData {
   };
   warnings: Array<{
     type: string;
+    code?: string;
     message: string;
+  }>;
+  appliedOffers?: Array<{
+    offerId: string;
+    label: string;
+    amountPaise: number;
+    kind: string;
+  }>;
+  gifts?: Array<{
+    label: string;
+    qty: number;
+    type: "VARIANT" | "TEXT";
   }>;
 }
 
@@ -83,7 +94,6 @@ export default function CheckoutPage() {
   const [couponCodeInput, setCouponCodeInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discountAmount: number } | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
-  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
   // Collapsed Gift Message state
   const [showGiftMessage, setShowGiftMessage] = useState(false);
@@ -216,21 +226,11 @@ export default function CheckoutPage() {
     }
   }, [quote?.subtotal, items]);
 
-  async function handleApplyCoupon() {
-    if (!couponCodeInput.trim()) return;
+  function handleApplyCoupon() {
+    const code = couponCodeInput.trim().toUpperCase();
+    if (!code) return;
     setCouponError(null);
-    setIsValidatingCoupon(true);
-    try {
-      const res = await validateCoupon(couponCodeInput, quote?.subtotal || 0);
-      if (res.valid) {
-        setAppliedCoupon({ code: res.code, discountAmount: res.discountAmount });
-        setCouponError(null);
-      }
-    } catch (err) {
-      setCouponError(err instanceof Error ? err.message : "Invalid coupon");
-    } finally {
-      setIsValidatingCoupon(false);
-    }
+    setAppliedCoupon({ code, discountAmount: 0 });
   }
 
   const isZeroTotal = quote ? quote.payable === 0 && quote.storeCreditApplied > 0 : false;
@@ -476,11 +476,11 @@ export default function CheckoutPage() {
                 />
                 <button
                   type="button"
-                  disabled={isValidatingCoupon}
+                  disabled={isQuoteLoading}
                   onClick={handleApplyCoupon}
                   className="px-3.5 py-1.5 bg-ink text-white text-xs font-medium rounded-sm disabled:opacity-50"
                 >
-                  {isValidatingCoupon ? "VALIDATING..." : "APPLY"}
+                  {isQuoteLoading ? "VALIDATING..." : "APPLY"}
                 </button>
               </div>
               {appliedCoupon && (
@@ -617,6 +617,17 @@ export default function CheckoutPage() {
           </div>
         ))}
 
+        {quote?.gifts && quote.gifts.length > 0 && (
+          <div className="pt-2 border-t border-stone/30 space-y-1">
+            {quote.gifts.map((g, idx) => (
+              <div key={idx} className="flex justify-between items-center text-xs text-moss font-medium">
+                <span>Free gift: {g.label} x {g.qty}</span>
+                <span className="font-mono text-[11px] uppercase tracking-wider text-moss">FREE</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {quote ? (
           <div className="pt-2 mt-2 border-t border-stone/40 text-xs space-y-1">
             <div className="flex justify-between text-stone-dark">
@@ -624,7 +635,18 @@ export default function CheckoutPage() {
               <span className="font-mono">{formatINR(quote.subtotal)}</span>
             </div>
 
-            {quote.discount > 0 && (
+            {quote.appliedOffers && quote.appliedOffers.length > 0 && (
+              <div className="pt-1 pb-1 space-y-1">
+                {quote.appliedOffers.map((o, idx) => (
+                  <div key={idx} className="flex justify-between text-moss text-xs">
+                    <span>✓ {o.label}</span>
+                    <span className="font-mono">-{formatINR(o.amountPaise)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {quote.discount > 0 && (!quote.appliedOffers || quote.appliedOffers.length === 0) && (
               <div className="flex justify-between text-moss font-medium">
                 <span>Discount {appliedCoupon?.code ? `(${appliedCoupon.code})` : ""}</span>
                 <span className="font-mono">-{formatINR(quote.discount)}</span>

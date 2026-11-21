@@ -33,11 +33,6 @@ export default async function AdminOffersPage() {
 
   return (
     <main className="px-7 py-9 max-w-5xl mx-auto">
-      {/* Banner per M3b-1 specs */}
-      <div className="mb-6 p-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs">
-        <span className="font-semibold">Notice:</span> Offers are saved but do not affect the storefront yet. The evaluation engine activates in M3b-2.
-      </div>
-
       <div className="flex justify-between items-center mb-7">
         <div>
           <h1 className="font-display text-2xl font-medium">Offers &amp; Promotions</h1>

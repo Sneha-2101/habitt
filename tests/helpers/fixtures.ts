@@ -95,18 +95,28 @@ export async function createTestCoupon(opts?: {
   value?: number;
   usageLimit?: number | null;
   timesUsed?: number;
+  expiresAt?: Date | null;
 }) {
-  const id = genId("m1test_cpn");
+  const id = genId("m1test_off");
   const code = `m1test_${crypto.randomBytes(4).toString("hex")}`.toUpperCase();
+  const isPercent = (opts?.discountType ?? "PERCENT") === "PERCENT";
+  const kind = isPercent ? ("PERCENT_OFF" as const) : ("FLAT_OFF" as const);
+  const config = isPercent ? { percent: opts?.value ?? 10 } : { amountPaise: opts?.value ?? 1000 };
 
-  return prisma.coupon.create({
+  return prisma.offer.create({
     data: {
       id,
+      name: code,
+      kind,
       code,
-      discountType: opts?.discountType ?? "PERCENT",
-      value: opts?.value ?? 10,
-      usageLimit: opts?.usageLimit === undefined ? 1 : opts?.usageLimit,
+      active: true,
+      priority: 100,
+      audience: "ALL",
+      config,
+      maxUsesTotal: opts?.usageLimit === undefined ? 1 : opts?.usageLimit,
+      maxUsesPerCustomer: 1,
       timesUsed: opts?.timesUsed ?? 0,
+      endsAt: opts?.expiresAt ?? null,
     },
   });
 }
@@ -200,7 +210,7 @@ export async function createTestOrder(opts: {
     if (opts.fulfilmentStatus) derivedFulfilmentStatus = opts.fulfilmentStatus;
   }
 
-  return prisma.order.create({
+  const order = await prisma.order.create({
     data: {
       id,
       displayId,
@@ -244,6 +254,24 @@ export async function createTestOrder(opts: {
       items: true,
     },
   });
+
+  if (opts.couponCode) {
+    const offer = await prisma.offer.findFirst({
+      where: { code: opts.couponCode },
+    });
+    if (offer) {
+      await prisma.offerRedemption.create({
+        data: {
+          orderId: order.id,
+          offerId: offer.id,
+          userId: opts.userId,
+          amountPaise: opts.discountAmount || 1000,
+        },
+      });
+    }
+  }
+
+  return order;
 }
 
 export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; details: Record<string, number> }> {
@@ -415,15 +443,6 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
-  // 8. Coupon
-  await prisma.coupon.deleteMany({
-    where: {
-      OR: [
-        { id: { startsWith: "m1test" } },
-        { code: { startsWith: "m1test" } },
-      ],
-    },
-  });
 
   // 9. ProductImage
   await prisma.productImage.deleteMany({
@@ -591,7 +610,6 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     offers: await prisma.offer.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { code: { startsWith: "m1test" } }, { code: { startsWith: "M1TEST" } }] } }),
     collections: await prisma.collection.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { slug: { startsWith: "m1test" } }] } }),
     orders: await prisma.order.count({ where: { id: { startsWith: "m1test" } } }),
-    coupons: await prisma.coupon.count({ where: { id: { startsWith: "m1test" } } }),
     productVariants: await prisma.productVariant.count({ where: { id: { startsWith: "m1test" } } }),
     products: await prisma.product.count({ where: { id: { startsWith: "m1test" } } }),
     reviews: await prisma.review.count({ where: { id: { startsWith: "m1test" } } }),

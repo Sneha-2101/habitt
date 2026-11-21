@@ -1,5 +1,6 @@
 import { Prisma, Order } from "@prisma/client";
 import { releaseStock } from "@/lib/stock";
+import { releaseOfferUsage } from "@/lib/offers/release";
 
 export type OrderWithItems = Order & {
   items: Array<{ variantId: string; qty: number }>;
@@ -42,13 +43,8 @@ export async function failOrder(
     });
   }
 
-  // 3. Release coupon usage
-  if (order.couponCode) {
-    await tx.coupon.updateMany({
-      where: { code: order.couponCode, timesUsed: { gt: 0 } },
-      data: { timesUsed: { decrement: 1 } },
-    });
-  }
+  // 3. Release offer usage and redemptions
+  await releaseOfferUsage(tx, order.id);
 
   // 4. Release stock only if stock was deducted
   if (order.stockDeducted && order.items && order.items.length > 0) {

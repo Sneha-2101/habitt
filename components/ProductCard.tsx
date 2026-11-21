@@ -20,6 +20,7 @@ interface ProductCardProps {
     images?: Array<{ url: string }>;
     variants?: Array<{ id: string; size: string; stock: number; color?: string; colorHex?: string | null }>;
     reviews?: Array<{ rating: number }>;
+    offerBadge?: string | null;
   };
   initialSaved?: boolean;
   lowStockThreshold?: number;
@@ -54,6 +55,11 @@ export default function ProductCard({ product, initialSaved = false, lowStockThr
           className="block bg-white rounded-2xl p-2 border border-stone/30 shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.1)] transition-all duration-300"
         >
           <div className="relative">
+            {product.offerBadge && (
+              <span className="absolute top-2 left-2 z-10 px-2 py-0.5 bg-ink text-white text-[10px] font-medium tracking-wide uppercase rounded-sm shadow-sm">
+                {product.offerBadge}
+              </span>
+            )}
             <ProductSwatchImage url={product.images?.[0]?.url} category={categoryName} />
             
             {/* Quick-view hover overlay trigger (Desktop only) */}

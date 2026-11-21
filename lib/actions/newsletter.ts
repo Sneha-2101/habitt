@@ -62,17 +62,23 @@ export async function subscribeNewsletter(email: string): Promise<{ success: boo
   const code = `WELCOME-${randomSuffix}`;
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-  const coupon = await prisma.coupon.create({
+  const offer = await prisma.offer.create({
     data: {
+      name: `Welcome ${welcomePercent}% Off`,
+      kind: "PERCENT_OFF",
       code,
-      discountType: "PERCENT",
-      value: welcomePercent,
-      usageLimit: 1,
-      expiresAt,
+      active: true,
+      startsAt: new Date(),
+      endsAt: expiresAt,
+      audience: "FIRST_ORDER",
+      maxUsesTotal: 1,
+      maxUsesPerCustomer: 1,
+      priority: 100,
+      config: { percent: welcomePercent },
     },
   });
 
-  await sendNewsletterWelcomeEmail(normalizedEmail, coupon.code);
+  await sendNewsletterWelcomeEmail(normalizedEmail, offer.code!);
 
   return { success: true };
 }

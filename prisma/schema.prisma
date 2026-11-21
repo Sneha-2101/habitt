@@ -353,21 +353,7 @@ model Review {
   @@unique([userId, productId])
 }
 
-model Coupon {
-  id           String       @id @default(cuid())
-  code         String       @unique
-  discountType DiscountType @default(PERCENT)
-  value        Int
-  expiresAt    DateTime?
-  usageLimit   Int?
-  timesUsed    Int          @default(0)
-  createdAt    DateTime     @default(now())
-}
 
-enum DiscountType {
-  PERCENT
-  FLAT
-}
 
 model StockNotification {
   id        String   @id @default(cuid())

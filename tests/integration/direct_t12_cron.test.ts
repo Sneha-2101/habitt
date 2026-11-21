@@ -72,7 +72,7 @@ describe("T12: Cron Handlers Auth & Execution", () => {
     const coupon = await createTestCoupon({ usageLimit: 1, value: 10 });
 
     // Mark coupon used once
-    await prisma.coupon.update({
+    await prisma.offer.update({
       where: { id: coupon.id },
       data: { timesUsed: 1 },
     });
@@ -86,7 +86,7 @@ describe("T12: Cron Handlers Auth & Execution", () => {
       paymentMethod: "RAZORPAY",
       stockDeducted: false,
       storeCreditApplied: 20000,
-      couponCode: coupon.code,
+      couponCode: coupon.code ?? undefined,
       createdAt: threeHoursAgo,
     });
 
@@ -128,7 +128,7 @@ describe("T12: Cron Handlers Auth & Execution", () => {
     expect(creditTxs[0].amount).toBe(20000);
 
     // Coupon timesUsed decremented back to 0
-    const updatedCoupon = await prisma.coupon.findUnique({ where: { id: coupon.id } });
+    const updatedCoupon = await prisma.offer.findUnique({ where: { id: coupon.id } });
     expect(updatedCoupon?.timesUsed).toBe(0);
   });
 

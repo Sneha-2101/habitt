@@ -6,6 +6,7 @@ import { releaseStock } from "@/lib/stock";
 import { canTransition } from "@/lib/orders/transitions";
 import { legacyStage } from "@/lib/orders/status-label";
 import { revalidatePath } from "next/cache";
+import { releaseOfferUsage } from "@/lib/offers/release";
 
 export async function markCodRefused(orderId: string, note?: string) {
   await requireStaff();
@@ -73,13 +74,8 @@ export async function markCodRefused(orderId: string, note?: string) {
       });
     }
 
-    // 4. Release coupon usage
-    if (order.couponCode) {
-      await tx.coupon.updateMany({
-        where: { code: order.couponCode, timesUsed: { gt: 0 } },
-        data: { timesUsed: { decrement: 1 } },
-      });
-    }
+    // 4. Release offer usage and redemptions
+    await releaseOfferUsage(tx, order.id);
 
     // 5. Log status event
     await tx.orderStatusEvent.create({
