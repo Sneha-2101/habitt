@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/guards";
 import { revalidatePath } from "next/cache";
 import { sendShipmentNotificationEmail } from "@/lib/email";
+import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
 
 export async function bulkMarkShipped(
   shipments: {
@@ -96,6 +97,21 @@ export async function bulkMarkShipped(
       if (!updated) {
         skipped.push({ orderId: item.orderId, reason: "Order already changed" });
         continue;
+      }
+
+      // Issue invoice in its own transaction after shipping transaction commits
+      try {
+        await prisma.$transaction(async (invTx) => {
+          await issueInvoiceForOrder(invTx, order.id);
+        });
+      } catch (invErr) {
+        console.error(`Failed to issue invoice for bulk order ${order.id}:`, invErr);
+        await prisma.orderStatusEvent.create({
+          data: {
+            orderId: order.id,
+            note: "INVOICE PENDING: retry from admin",
+          },
+        });
       }
 
       successCount++;

@@ -806,6 +806,16 @@ export default function AccountClient({
                         >
                           📄 Download Invoice
                         </a>
+                        {(o.fulfilmentStatus === "CANCELLED" || o.paymentStatus === "REFUNDED") && (
+                          <a
+                            href={`/api/orders/${o.id}/credit-note`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-medium text-ink underline hover:text-moss"
+                          >
+                            📋 Credit Note
+                          </a>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleReorder(o.items)}

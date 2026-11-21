@@ -9,6 +9,7 @@ import { legacyStage } from "@/lib/orders/status-label";
 import { revalidatePath } from "next/cache";
 import { sendCancellationEmail } from "@/lib/email";
 import { releaseOfferUsage } from "@/lib/offers/release";
+import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
 
 export async function cancelOrderAsCustomer(orderId: string, reason: string) {
   const user = await requireUser();
@@ -276,6 +277,26 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
         },
       });
     }
+  }
+
+  // Issue Credit Note in its own transaction after cancellation/refund transaction commits
+  try {
+    await prisma.$transaction(async (cnTx) => {
+      await createCreditNoteForRefund(cnTx, {
+        orderId: order.id,
+        reason: `Cancelled by admin: ${cancellationReason}`,
+        refundRef: `cancel-admin-${order.id}`,
+        refundedItems: order.items.map((i) => ({ orderItemId: i.id, qty: i.qty })),
+      });
+    });
+  } catch (cnErr) {
+    console.error(`Failed to create credit note on admin cancel for order ${order.id}:`, cnErr);
+    await prisma.orderStatusEvent.create({
+      data: {
+        orderId,
+        note: `CREDIT NOTE PENDING (refundRef=cancel-admin-${order.id})`,
+      },
+    });
   }
 
   sendCancellationEmail(orderId).catch((err) => {

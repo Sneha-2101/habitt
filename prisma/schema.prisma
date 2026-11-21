@@ -22,6 +22,7 @@ model Category {
   updatedAt DateTime  @updatedAt
   products  Product[]
   offerTargets OfferTarget[]
+  gstRules  GstRule[]
 }
 
 model Product {
@@ -116,6 +117,8 @@ model Order {
   notes             OrderNote[]
   discounts         OrderDiscount[]
   offerRedemptions  OfferRedemption[]
+  invoice           Invoice?
+  creditNotes       CreditNote[]
   couponCode        String?
   discountAmount    Int?
   giftMessage       String?
@@ -164,10 +167,13 @@ model SiteSettings {
   maxDeliveryDays        Int      @default(7)
   legalName              String?
   businessPhone          String?
-  businessState          String?
+  businessState          String?  @default("Kerala")
   businessPincode        String?
   whatsappSupportNumber  String?
   shiprocketPickupLocation String @default("Primary")
+  gstFeeMode             GstFeeMode @default(COMPOSITE)
+  gstFeeRate             Float    @default(18.0)
+  invoicePrefix          String   @default("HB")
   updatedAt              DateTime @updatedAt
 }
 
@@ -186,6 +192,7 @@ model OrderItem {
   discountPaise Int             @default(0)
   isGift        Boolean         @default(false)
   discounts     OrderDiscount[]
+  invoiceLines  InvoiceLine[]
 }
 
 model OrderStatusEvent {
@@ -592,5 +599,145 @@ model OrderDiscount {
   orderItem   OrderItem?        @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
   orderItemId String?
   createdAt   DateTime          @default(now())
+}
+
+enum GstFeeMode {
+  COMPOSITE
+  SEPARATE
+}
+
+enum InvoiceMode {
+  TAX
+  RECEIPT
+}
+
+enum InvoiceLineKind {
+  GOODS
+  SHIPPING
+  COD
+}
+
+model GstRule {
+  id           String    @id @default(cuid())
+  name         String
+  hsn          String?
+  categoryId   String?
+  category     Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  minUnitPaise Int       @default(0)
+  maxUnitPaise Int?
+  ratePercent  Decimal   @db.Decimal(5, 2)
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([active])
+  @@index([hsn])
+  @@index([categoryId])
+}
+
+model InvoiceCounter {
+  fy         String   @id
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
+model Invoice {
+  id            String          @id @default(cuid())
+  orderId       String          @unique
+  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  mode          InvoiceMode     @default(TAX)
+  fy            String?
+  number        String?         @unique
+  prefix        String?
+  sequence      Int?
+  sellerGstin   String?
+  sellerName    String
+  sellerAddress Json
+  sellerState   String?
+  buyerName     String
+  buyerGstin    String?
+  buyerAddress  Json
+  buyerState    String?
+  placeOfSupply String?
+  totalPaise    Int
+  taxablePaise  Int
+  cgstPaise     Int             @default(0)
+  sgstPaise     Int             @default(0)
+  igstPaise     Int             @default(0)
+  isInterState  Boolean         @default(false)
+  issuedAt      DateTime        @default(now())
+  lines         InvoiceLine[]
+  creditNotes   CreditNote[]
+
+  @@index([mode])
+  @@index([fy])
+}
+
+model InvoiceLine {
+  id            String          @id @default(cuid())
+  invoiceId     String
+  invoice       Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderItemId   String?
+  orderItem     OrderItem?      @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  kind          InvoiceLineKind @default(GOODS)
+  description   String
+  hsn           String?
+  qty           Int             @default(1)
+  unitPaise     Int
+  discountPaise Int             @default(0)
+  netPaise      Int
+  ratePercent   Decimal         @db.Decimal(5, 2)
+  taxablePaise  Int
+  cgstPaise     Int             @default(0)
+  sgstPaise     Int             @default(0)
+  igstPaise     Int             @default(0)
+  creditNoteLines CreditNoteLine[]
+
+  @@index([invoiceId])
+  @@index([orderItemId])
+}
+
+model CreditNote {
+  id           String           @id @default(cuid())
+  invoiceId    String
+  invoice      Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  orderId      String
+  order        Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fy           String
+  number       String           @unique
+  sequence     Int
+  reason       String
+  refundRef    String?
+  totalPaise   Int
+  taxablePaise Int
+  cgstPaise    Int              @default(0)
+  sgstPaise    Int              @default(0)
+  igstPaise    Int              @default(0)
+  issuedAt     DateTime         @default(now())
+  lines        CreditNoteLine[]
+
+  @@index([invoiceId])
+  @@index([orderId])
+  @@index([fy])
+}
+
+model CreditNoteLine {
+  id            String          @id @default(cuid())
+  creditNoteId  String
+  creditNote    CreditNote      @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  invoiceLineId String?
+  invoiceLine   InvoiceLine?    @relation(fields: [invoiceLineId], references: [id], onDelete: SetNull)
+  kind          InvoiceLineKind @default(GOODS)
+  description   String
+  qty           Int             @default(1)
+  ratePercent   Decimal         @db.Decimal(5, 2)
+  taxablePaise  Int
+  cgstPaise     Int             @default(0)
+  sgstPaise     Int             @default(0)
+  igstPaise     Int             @default(0)
+  totalPaise    Int
+
+  @@index([creditNoteId])
+  @@index([invoiceLineId])
 }
 

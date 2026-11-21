@@ -123,7 +123,7 @@ export async function createTestCoupon(opts?: {
 
 export async function createTestOrder(opts: {
   userId: string;
-  items: Array<{ variantId: string; productId: string; qty: number; unitPrice: number; name?: string; size?: string }>;
+  items: Array<{ variantId: string; productId: string; qty: number; unitPrice: number; name?: string; size?: string; isGift?: boolean; discountPaise?: number }>;
   status?: "PENDING" | "PAID" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "FAILED";
   paymentStatus?: PaymentStatus;
   fulfilmentStatus?: FulfilmentStatus;
@@ -132,6 +132,8 @@ export async function createTestOrder(opts: {
   storeCreditApplied?: number;
   couponCode?: string;
   discountAmount?: number;
+  shippingFee?: number;
+  total?: number;
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   paidAt?: Date;
@@ -142,7 +144,7 @@ export async function createTestOrder(opts: {
   const id = genId("m1test_ord");
   const displayId = `m1test_HB_${crypto.randomInt(100000, 999999)}`;
   const subtotal = opts.items.reduce((acc, it) => acc + it.unitPrice * it.qty, 0);
-  const total = subtotal - (opts.discountAmount || 0);
+  const total = opts.total !== undefined ? opts.total : (subtotal + (opts.shippingFee ?? 0) - (opts.discountAmount || 0));
 
   const method = opts.paymentMethod ?? "RAZORPAY";
   let derivedPaymentStatus: PaymentStatus;
@@ -225,7 +227,7 @@ export async function createTestOrder(opts: {
         pincode: "400001",
       },
       subtotal,
-      shippingFee: 0,
+      shippingFee: opts.shippingFee ?? 0,
       total,
       paymentStatus: derivedPaymentStatus,
       fulfilmentStatus: derivedFulfilmentStatus,
@@ -247,6 +249,8 @@ export async function createTestOrder(opts: {
           size: it.size ?? "M",
           unitPrice: it.unitPrice,
           qty: it.qty,
+          isGift: it.isGift ?? false,
+          discountPaise: it.discountPaise ?? 0,
         })),
       },
     },
@@ -318,6 +322,58 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
         { id: { startsWith: "m1test" } },
         { orderId: { in: m1OrderIds } },
         { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 2b. CreditNoteLine & CreditNote
+  await prisma.creditNoteLine.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { creditNote: { orderId: { in: m1OrderIds } } },
+        { creditNote: { orderId: { startsWith: "m1test" } } },
+      ],
+    },
+  });
+
+  await prisma.creditNote.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 2c. InvoiceLine & Invoice
+  await prisma.invoiceLine.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { invoice: { orderId: { in: m1OrderIds } } },
+        { invoice: { orderId: { startsWith: "m1test" } } },
+      ],
+    },
+  });
+
+  await prisma.invoice.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 2d. GstRule
+  await prisma.gstRule.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { name: { startsWith: "m1test" } },
       ],
     },
   });
@@ -609,6 +665,9 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     productCollections: await prisma.productCollection.count({ where: { OR: [{ productId: { startsWith: "m1test" } }, { collectionId: { startsWith: "m1test" } }] } }),
     offers: await prisma.offer.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { code: { startsWith: "m1test" } }, { code: { startsWith: "M1TEST" } }] } }),
     collections: await prisma.collection.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { slug: { startsWith: "m1test" } }] } }),
+    invoices: await prisma.invoice.count({ where: { id: { startsWith: "m1test" } } }),
+    creditNotes: await prisma.creditNote.count({ where: { id: { startsWith: "m1test" } } }),
+    gstRules: await prisma.gstRule.count({ where: { id: { startsWith: "m1test" } } }),
     orders: await prisma.order.count({ where: { id: { startsWith: "m1test" } } }),
     productVariants: await prisma.productVariant.count({ where: { id: { startsWith: "m1test" } } }),
     products: await prisma.product.count({ where: { id: { startsWith: "m1test" } } }),

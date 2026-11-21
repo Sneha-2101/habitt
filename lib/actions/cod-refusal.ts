@@ -7,6 +7,7 @@ import { canTransition } from "@/lib/orders/transitions";
 import { legacyStage } from "@/lib/orders/status-label";
 import { revalidatePath } from "next/cache";
 import { releaseOfferUsage } from "@/lib/offers/release";
+import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
 
 export async function markCodRefused(orderId: string, note?: string) {
   await requireStaff();
@@ -87,6 +88,26 @@ export async function markCodRefused(orderId: string, note?: string) {
       },
     });
   });
+
+  // Issue Credit Note in its own transaction after COD refusal transaction commits
+  try {
+    await prisma.$transaction(async (cnTx) => {
+      await createCreditNoteForRefund(cnTx, {
+        orderId: order.id,
+        reason: refusalNote,
+        refundRef: `cod-refusal-${order.id}`,
+        refundedItems: order.items.map((i) => ({ orderItemId: i.id, qty: i.qty })),
+      });
+    });
+  } catch (cnErr) {
+    console.error(`Failed to create credit note for COD refusal on order ${order.id}:`, cnErr);
+    await prisma.orderStatusEvent.create({
+      data: {
+        orderId,
+        note: `CREDIT NOTE PENDING (refundRef=cod-refusal-${order.id})`,
+      },
+    });
+  }
 
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");

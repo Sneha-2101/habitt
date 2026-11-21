@@ -6,6 +6,7 @@ import { getRazorpay } from "@/lib/razorpay";
 import { getSettings } from "@/lib/settings";
 import { releaseStock } from "@/lib/stock";
 import { revalidatePath } from "next/cache";
+import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
 
 export async function requestReturn(orderId: string, reason: string) {
   const user = await requireUser();
@@ -221,6 +222,26 @@ export async function approveReturn(returnId: string, adminNote?: string) {
         `Refund voucher for returned COD Order #${order.displayId}`
       ).catch(console.error);
     }
+  }
+
+  // Issue Credit Note in its own transaction after return/refund transaction commits
+  try {
+    await prisma.$transaction(async (cnTx) => {
+      await createCreditNoteForRefund(cnTx, {
+        orderId: order.id,
+        reason: `Return approved: ${returnReq.reason}`,
+        refundRef: returnReq.id,
+        refundedItems: order.items.map((i) => ({ orderItemId: i.id, qty: i.qty })),
+      });
+    });
+  } catch (cnErr) {
+    console.error(`Failed to create credit note for return ${returnReq.id} on order ${order.id}:`, cnErr);
+    await prisma.orderStatusEvent.create({
+      data: {
+        orderId: order.id,
+        note: `CREDIT NOTE PENDING (refundRef=${returnReq.id})`,
+      },
+    });
   }
 
   revalidatePath("/admin/returns");

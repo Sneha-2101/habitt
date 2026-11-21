@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/guards";
 import { revalidatePath } from "next/cache";
 import { sendShipmentNotificationEmail, sendDeliveredEmail, sendReviewRequestEmail } from "@/lib/email";
 import { legacyStage } from "@/lib/orders/status-label";
+import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
 
 export async function markOrderShipped(
   orderId: string,
@@ -66,6 +67,21 @@ export async function markOrderShipped(
       },
     });
   });
+
+  // Issue invoice in its own transaction after shipping transaction commits
+  try {
+    await prisma.$transaction(async (invTx) => {
+      await issueInvoiceForOrder(invTx, orderId);
+    });
+  } catch (invErr) {
+    console.error(`Failed to issue invoice for order ${orderId}:`, invErr);
+    await prisma.orderStatusEvent.create({
+      data: {
+        orderId,
+        note: "INVOICE PENDING: retry from admin",
+      },
+    });
+  }
 
   // Send shipment notification email asynchronously
   sendShipmentNotificationEmail(orderId).catch((err) => {

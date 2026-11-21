@@ -10,6 +10,53 @@ import { requireStaff } from "@/lib/guards";
 import { canTransition, nextStatusOptions } from "@/lib/orders/transitions";
 import { updateOrderShippingAddress } from "@/lib/actions/order-address";
 import { getOrderStatusLabel } from "@/lib/orders/status-label";
+import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
+import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
+import { writeAudit } from "@/lib/audit";
+
+async function generateInvoice(orderId: string) {
+  "use server";
+  const user = await requireStaff();
+  await prisma.$transaction(async (tx) => {
+    await issueInvoiceForOrder(tx, orderId);
+  });
+  await writeAudit({
+    actorId: user.id,
+    action: "GENERATE_INVOICE",
+    entity: "Order",
+    entityId: orderId,
+  });
+  revalidatePath(`/admin/orders/${orderId}`);
+}
+
+async function generateCreditNote(orderId: string, refundRef: string) {
+  "use server";
+  const user = await requireStaff();
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+  if (!order) throw new Error("Order not found");
+
+  await prisma.$transaction(async (tx) => {
+    await createCreditNoteForRefund(tx, {
+      orderId,
+      refundRef,
+      reason: "Manual credit note generation from admin",
+      refundedItems: order.items.map((i) => ({ orderItemId: i.id, qty: i.qty })),
+    });
+  });
+
+  await writeAudit({
+    actorId: user.id,
+    action: "GENERATE_CREDIT_NOTE",
+    entity: "Order",
+    entityId: orderId,
+    meta: { refundRef },
+  });
+
+  revalidatePath(`/admin/orders/${orderId}`);
+}
 
 async function updateStatus(orderId: string, formData: FormData) {
   "use server";
@@ -69,11 +116,28 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
       items: true,
       statusEvents: { orderBy: { createdAt: "asc" } },
       notes: { orderBy: { createdAt: "desc" } },
+      invoice: true,
+      creditNotes: { orderBy: { issuedAt: "desc" } },
     },
   });
   if (!order) notFound();
 
   const updateWithId = updateStatus.bind(null, order.id);
+  const generateInvoiceWithId = generateInvoice.bind(null, order.id);
+
+  const pendingCnNoteText =
+    order.statusEvents.slice().reverse().find((e) => e.note?.includes("CREDIT NOTE PENDING"))?.note ||
+    order.notes.find((n) => n.body?.includes("CREDIT NOTE PENDING"))?.body;
+  const pendingRefMatch = pendingCnNoteText?.match(/refundRef=([^)]+)/);
+  const pendingRefundRef = pendingRefMatch ? pendingRefMatch[1] : null;
+  const hasCnForPendingRef = pendingRefundRef
+    ? order.creditNotes.some((cn) => cn.refundRef === pendingRefundRef)
+    : false;
+  const pendingCreditNoteRef = pendingRefundRef && !hasCnForPendingRef ? pendingRefundRef : null;
+
+  const generateCreditNoteWithRef = pendingCreditNoteRef
+    ? generateCreditNote.bind(null, order.id, pendingCreditNoteRef)
+    : null;
   const updateAddressWithId = async (formData: FormData) => {
     "use server";
     await updateOrderShippingAddress(order.id, formData);
@@ -193,6 +257,144 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
             </div>
           )}
         </div>
+      </div>
+
+      {/* Tax Documents & Invoicing */}
+      <div className="border border-stone bg-white p-5 rounded-sm text-[13px] space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold tracking-wider text-stone-dark uppercase">
+            Tax Documents & Invoicing
+          </div>
+          {order.invoice ? (
+            <span className="text-xs font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              {order.invoice.mode === "TAX" ? `Issued (${order.invoice.number})` : "Order Receipt"}
+            </span>
+          ) : (
+            <span className="text-xs font-medium text-stone-dark bg-stone/20 px-2 py-0.5 rounded">
+              Not Issued Yet
+            </span>
+          )}
+        </div>
+
+        {order.invoice ? (
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-ink">
+                  {order.invoice.mode === "TAX" ? `Tax Invoice ${order.invoice.number}` : "Customer Receipt"}
+                </p>
+                <p className="text-xs text-stone-dark">
+                  Issued: {new Date(order.invoice.issuedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                  {order.invoice.placeOfSupply ? ` · POS: ${order.invoice.placeOfSupply}` : ""}
+                </p>
+              </div>
+              <a
+                href={`/api/orders/${order.id}/invoice`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs px-3 py-1 bg-ink text-paper rounded hover:bg-ink/90 font-medium inline-flex items-center gap-1"
+              >
+                📄 View / Print Invoice
+              </a>
+            </div>
+
+            {order.invoice.mode === "TAX" && (
+              <div className="grid grid-cols-4 gap-2 pt-2 text-xs bg-paper/60 p-2.5 rounded border border-stone/30">
+                <div>
+                  <span className="text-stone-dark block text-[11px]">Taxable Value</span>
+                  <span className="font-mono font-medium">{formatINR(order.invoice.taxablePaise)}</span>
+                </div>
+                <div>
+                  <span className="text-stone-dark block text-[11px]">CGST / SGST</span>
+                  <span className="font-mono font-medium">{formatINR(order.invoice.cgstPaise + order.invoice.sgstPaise)}</span>
+                </div>
+                <div>
+                  <span className="text-stone-dark block text-[11px]">IGST</span>
+                  <span className="font-mono font-medium">{formatINR(order.invoice.igstPaise)}</span>
+                </div>
+                <div>
+                  <span className="text-stone-dark block text-[11px]">Total Paid</span>
+                  <span className="font-mono font-bold text-ink">{formatINR(order.invoice.totalPaise)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center justify-between pt-1">
+            <p className="text-stone-dark text-xs">
+              Invoice is automatically generated when order is marked shipped.
+            </p>
+            <div className="flex items-center gap-2">
+              <form action={generateInvoiceWithId}>
+                <button
+                  type="submit"
+                  className="text-xs px-3 py-1 border border-moss text-moss hover:bg-moss/10 rounded font-medium"
+                >
+                  ⚡ Generate Invoice Now
+                </button>
+              </form>
+              {pendingCreditNoteRef && generateCreditNoteWithRef && (
+                <form action={generateCreditNoteWithRef}>
+                  <button
+                    type="submit"
+                    className="text-xs px-3 py-1 border border-amber-600 text-amber-700 hover:bg-amber-50 rounded font-medium"
+                  >
+                    ⚡ Generate Credit Note
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* When invoice is present but there is also a pending credit note */}
+        {order.invoice && pendingCreditNoteRef && generateCreditNoteWithRef && (
+          <div className="flex items-center justify-between pt-2 border-t border-stone/20">
+            <p className="text-amber-800 text-xs font-medium">
+              Credit note pending retry for {pendingCreditNoteRef}
+            </p>
+            <form action={generateCreditNoteWithRef}>
+              <button
+                type="submit"
+                className="text-xs px-3 py-1 border border-amber-600 text-amber-700 hover:bg-amber-50 rounded font-medium"
+              >
+                ⚡ Generate Credit Note
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Credit Notes */}
+        {order.creditNotes && order.creditNotes.length > 0 && (
+          <div className="pt-3 border-t border-stone/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-stone-dark uppercase tracking-wider">
+                Credit Notes ({order.creditNotes.length})
+              </span>
+              <a
+                href={`/api/orders/${order.id}/credit-note`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-moss hover:underline font-medium"
+              >
+                View Credit Notes →
+              </a>
+            </div>
+            <div className="space-y-1">
+              {order.creditNotes.map((cn) => (
+                <div key={cn.id} className="flex items-center justify-between text-xs py-1 px-2 bg-paper/50 rounded">
+                  <div>
+                    <span className="font-mono font-medium">{cn.number}</span>
+                    <span className="text-stone-dark ml-2">({cn.reason})</span>
+                  </div>
+                  <span className="font-mono font-semibold text-red-800">
+                    -{formatINR(cn.totalPaise)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Shipping Address */}
