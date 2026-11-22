@@ -26,7 +26,12 @@ export type RateLimitPolicy =
   | "stepUpSend"
   | "cartSync"
   | "returnRequest"
-  | "reviewerVerify";
+  | "reviewerVerify"
+  | "ticketCreateUser"
+  | "ticketGuestOtpIp"
+  | "ticketGuestOtpEmail"
+  | "ticketGuestCreateIp"
+  | "ticketReply";
 
 export interface PolicyConfig {
   limit: number;
@@ -54,6 +59,11 @@ export const POLICY_CONFIGS: Record<RateLimitPolicy, PolicyConfig> = {
   cartSync: { limit: 60, windowMs: 60 * 1000, upstashDuration: "1 m", failMode: "open" },
   returnRequest: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "open" },
   reviewerVerify: { limit: 5, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
+  ticketCreateUser: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "open" },
+  ticketGuestOtpIp: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "closed" },
+  ticketGuestOtpEmail: { limit: 3, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
+  ticketGuestCreateIp: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "open" },
+  ticketReply: { limit: 30, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "open" },
 };
 
 // In-memory sliding window state for development and fail-open fallback

@@ -3,6 +3,7 @@ import {
   sendShipmentNotificationEmail,
   sendOutForDeliveryEmail,
   sendDeliveredEmail,
+  sendTicketEventEmail,
 } from "@/lib/email";
 import { isWhatsappMessagesLive } from "@/lib/whatsapp-flag";
 
@@ -97,16 +98,28 @@ export async function processOutboxBatch(batchSize = 25): Promise<ProcessOutboxR
       let errorMsg = "Email dispatch failed";
 
       try {
-        if (!orderId) {
-          throw new Error("Missing orderId in outbox payload");
-        }
-
         let res: { success?: boolean; error?: unknown; reason?: string } | undefined = { success: false };
-        if (item.type === "ORDER_SHIPPED" || item.type === "SHIPPED") {
+
+        if (item.type.startsWith("TICKET_")) {
+          res = await sendTicketEventEmail(item.type, payloadObj || {});
+          if (
+            res?.success !== false &&
+            item.type === "TICKET_ACKNOWLEDGED" &&
+            typeof payloadObj?.ticketId === "string"
+          ) {
+            await prisma.ticket.update({
+              where: { id: payloadObj.ticketId },
+              data: { acknowledgedAt: new Date() },
+            });
+          }
+        } else if (item.type === "ORDER_SHIPPED" || item.type === "SHIPPED") {
+          if (!orderId) throw new Error("Missing orderId in outbox payload");
           res = await sendShipmentNotificationEmail(orderId);
         } else if (item.type === "ORDER_OUT_FOR_DELIVERY" || item.type === "OUT_FOR_DELIVERY") {
+          if (!orderId) throw new Error("Missing orderId in outbox payload");
           res = await sendOutForDeliveryEmail(orderId);
         } else if (item.type === "ORDER_DELIVERED" || item.type === "DELIVERED") {
+          if (!orderId) throw new Error("Missing orderId in outbox payload");
           res = await sendDeliveredEmail(orderId);
         } else {
           // Unknown email type, treat as sent

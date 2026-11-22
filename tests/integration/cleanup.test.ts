@@ -28,6 +28,8 @@ describe("Final Cleanup Check", () => {
       shipmentEvents: await prisma.shipmentEvent.count({ where: { id: { startsWith: "m1test" } } }),
       eventOutbox: await prisma.eventOutbox.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
       cronRuns: await prisma.cronRun.count({ where: { id: { startsWith: "m1test" } } }),
+      tickets: await prisma.ticket.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { number: { startsWith: "m1test" } }, { guestEmail: { startsWith: "m1test" } }] } }),
+      ticketMessages: await prisma.ticketMessage.count({ where: { id: { startsWith: "m1test" } } }),
       gstRules: await prisma.gstRule.count({ where: { id: { startsWith: "m1test" } } }),
       orders: await prisma.order.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }, { displayId: { startsWith: "m1test" } }] } }),
       productVariants: await prisma.productVariant.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { productId: { startsWith: "m1test" } }] } }),

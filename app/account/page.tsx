@@ -14,7 +14,7 @@ export default async function AccountPage() {
 
   const userId = sessionUser.id;
 
-  const [user, addresses, orders, settings] = await Promise.all([
+  const [user, addresses, orders, settings, rawTickets] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -56,6 +56,34 @@ export default async function AccountPage() {
       orderBy: { createdAt: "desc" },
     }),
     getSettings(),
+    prisma.ticket.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        number: true,
+        subject: true,
+        category: true,
+        status: true,
+        orderRef: true,
+        ackDueAt: true,
+        resolveDueAt: true,
+        acknowledgedAt: true,
+        resolvedAt: true,
+        closedAt: true,
+        createdAt: true,
+        messages: {
+          where: { internal: false },
+          select: {
+            id: true,
+            authorType: true,
+            body: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   if (!user) redirect("/login?redirect=/account");
@@ -128,6 +156,16 @@ export default async function AccountPage() {
     };
   });
 
+  const formattedTickets = rawTickets.map((t) => ({
+    ...t,
+    messages: t.messages.map((m) => ({
+      id: m.id,
+      author: m.authorType === "CUSTOMER" ? "You" : "Support team",
+      body: m.body,
+      createdAt: m.createdAt,
+    })),
+  }));
+
   return (
     <main className="max-w-xl mx-auto px-4 sm:px-7 py-12">
       <div className="flex items-center justify-between mb-8 pb-4 border-b border-stone">
@@ -143,7 +181,12 @@ export default async function AccountPage() {
         />
       </div>
 
-      <AccountClient user={user} addresses={addresses} orders={ordersWithStock} />
+      <AccountClient
+        user={user}
+        addresses={addresses}
+        orders={ordersWithStock}
+        tickets={formattedTickets}
+      />
     </main>
   );
 }

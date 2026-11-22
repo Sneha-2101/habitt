@@ -50,6 +50,9 @@ export default async function AdminLayout({
               <Link href="/admin/returns" className="hover:text-ink transition-colors">
                 Returns
               </Link>
+              <Link href="/admin/tickets" className="hover:text-ink transition-colors">
+                Tickets
+              </Link>
               <Link href="/admin/settings" className="hover:text-ink transition-colors">
                 Settings
               </Link>

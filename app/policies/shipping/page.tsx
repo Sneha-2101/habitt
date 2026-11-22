@@ -36,7 +36,7 @@ export default async function ShippingPolicyPage() {
         <section className="space-y-2">
           <h3 className="text-sm font-semibold text-ink">3. Delivery Timelines</h3>
           <p>
-            Orders are delivered across India within {settings.maxDeliveryDays} business days post-dispatch.
+            All packages are dispatched from our primary facility in {settings.businessState || "Punjab"} and delivered across India within {settings.maxDeliveryDays} business days post-dispatch.
           </p>
           <ul className="list-disc pl-5 space-y-1">
             <li><strong>Standard Delivery:</strong> Up to {settings.maxDeliveryDays} business days post-dispatch.</li>

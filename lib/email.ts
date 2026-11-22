@@ -1009,4 +1009,109 @@ export async function sendReturnRefundedEmail(
   }
 }
 
+export async function sendTicketEventEmail(
+  type: string,
+  payload: Record<string, unknown>
+): Promise<{ success: boolean; error?: unknown; reason?: string }> {
+  const recipientEmail =
+    (typeof payload.recipientEmail === "string" ? payload.recipientEmail : null) ||
+    (typeof payload.customerEmail === "string" ? payload.customerEmail : null);
+
+  if (!recipientEmail) {
+    return { success: false, reason: "Missing recipient email in ticket payload" };
+  }
+
+  const ticketNumber = typeof payload.ticketNumber === "string" ? payload.ticketNumber : "Ticket";
+  const subjectStr = typeof payload.subject === "string" ? payload.subject : "";
+  const bodyText = typeof payload.body === "string" ? payload.body : "";
+  const viewUrl = typeof payload.viewUrl === "string" ? payload.viewUrl : "";
+  const customerName = typeof payload.customerName === "string" ? payload.customerName : "Customer";
+
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Mock dispatch for ${type} to ${recipientEmail}`);
+    return { success: true };
+  }
+
+  try {
+    const emailInfo = await getEmailSenderInfo();
+    let emailSubject = `[${ticketNumber}] ${subjectStr}`;
+    let htmlContent = "";
+
+    if (type === "TICKET_ACKNOWLEDGED") {
+      emailSubject = `[${ticketNumber}] We have received your request: ${subjectStr}`;
+      htmlContent = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+          <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Ticket Acknowledged (${escapeHtml(ticketNumber)})</h2>
+          <p style="color: #666; margin-bottom: 16px;">Hi ${escapeHtml(customerName)}, we have received your support request regarding &quot;${escapeHtml(subjectStr)}&quot;.</p>
+          <p style="color: #666; margin-bottom: 16px;">Our team acknowledges grievances within 48 hours and strives to resolve all matters within one month.</p>
+          <div style="background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 16px; margin: 16px 0; font-size: 13px;">
+            ${escapeHtml(bodyText)}
+          </div>
+          <p style="font-size: 12px; color: #888;">${escapeHtml(emailInfo.businessName)} Support</p>
+        </div>
+      `;
+    } else if (type === "TICKET_GUEST_LINK") {
+      emailSubject = `[${ticketNumber}] Access your ticket: ${subjectStr}`;
+      htmlContent = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+          <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Track Your Ticket (${escapeHtml(ticketNumber)})</h2>
+          <p style="color: #666; margin-bottom: 16px;">Hi ${escapeHtml(customerName)}, your ticket has been created.</p>
+          <p style="margin-bottom: 20px;">
+            <a href="${escapeHtml(viewUrl)}" style="background-color: #111; color: #fff; padding: 10px 18px; border-radius: 4px; text-decoration: none; font-size: 13px;">
+              View Ticket &amp; Reply
+            </a>
+          </p>
+          <p style="font-size: 12px; color: #888;">Please keep this private link secure. Anyone with this link can view the thread.</p>
+        </div>
+      `;
+    } else if (type === "TICKET_STAFF_REPLY") {
+      emailSubject = `[${ticketNumber}] Update on your request: ${subjectStr}`;
+      htmlContent = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+          <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">New Reply on Ticket ${escapeHtml(ticketNumber)}</h2>
+          <div style="background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 16px; margin: 16px 0; font-size: 13px;">
+            ${escapeHtml(bodyText)}
+          </div>
+          <p style="font-size: 12px; color: #888;">${escapeHtml(emailInfo.businessName)} Support</p>
+        </div>
+      `;
+    } else if (type === "TICKET_RESOLVED") {
+      emailSubject = `[${ticketNumber}] Resolved: ${subjectStr}`;
+      htmlContent = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+          <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Ticket Resolved (${escapeHtml(ticketNumber)})</h2>
+          <p style="color: #666; margin-bottom: 16px;">Hi ${escapeHtml(customerName)}, your ticket has been marked as resolved.</p>
+          <p style="font-size: 13px; color: #666;">If your question is not fully resolved, you can reply within 14 days to reopen this ticket.</p>
+          <p style="font-size: 12px; color: #888; margin-top: 24px;">${escapeHtml(emailInfo.businessName)} Support</p>
+        </div>
+      `;
+    } else {
+      // Alert / SLA / Support notifications
+      emailSubject = `[Support Alert] ${ticketNumber}: ${subjectStr}`;
+      htmlContent = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+          <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">Ticket Notification (${escapeHtml(ticketNumber)})</h2>
+          <p style="font-size: 13px; margin-bottom: 12px;">Customer: ${escapeHtml(customerName)} (${escapeHtml(String(payload.customerEmail || ""))})</p>
+          <div style="background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 16px; margin: 16px 0; font-size: 13px;">
+            ${escapeHtml(bodyText)}
+          </div>
+        </div>
+      `;
+    }
+
+    await resend.emails.send({
+      from: emailInfo.from,
+      replyTo: emailInfo.replyTo,
+      to: recipientEmail,
+      subject: emailSubject,
+      html: htmlContent,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error(`[Email] Failed to send ticket event email (${type}) to ${recipientEmail}:`, error);
+    return { success: false, error };
+  }
+}
+
 

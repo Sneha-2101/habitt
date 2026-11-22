@@ -75,6 +75,11 @@ export default function Footer({
               </Link>
             </li>
             <li>
+              <Link href="/contact" className="hover:underline text-ink">
+                Contact & Support Form
+              </Link>
+            </li>
+            <li>
               <Link href="/policies/returns" className="hover:underline text-ink">
                 Returns & Refund Policy
               </Link>
@@ -92,6 +97,11 @@ export default function Footer({
             <li>
               <Link href="/policies/privacy" className="hover:underline text-ink">
                 Privacy Policy
+              </Link>
+            </li>
+            <li>
+              <Link href="/policies/grievance" className="hover:underline text-ink">
+                Grievance Officer
               </Link>
             </li>
           </ul>

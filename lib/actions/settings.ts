@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/guards";
+import { writeAudit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 import { getSettings, type UpdateSiteSettingsInput } from "@/lib/settings";
 
@@ -76,10 +77,14 @@ const settingsSchema = z.object({
   businessPincode: optionalPincodeSchema,
   whatsappSupportNumber: optionalPhoneSchema,
   shiprocketPickupLocation: z.string().trim().min(1).optional(),
+  grievanceOfficerName: z.string().nullish(),
+  grievanceOfficerEmail: z.string().trim().email("Invalid grievance officer email address").nullish().or(z.literal("")),
+  grievanceOfficerPhone: optionalPhoneSchema,
+  grievanceOfficerAddress: z.string().nullish(),
 });
 
 export async function updateSettings(data: UpdateSiteSettingsInput) {
-  await requireStaff();
+  const staff = await requireStaff();
 
   const parseResult = settingsSchema.safeParse(data);
   if (!parseResult.success) {
@@ -124,6 +129,20 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
       businessPincode: validated.businessPincode !== undefined ? validated.businessPincode : current.businessPincode,
       whatsappSupportNumber: validated.whatsappSupportNumber !== undefined ? validated.whatsappSupportNumber : current.whatsappSupportNumber,
       shiprocketPickupLocation: validated.shiprocketPickupLocation !== undefined ? validated.shiprocketPickupLocation.trim() : current.shiprocketPickupLocation,
+      grievanceOfficerName: validated.grievanceOfficerName !== undefined ? (validated.grievanceOfficerName?.trim() || null) : current.grievanceOfficerName,
+      grievanceOfficerEmail: validated.grievanceOfficerEmail !== undefined ? (validated.grievanceOfficerEmail?.trim() || null) : current.grievanceOfficerEmail,
+      grievanceOfficerPhone: validated.grievanceOfficerPhone !== undefined ? validated.grievanceOfficerPhone : current.grievanceOfficerPhone,
+      grievanceOfficerAddress: validated.grievanceOfficerAddress !== undefined ? (validated.grievanceOfficerAddress?.trim() || null) : current.grievanceOfficerAddress,
+    },
+  });
+
+  await writeAudit({
+    actorId: staff.id,
+    action: "SETTINGS_UPDATED",
+    entity: "SiteSettings",
+    entityId: "default",
+    meta: {
+      updatedFields: Object.keys(validated),
     },
   });
 
@@ -133,6 +152,8 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
   revalidatePath("/");
   revalidatePath("/policies/returns");
   revalidatePath("/policies/shipping");
+  revalidatePath("/policies/grievance");
+  revalidatePath("/contact");
   revalidatePath("/support");
   return updated;
 }

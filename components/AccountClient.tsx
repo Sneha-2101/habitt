@@ -18,6 +18,7 @@ import { signOutEverywhereAction } from "@/lib/actions/sessions";
 import { formatINR } from "@/lib/money";
 import { useCartStore } from "@/lib/cart-store";
 import OrderStatusTimeline from "./OrderStatusTimeline";
+import AccountSupportTickets, { type CustomerTicketItem } from "./AccountSupportTickets";
 import type { ReturnStatus } from "@prisma/client";
 
 export interface AddressItem {
@@ -121,6 +122,7 @@ interface AccountClientProps {
       remainingReturnable?: number;
     }>;
   }>;
+  tickets?: CustomerTicketItem[];
 }
 
 export default function AccountClient({
@@ -128,6 +130,7 @@ export default function AccountClient({
   addresses: initialAddresses = [],
   address,
   orders,
+  tickets = [],
 }: AccountClientProps) {
   const router = useRouter();
   const { add: addCartItem, open: openCart } = useCartStore();
@@ -1208,6 +1211,12 @@ export default function AccountClient({
           {orders.length === 0 && <p className="p-6 text-sm text-stone-dark text-center">No orders placed yet.</p>}
         </div>
       </section>
+
+      {/* Support & Grievance Tickets Section */}
+      <AccountSupportTickets
+        initialTickets={tickets}
+        orders={orders.map((o) => ({ id: o.id, displayId: o.displayId }))}
+      />
     </div>
   );
 }

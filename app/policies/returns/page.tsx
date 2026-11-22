@@ -43,6 +43,9 @@ export default async function ReturnsPolicyPage() {
           <p>
             Once your return is approved by our staff team, we start your refund within {refundHours} hours of approving the return; how long your bank takes to credit it is outside our control.
           </p>
+          <p>
+            For Cash on Delivery (COD) orders, refunds are issued strictly as Store Credit vouchers credited to your account ledger. Prepaid orders are refunded back to the original payment source.
+          </p>
         </section>
 
         <section className="space-y-2">

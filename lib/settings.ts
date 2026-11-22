@@ -32,6 +32,10 @@ export interface UpdateSiteSettingsInput {
   businessPincode?: string | null;
   whatsappSupportNumber?: string | null;
   shiprocketPickupLocation?: string;
+  grievanceOfficerName?: string | null;
+  grievanceOfficerEmail?: string | null;
+  grievanceOfficerPhone?: string | null;
+  grievanceOfficerAddress?: string | null;
 }
 
 export async function getSettings() {

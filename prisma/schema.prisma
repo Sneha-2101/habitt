@@ -123,6 +123,7 @@ model Order {
   creditNotes       CreditNote[]
   refunds           Refund[]
   shipments         Shipment[]
+  tickets           Ticket[]
   couponCode        String?
   discountAmount    Int?
   giftMessage       String?
@@ -178,6 +179,10 @@ model SiteSettings {
   gstFeeMode             GstFeeMode @default(COMPOSITE)
   gstFeeRate             Float    @default(18.0)
   invoicePrefix          String   @default("HB")
+  grievanceOfficerName    String?
+  grievanceOfficerEmail   String?
+  grievanceOfficerPhone   String?
+  grievanceOfficerAddress String?
   updatedAt              DateTime @updatedAt
 }
 
@@ -257,6 +262,9 @@ model User {
   sessions               Session[]
   auditLogs              AuditLog[]
   offerRedemptions       OfferRedemption[]
+  tickets                Ticket[]                 @relation("UserTickets")
+  assignedTickets        Ticket[]                 @relation("AssignedTickets")
+  ticketMessages         TicketMessage[]          @relation("UserTicketMessages")
   createdAt              DateTime                 @default(now())
 }
 
@@ -900,5 +908,83 @@ model CronRun {
 
   @@index([job, startedAt])
 }
+
+enum TicketCategory {
+  ORDER
+  PAYMENT
+  RETURN_REFUND
+  PRODUCT
+  ACCOUNT
+  GRIEVANCE
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketSource {
+  ACCOUNT
+  GUEST_FORM
+  ADMIN
+}
+
+enum TicketAuthor {
+  CUSTOMER
+  STAFF
+  SYSTEM
+}
+
+model Ticket {
+  id              String          @id @default(cuid())
+  number          String          @unique
+  user            User?           @relation("UserTickets", fields: [userId], references: [id], onDelete: SetNull)
+  userId          String?
+  guestEmail      String?
+  guestName       String?
+  guestVerifiedAt DateTime?
+  order           Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId         String?
+  orderRef        String?
+  category        TicketCategory
+  subject         String
+  status          TicketStatus    @default(OPEN)
+  source          TicketSource
+  assignedTo      User?           @relation("AssignedTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToId    String?
+  accessTokenHash String?
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  ackDueAt        DateTime
+  resolveDueAt    DateTime
+  slaAlertedAt    DateTime?
+  messages        TicketMessage[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([status, resolveDueAt])
+  @@index([userId])
+  @@index([guestEmail])
+}
+
+model TicketMessage {
+  id           String       @id @default(cuid())
+  ticket       Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId     String
+  authorType   TicketAuthor
+  authorUser   User?        @relation("UserTicketMessages", fields: [authorUserId], references: [id], onDelete: SetNull)
+  authorUserId String?
+  body         String
+  internal     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
 
 

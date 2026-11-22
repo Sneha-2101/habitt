@@ -55,6 +55,10 @@ export default async function AdminSettingsPage() {
           businessPincode: settings.businessPincode,
           whatsappSupportNumber: settings.whatsappSupportNumber,
           shiprocketPickupLocation: settings.shiprocketPickupLocation,
+          grievanceOfficerName: settings.grievanceOfficerName,
+          grievanceOfficerEmail: settings.grievanceOfficerEmail,
+          grievanceOfficerPhone: settings.grievanceOfficerPhone,
+          grievanceOfficerAddress: settings.grievanceOfficerAddress,
         }}
       />
     </main>

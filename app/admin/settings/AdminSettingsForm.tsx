@@ -36,6 +36,10 @@ interface SettingsFormProps {
     businessPincode: string | null;
     whatsappSupportNumber: string | null;
     shiprocketPickupLocation: string;
+    grievanceOfficerName?: string | null;
+    grievanceOfficerEmail?: string | null;
+    grievanceOfficerPhone?: string | null;
+    grievanceOfficerAddress?: string | null;
   };
 }
 
@@ -72,6 +76,10 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
     businessPincode: initialSettings.businessPincode || "",
     whatsappSupportNumber: initialSettings.whatsappSupportNumber || "",
     shiprocketPickupLocation: initialSettings.shiprocketPickupLocation || "Primary",
+    grievanceOfficerName: initialSettings.grievanceOfficerName || "",
+    grievanceOfficerEmail: initialSettings.grievanceOfficerEmail || "",
+    grievanceOfficerPhone: initialSettings.grievanceOfficerPhone || "",
+    grievanceOfficerAddress: initialSettings.grievanceOfficerAddress || "",
   });
 
   const [activeTab, setActiveTab] = useState<
@@ -119,6 +127,10 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
           businessPincode: form.businessPincode.trim() || null,
           whatsappSupportNumber: form.whatsappSupportNumber.trim() || null,
           shiprocketPickupLocation: form.shiprocketPickupLocation.trim() || "Primary",
+          grievanceOfficerName: form.grievanceOfficerName.trim() || null,
+          grievanceOfficerEmail: form.grievanceOfficerEmail.trim() || null,
+          grievanceOfficerPhone: form.grievanceOfficerPhone.trim() || null,
+          grievanceOfficerAddress: form.grievanceOfficerAddress.trim() || null,
         });
         setMessage({ type: "success", text: "Store settings saved successfully." });
       } catch (err: unknown) {
@@ -571,6 +583,71 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                   onChange={(e) => setForm({ ...form, businessPincode: e.target.value })}
                   className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
                 />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-stone/50 space-y-4">
+              <div>
+                <h3 className="text-xs font-semibold text-ink uppercase tracking-wider">Grievance Officer (Statutory Compliance)</h3>
+                <p className="text-[11px] text-stone-dark">Designated official under IT and Consumer Protection Rules for grievance redressal.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="grievanceOfficerName" className="block text-xs font-medium text-ink mb-1">
+                    Grievance Officer Name
+                  </label>
+                  <input
+                    type="text"
+                    id="grievanceOfficerName"
+                    placeholder="Full legal name of officer"
+                    value={form.grievanceOfficerName}
+                    onChange={(e) => setForm({ ...form, grievanceOfficerName: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="grievanceOfficerEmail" className="block text-xs font-medium text-ink mb-1">
+                    Grievance Officer Email
+                  </label>
+                  <input
+                    type="email"
+                    id="grievanceOfficerEmail"
+                    placeholder="e.g. grievance@domain.com"
+                    value={form.grievanceOfficerEmail}
+                    onChange={(e) => setForm({ ...form, grievanceOfficerEmail: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="grievanceOfficerPhone" className="block text-xs font-medium text-ink mb-1">
+                    Grievance Officer Phone
+                  </label>
+                  <input
+                    type="tel"
+                    id="grievanceOfficerPhone"
+                    placeholder="10-digit mobile number"
+                    value={form.grievanceOfficerPhone}
+                    onChange={(e) => setForm({ ...form, grievanceOfficerPhone: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="grievanceOfficerAddress" className="block text-xs font-medium text-ink mb-1">
+                    Grievance Officer Office Address
+                  </label>
+                  <input
+                    type="text"
+                    id="grievanceOfficerAddress"
+                    placeholder="Office or facility address"
+                    value={form.grievanceOfficerAddress}
+                    onChange={(e) => setForm({ ...form, grievanceOfficerAddress: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  />
+                </div>
               </div>
             </div>
           </div>

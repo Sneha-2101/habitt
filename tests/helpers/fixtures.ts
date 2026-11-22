@@ -429,6 +429,38 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
+  // 2b5. TicketMessage & Ticket
+  await prisma.ticketMessage.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { ticket: { id: { startsWith: "m1test" } } },
+        { ticket: { number: { startsWith: "m1test" } } },
+        { ticket: { guestEmail: { startsWith: "m1test" } } },
+        { ticket: { userId: { in: m1UserIds } } },
+        { ticket: { userId: { startsWith: "m1test" } } },
+        { ticket: { orderId: { in: m1OrderIds } } },
+        { ticket: { orderId: { startsWith: "m1test" } } },
+        { authorUserId: { in: m1UserIds } },
+        { authorUserId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.ticket.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { number: { startsWith: "m1test" } },
+        { guestEmail: { startsWith: "m1test" } },
+        { userId: { in: m1UserIds } },
+        { userId: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
   // 2c. InvoiceLine & Invoice
   await prisma.invoiceLine.deleteMany({
     where: {
@@ -755,6 +787,8 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     shipmentEvents: await prisma.shipmentEvent.count({ where: { id: { startsWith: "m1test" } } }),
     eventOutboxes: await prisma.eventOutbox.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
     cronRuns: await prisma.cronRun.count({ where: { id: { startsWith: "m1test" } } }),
+    tickets: await prisma.ticket.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { number: { startsWith: "m1test" } }, { guestEmail: { startsWith: "m1test" } }] } }),
+    ticketMessages: await prisma.ticketMessage.count({ where: { id: { startsWith: "m1test" } } }),
     gstRules: await prisma.gstRule.count({ where: { id: { startsWith: "m1test" } } }),
     orders: await prisma.order.count({ where: { id: { startsWith: "m1test" } } }),
     productVariants: await prisma.productVariant.count({ where: { id: { startsWith: "m1test" } } }),
