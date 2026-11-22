@@ -24,6 +24,7 @@ export interface InvoiceLineItemInput {
 
 export interface ComputedInvoiceLine {
   orderItemId?: string | null;
+  kind?: "GOODS" | "SHIPPING" | "COD";
   description: string;
   hsn: string | null;
   qty: number;
@@ -248,6 +249,7 @@ export function computeInvoiceLines(input: ComputeInvoiceInput): ComputeInvoiceR
     if (item.isGift) {
       lines.push({
         orderItemId: item.orderItemId ?? null,
+        kind: "GOODS",
         description: `${item.description} (Free Gift)`,
         hsn: item.hsn || null,
         qty: item.qty,
@@ -275,6 +277,7 @@ export function computeInvoiceLines(input: ComputeInvoiceInput): ComputeInvoiceR
 
     lines.push({
       orderItemId: item.orderItemId ?? null,
+      kind: "GOODS",
       description: item.description,
       hsn,
       qty: item.qty,
@@ -297,6 +300,7 @@ export function computeInvoiceLines(input: ComputeInvoiceInput): ComputeInvoiceR
       const { cgstPaise, sgstPaise, igstPaise } = splitTax(taxPaise, isInterState);
       lines.push({
         orderItemId: null,
+        kind: "SHIPPING",
         description: "Shipping & Delivery Charges",
         hsn: "996812", // Postal & courier courier services HSN
         qty: 1,
@@ -317,6 +321,7 @@ export function computeInvoiceLines(input: ComputeInvoiceInput): ComputeInvoiceR
       const { cgstPaise, sgstPaise, igstPaise } = splitTax(taxPaise, isInterState);
       lines.push({
         orderItemId: null,
+        kind: "COD",
         description: "Cash on Delivery Handling Charges",
         hsn: "997159", // Financial services HSN
         qty: 1,

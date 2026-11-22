@@ -143,7 +143,7 @@ export async function createTestOrder(opts: {
   deliveredAt?: Date | null;
   createdAt?: Date;
   customerName?: string;
-  shippingAddress?: any;
+  shippingAddress?: unknown;
 }) {
   const id = genId("m1test_ord");
   const displayId = `m1test_HB_${crypto.randomInt(100000, 999999)}`;
@@ -383,6 +383,48 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
         { id: { startsWith: "m1test" } },
         { orderId: { in: m1OrderIds } },
         { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 2b2. ShipmentEvent & Shipment
+  await prisma.shipmentEvent.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { shipment: { orderId: { in: m1OrderIds } } },
+        { shipment: { orderId: { startsWith: "m1test" } } },
+      ],
+    },
+  });
+
+  await prisma.shipment.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 2b3. EventOutbox
+  await prisma.eventOutbox.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 2b4. CronRun
+  await prisma.cronRun.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { job: { startsWith: "m1test" } },
       ],
     },
   });
@@ -709,6 +751,10 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     collections: await prisma.collection.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { slug: { startsWith: "m1test" } }] } }),
     invoices: await prisma.invoice.count({ where: { id: { startsWith: "m1test" } } }),
     creditNotes: await prisma.creditNote.count({ where: { id: { startsWith: "m1test" } } }),
+    shipments: await prisma.shipment.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
+    shipmentEvents: await prisma.shipmentEvent.count({ where: { id: { startsWith: "m1test" } } }),
+    eventOutboxes: await prisma.eventOutbox.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
+    cronRuns: await prisma.cronRun.count({ where: { id: { startsWith: "m1test" } } }),
     gstRules: await prisma.gstRule.count({ where: { id: { startsWith: "m1test" } } }),
     orders: await prisma.order.count({ where: { id: { startsWith: "m1test" } } }),
     productVariants: await prisma.productVariant.count({ where: { id: { startsWith: "m1test" } } }),

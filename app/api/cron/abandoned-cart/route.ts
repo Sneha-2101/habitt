@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { sendAbandonedCartEmail } from "@/lib/email";
 import { getSettings } from "@/lib/settings";
 import crypto from "crypto";
+import { withCronRun } from "@/lib/cron/run-log";
 
 export async function GET(request: Request) {
   try {
@@ -23,45 +24,57 @@ export async function GET(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const settings = await getSettings();
-    const delayMs = (settings.abandonedCartDelayHours || 24) * 60 * 60 * 1000;
-    const now = Date.now();
-    const olderThan = new Date(now - delayMs);
-    const youngerThan = new Date(now - 72 * 60 * 60 * 1000);
+    const result = await withCronRun("abandoned-cart", async () => {
+      const settings = await getSettings();
+      const delayMs = (settings.abandonedCartDelayHours || 24) * 60 * 60 * 1000;
+      const now = Date.now();
+      const olderThan = new Date(now - delayMs);
+      const youngerThan = new Date(now - 72 * 60 * 60 * 1000);
 
-    const abandonedOrders = await prisma.order.findMany({
-      where: {
-        paymentMethod: "RAZORPAY",
-        paymentStatus: { in: ["PENDING", "FAILED"] },
-        fulfilmentStatus: "CREATED",
-        createdAt: {
-          lte: olderThan,
-          gte: youngerThan,
+      const abandonedOrders = await prisma.order.findMany({
+        where: {
+          paymentMethod: "RAZORPAY",
+          paymentStatus: { in: ["PENDING", "FAILED"] },
+          fulfilmentStatus: "CREATED",
+          createdAt: {
+            lte: olderThan,
+            gte: youngerThan,
+          },
+          abandonedEmailSentAt: null,
+          customerEmail: { not: null },
         },
-        abandonedEmailSentAt: null,
-        customerEmail: { not: null },
-      },
-      select: {
-        id: true,
-        displayId: true,
-        customerName: true,
-        customerEmail: true,
-      },
+        select: {
+          id: true,
+          displayId: true,
+          customerName: true,
+          customerEmail: true,
+        },
+      });
+
+      let sentCount = 0;
+      for (const order of abandonedOrders) {
+        if (order.customerEmail) {
+          await sendAbandonedCartEmail(order.customerEmail, order.customerName, order.displayId);
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { abandonedEmailSentAt: new Date() },
+          });
+          sentCount++;
+        }
+      }
+
+      return {
+        processed: abandonedOrders.length,
+        emailsSent: sentCount,
+        itemsProcessed: sentCount,
+      };
     });
 
-    let sentCount = 0;
-    for (const order of abandonedOrders) {
-      if (order.customerEmail) {
-        await sendAbandonedCartEmail(order.customerEmail, order.customerName, order.displayId);
-        await prisma.order.update({
-          where: { id: order.id },
-          data: { abandonedEmailSentAt: new Date() },
-        });
-        sentCount++;
-      }
-    }
-
-    return NextResponse.json({ success: true, processed: abandonedOrders.length, emailsSent: sentCount });
+    return NextResponse.json({
+      success: true,
+      processed: result.processed,
+      emailsSent: result.emailsSent,
+    });
   } catch (err) {
     console.error("Abandoned cart job error:", err);
     return NextResponse.json({ error: "Failed to process abandoned carts" }, { status: 500 });

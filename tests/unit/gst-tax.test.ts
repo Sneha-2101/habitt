@@ -299,4 +299,40 @@ describe("GST Pure Calculation Engine", () => {
       }
     });
   });
+
+  describe("9. Regression: Barcode Tee & Decode Hoodie stay GOODS next to real COD fee", () => {
+    it("ensures items with 'cod' in their name are explicitly classified as GOODS and not COD", () => {
+      const res = computeInvoiceLines({
+        items: [
+          {
+            description: "Barcode Tee",
+            qty: 1,
+            unitPricePaise: 99900,
+            discountPaise: 0,
+          },
+          {
+            description: "Decode Hoodie",
+            qty: 1,
+            unitPricePaise: 199900,
+            discountPaise: 0,
+          },
+        ],
+        shippingFeePaise: 9900,
+        codFeePaise: 5000,
+        feeMode: "SEPARATE",
+        feeRatePercent: 18,
+        fallbackGstRatePercent: 5,
+        buyerState: "Punjab",
+        businessState: "Punjab",
+      });
+
+      expect(res.lines).toHaveLength(4);
+      expect(res.lines[0].description).toBe("Barcode Tee");
+      expect(res.lines[0].kind).toBe("GOODS");
+      expect(res.lines[1].description).toBe("Decode Hoodie");
+      expect(res.lines[1].kind).toBe("GOODS");
+      expect(res.lines[2].kind).toBe("SHIPPING");
+      expect(res.lines[3].kind).toBe("COD");
+    });
+  });
 });

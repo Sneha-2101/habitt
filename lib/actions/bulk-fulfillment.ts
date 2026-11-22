@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/guards";
 import { revalidatePath } from "next/cache";
 import { sendShipmentNotificationEmail } from "@/lib/email";
 import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
+import { computeShipmentEventDedupeKey } from "@/lib/shipping/transitions";
 
 export async function bulkMarkShipped(
   shipments: {
@@ -27,19 +28,21 @@ export async function bulkMarkShipped(
   });
 
   const orderMap = new Map(orders.map((o) => [o.id, o]));
-  const skipped: Array<{ orderId: string; reason: string }> = [];
+  const skipped: Array<{ row: number; orderId: string; reason: string }> = [];
   let successCount = 0;
   const shippedAt = new Date();
 
-  for (const item of shipments) {
+  for (let i = 0; i < shipments.length; i++) {
+    const item = shipments[i];
+    const rowNum = i + 1;
     const order = orderMap.get(item.orderId);
     if (!order) {
-      skipped.push({ orderId: item.orderId, reason: "Order not found" });
+      skipped.push({ row: rowNum, orderId: item.orderId, reason: "Order not found" });
       continue;
     }
 
     if (!item.courierName?.trim() || !item.awbNumber?.trim()) {
-      skipped.push({ orderId: item.orderId, reason: "Missing courier name or AWB" });
+      skipped.push({ row: rowNum, orderId: item.orderId, reason: "Missing courier name or AWB" });
       continue;
     }
 
@@ -50,6 +53,7 @@ export async function bulkMarkShipped(
 
     if (!canShip) {
       skipped.push({
+        row: rowNum,
         orderId: item.orderId,
         reason: `Illegal status for ${order.paymentMethod} order (fulfilment: ${order.fulfilmentStatus}, payment: ${order.paymentStatus})`,
       });
@@ -81,6 +85,55 @@ export async function bulkMarkShipped(
           return false;
         }
 
+        // Create or update MANUAL Shipment row
+        const existingShipment = await tx.shipment.findFirst({
+          where: { orderId: order.id, status: { notIn: ["CANCELLED", "FAILED"] } },
+        });
+
+        let shipmentId: string;
+        if (existingShipment) {
+          shipmentId = existingShipment.id;
+          await tx.shipment.update({
+            where: { id: existingShipment.id },
+            data: {
+              awb: awbNumber,
+              courierName,
+              trackingUrl,
+              status: "IN_TRANSIT",
+            },
+          });
+        } else {
+          const createdShpm = await tx.shipment.create({
+            data: {
+              orderId: order.id,
+              provider: "MANUAL",
+              status: "IN_TRANSIT",
+              awb: awbNumber,
+              courierName,
+              trackingUrl,
+            },
+          });
+          shipmentId = createdShpm.id;
+        }
+
+        const dedupeKey = computeShipmentEventDedupeKey(
+          awbNumber,
+          "BULK_DISPATCH",
+          shippedAt
+        );
+        await tx.shipmentEvent.upsert({
+          where: { dedupeKey },
+          create: {
+            shipmentId,
+            status: "IN_TRANSIT",
+            rawStatus: "BULK_DISPATCH",
+            source: "MANUAL",
+            occurredAt: shippedAt,
+            dedupeKey,
+          },
+          update: {},
+        });
+
         await tx.orderStatusEvent.create({
           data: {
             orderId: order.id,
@@ -95,7 +148,7 @@ export async function bulkMarkShipped(
       });
 
       if (!updated) {
-        skipped.push({ orderId: item.orderId, reason: "Order already changed" });
+        skipped.push({ row: rowNum, orderId: item.orderId, reason: "Order already changed" });
         continue;
       }
 
@@ -120,7 +173,7 @@ export async function bulkMarkShipped(
       });
     } catch (err) {
       console.error(`Bulk fulfill error for ${item.orderId}:`, err);
-      skipped.push({ orderId: item.orderId, reason: "Failed to fulfill" });
+      skipped.push({ row: rowNum, orderId: item.orderId, reason: "Failed to fulfill" });
     }
   }
 

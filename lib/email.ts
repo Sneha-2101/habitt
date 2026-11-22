@@ -191,6 +191,69 @@ export async function sendShipmentNotificationEmail(orderId: string) {
   }
 }
 
+export async function sendOutForDeliveryEmail(orderId: string) {
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping out for delivery email for order ${orderId}.`);
+    return { success: false, reason: "No API Key" };
+  }
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { user: true },
+    });
+
+    if (!order) {
+      console.error(`[Email] Order not found: ${orderId}`);
+      return { success: false, reason: "Order not found" };
+    }
+
+    const recipientEmail = order.customerEmail || order.user?.email;
+    if (!recipientEmail) {
+      console.error(`[Email] No recipient email for order: ${orderId}`);
+      return { success: false, reason: "No recipient email" };
+    }
+
+    const emailInfo = await getEmailSenderInfo();
+
+    const htmlContent = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+        <h2 style="font-size: 24px; font-weight: 600; margin-bottom: 8px;">Your Order is Out for Delivery! 🚚</h2>
+        <p style="color: #666; margin-bottom: 24px;">Exciting news! Your package for order #${escapeHtml(order.displayId)} is out for delivery and will reach you today.</p>
+
+        <div style="background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+          <p style="margin: 0 0 8px 0;"><strong>Order ID:</strong> #${escapeHtml(order.displayId)}</p>
+          ${order.courierName ? `<p style="margin: 0 0 8px 0;"><strong>Courier:</strong> ${escapeHtml(order.courierName)}</p>` : ""}
+          ${order.awbNumber ? `<p style="margin: 0 0 8px 0;"><strong>Tracking Number:</strong> ${escapeHtml(order.awbNumber)}</p>` : ""}
+          ${
+            order.trackingUrl
+              ? `<p style="margin: 16px 0 0 0;"><a href="${escapeHtml(order.trackingUrl)}" style="background-color: #111; color: #fff; text-decoration: none; padding: 10px 18px; border-radius: 4px; display: inline-block; font-size: 13px; font-weight: 500;">Track Live Delivery →</a></p>`
+              : ""
+          }
+        </div>
+
+        <p style="font-size: 12px; color: #888; text-align: center; margin-top: 32px;">
+          ${escapeHtml(emailInfo.businessName)} — ${escapeHtml(emailInfo.tagline)}
+        </p>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: emailInfo.from,
+      replyTo: emailInfo.replyTo,
+      to: recipientEmail,
+      subject: `Out for Delivery: Order #${order.displayId} — ${emailInfo.businessName}`,
+      html: htmlContent,
+    });
+
+    console.log(`[Email] Out for delivery email sent for order ${order.displayId} to ${recipientEmail}:`, response);
+    return { success: true, data: response };
+  } catch (error) {
+    console.error(`[Email] Failed to send out for delivery email for ${orderId}:`, error);
+    return { success: false, error };
+  }
+}
+
 export async function sendCancellationEmail(orderId: string) {
   if (!resend) {
     console.log(`[Email] RESEND_API_KEY is not set. Skipping cancellation email for order ${orderId}.`);

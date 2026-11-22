@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import { revalidatePath } from "next/cache";
 import type { FulfilmentStatus } from "@prisma/client";
-import { markOrderShipped, markOrderDelivered } from "@/lib/actions/fulfillment";
+import { markOrderShipped, markOrderDelivered, createShipmentAction } from "@/lib/actions/fulfillment";
+import { isShiprocketEnabled } from "@/lib/shipping/shiprocket";
 import { cancelOrderAsAdmin } from "@/lib/actions/cancellation";
 import { addOrderNote } from "@/lib/actions/notes";
 import { requireStaff } from "@/lib/guards";
@@ -109,6 +110,23 @@ async function updateStatus(orderId: string, formData: FormData) {
   revalidatePath("/admin/orders");
 }
 
+async function handleCreateShipment(orderId: string) {
+  "use server";
+  const user = await requireStaff();
+  const res = await createShipmentAction(orderId);
+  await writeAudit({
+    actorId: user.id,
+    action: "CREATE_SHIPMENT",
+    entity: "Order",
+    entityId: orderId,
+    meta: { result: res },
+  });
+  if (!res.ok) {
+    throw new Error(res.error || "Failed to create shipment");
+  }
+  revalidatePath(`/admin/orders/${orderId}`);
+}
+
 export default async function AdminOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   const order = await prisma.order.findUnique({
@@ -117,6 +135,12 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
       items: true,
       statusEvents: { orderBy: { createdAt: "asc" } },
       notes: { orderBy: { createdAt: "desc" } },
+      shipments: {
+        include: {
+          events: { orderBy: { occurredAt: "desc" } },
+        },
+        orderBy: { createdAt: "desc" },
+      },
       invoice: {
         include: { lines: true },
       },
@@ -544,31 +568,123 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
       <div className="border border-stone bg-white p-6 rounded-sm space-y-6">
         <h2 className="text-sm font-semibold text-ink">Shipping Fulfillment</h2>
 
-        {/* Existing Shipment Info if Shipped */}
-        {order.courierName && (
-          <div className="p-4 bg-paper border border-stone text-[13px] space-y-1">
-            <p><strong>Courier:</strong> {order.courierName}</p>
-            <p><strong>AWB / Tracking Number:</strong> <span className="font-mono">{order.awbNumber}</span></p>
-            {order.trackingUrl && (
-              <p>
-                <strong>Tracking Link:</strong>{" "}
-                <a href={order.trackingUrl} target="_blank" className="underline text-ink">
-                  {order.trackingUrl}
-                </a>
-              </p>
-            )}
-            {order.shippedAt && (
-              <p className="text-xs text-stone-dark pt-1">
-                Shipped on: {new Date(order.shippedAt).toLocaleString("en-IN")}
-              </p>
-            )}
-            {order.deliveredAt && (
-              <p className="text-xs text-emerald-700 font-medium">
-                Delivered on: {new Date(order.deliveredAt).toLocaleString("en-IN")}
-              </p>
-            )}
-          </div>
-        )}
+        {/* Shipment Details Panel */}
+        {(() => {
+          const latestShipment = order.shipments?.[0];
+          const shiprocketActive = isShiprocketEnabled();
+          const canCreateShipment =
+            (order.paymentStatus === "PAID" || order.paymentMethod === "COD") &&
+            ["PLACED", "CONFIRMED", "PACKED"].includes(order.fulfilmentStatus) &&
+            (!latestShipment || latestShipment.status === "FAILED" || latestShipment.status === "CANCELLED");
+
+          return (
+            <div className="space-y-4">
+              {latestShipment && (
+                <div className="p-4 bg-paper border border-stone text-[13px] space-y-3 rounded-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-ink">Shipment Details</span>
+                      <span className="px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase bg-stone-light text-stone-dark rounded-xs">
+                        {latestShipment.provider}
+                      </span>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-xs ${
+                        latestShipment.status === "DELIVERED"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : latestShipment.status === "FAILED"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
+                      {latestShipment.status}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-stone-dark block">Courier:</span>
+                      <span className="font-medium text-ink">{latestShipment.courierName || order.courierName || "—"}</span>
+                    </div>
+                    <div>
+                      <span className="text-stone-dark block">AWB / Tracking #:</span>
+                      <span className="font-mono font-medium text-ink">{latestShipment.awb || order.awbNumber || "—"}</span>
+                    </div>
+                  </div>
+
+                  {(latestShipment.trackingUrl || order.trackingUrl) && (
+                    <p className="text-xs">
+                      <strong className="text-stone-dark">Tracking Link:</strong>{" "}
+                      <a
+                        href={latestShipment.trackingUrl || order.trackingUrl || "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline text-ink hover:text-moss"
+                      >
+                        {latestShipment.trackingUrl || order.trackingUrl}
+                      </a>
+                    </p>
+                  )}
+
+                  {latestShipment.status === "FAILED" && (
+                    <div className="p-3 bg-red-50 border border-red-200 text-xs text-red-800 rounded-sm space-y-2">
+                      <p><strong>Shipment Error:</strong> {latestShipment.failureReason || "Shipment failed."}</p>
+                      <form action={handleCreateShipment.bind(null, order.id)}>
+                        <button
+                          type="submit"
+                          className="px-3 py-1.5 bg-red-800 text-paper text-[11px] font-medium tracking-wide rounded-sm hover:bg-red-900"
+                        >
+                          Retry Shipment
+                        </button>
+                      </form>
+                    </div>
+                  )}
+
+                  {/* Shipment Events Timeline */}
+                  {latestShipment.events && latestShipment.events.length > 0 && (
+                    <div className="pt-2 border-t border-stone/50 space-y-1.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-dark">Shipment Timeline</p>
+                      <div className="space-y-1 text-xs">
+                        {latestShipment.events.map((ev) => (
+                          <div key={ev.id} className="flex items-start justify-between gap-2 py-1 border-b border-stone/20 last:border-none">
+                            <div>
+                              <span className="font-medium text-ink">{ev.status}</span>
+                              {ev.rawStatus && ev.rawStatus !== ev.status && (
+                                <span className="text-stone-dark ml-2">- {ev.rawStatus}</span>
+                              )}
+                              {ev.location && <span className="text-stone-dark ml-1 font-mono">({ev.location})</span>}
+                            </div>
+                            <span className="text-[10px] text-stone-dark font-mono whitespace-nowrap">
+                              {new Date(ev.occurredAt).toLocaleString("en-IN")}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Automated Provider Button (Shiprocket) */}
+              {shiprocketActive && canCreateShipment && (
+                <div className="p-4 bg-paper border border-stone text-[13px] rounded-sm flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-ink">Automated Shipment (Shiprocket)</p>
+                    <p className="text-xs text-stone-dark">Automatically create shipment and assign AWB via Shiprocket.</p>
+                  </div>
+                  <form action={handleCreateShipment.bind(null, order.id)}>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-ink text-paper text-xs font-medium tracking-wide rounded-sm hover:bg-stone-dark transition-colors"
+                    >
+                      Create Shiprocket Shipment
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Form to Mark Shipped */}
         {order.fulfilmentStatus !== "SHIPPED" && order.fulfilmentStatus !== "DELIVERED" && order.fulfilmentStatus !== "CANCELLED" && (

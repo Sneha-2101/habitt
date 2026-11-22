@@ -45,6 +45,13 @@ export default async function AccountPage() {
         },
         invoice: { select: { id: true } },
         creditNotes: { select: { id: true }, take: 1 },
+        shipments: {
+          include: {
+            events: { orderBy: { occurredAt: "asc" } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -84,8 +91,26 @@ export default async function AccountPage() {
       }
     }
 
+    const latestShipment = o.shipments?.[0];
+    const friendlyShipment = latestShipment
+      ? {
+          status: latestShipment.status,
+          courierName: latestShipment.courierName,
+          awb: latestShipment.awb,
+          trackingUrl: latestShipment.trackingUrl,
+          events: latestShipment.events.map((ev) => ({
+            id: ev.id,
+            status: ev.status,
+            rawStatus: ev.rawStatus,
+            location: ev.location,
+            occurredAt: ev.occurredAt,
+          })),
+        }
+      : null;
+
     return {
       ...orderRest,
+      shipment: friendlyShipment,
       isReturnWindowOpen: windowOpen,
       hasInvoice: Boolean(invoice),
       hasCreditNote: Boolean(creditNotes && creditNotes.length > 0),

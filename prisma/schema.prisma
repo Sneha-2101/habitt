@@ -122,6 +122,7 @@ model Order {
   invoice           Invoice?
   creditNotes       CreditNote[]
   refunds           Refund[]
+  shipments         Shipment[]
   couponCode        String?
   discountAmount    Int?
   giftMessage       String?
@@ -808,4 +809,96 @@ model CreditNoteLine {
   @@index([creditNoteId])
   @@index([invoiceLineId])
 }
+
+enum ShipmentProvider {
+  MANUAL
+  SHIPROCKET
+}
+
+enum ShipmentStatus {
+  CREATED
+  AWB_ASSIGNED
+  PICKUP_SCHEDULED
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  RTO_INITIATED
+  RTO_DELIVERED
+  CANCELLED
+  FAILED
+}
+
+model Shipment {
+  id                 String           @id @default(cuid())
+  order              Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId            String
+  provider           ShipmentProvider
+  status             ShipmentStatus   @default(CREATED)
+  awb                String?
+  courierName        String?
+  trackingUrl        String?
+  providerOrderId    String?
+  providerShipmentId String?
+  labelUrl           String?
+  lastSyncedAt       DateTime?
+  lastEventAt        DateTime?
+  failureReason      String?
+  events             ShipmentEvent[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([orderId])
+}
+
+model ShipmentEvent {
+  id         String         @id @default(cuid())
+  shipment   Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipmentId String
+  status     ShipmentStatus
+  rawStatus  String
+  location   String?
+  occurredAt DateTime
+  source     String         // 'WEBHOOK' | 'POLL' | 'MANUAL'
+  dedupeKey  String         @unique
+  createdAt  DateTime       @default(now())
+
+  @@index([shipmentId])
+}
+
+enum OutboxStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model EventOutbox {
+  id            String       @id @default(cuid())
+  type          String
+  channel       String       // 'EMAIL' | 'WHATSAPP'
+  orderId       String?
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  nextAttemptAt DateTime     @default(now())
+  lastError     String?
+  dedupeKey     String       @unique
+  createdAt     DateTime     @default(now())
+  sentAt        DateTime?
+
+  @@index([status, nextAttemptAt])
+}
+
+model CronRun {
+  id             String    @id @default(cuid())
+  job            String
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  ok             Boolean?
+  itemsProcessed Int?
+  error          String?
+
+  @@index([job, startedAt])
+}
+
 

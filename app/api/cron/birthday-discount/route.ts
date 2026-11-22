@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { sendBirthdayDiscountEmail } from "@/lib/email";
 import crypto from "crypto";
+import { withCronRun } from "@/lib/cron/run-log";
 
 export async function GET(request: Request) {
   try {
@@ -23,79 +24,87 @@ export async function GET(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const settings = await getSettings();
-    const discountPercent = settings.birthdayDiscountPercent || 10;
+    const result = await withCronRun("birthday-discount", async () => {
+      const settings = await getSettings();
+      const discountPercent = settings.birthdayDiscountPercent || 10;
 
-    const today = new Date();
-    const currentMonth = today.getMonth() + 1; // 1-12
-    const currentDay = today.getDate(); // 1-31
-    const currentYear = today.getFullYear();
+      const today = new Date();
+      const currentMonth = today.getMonth() + 1; // 1-12
+      const currentDay = today.getDate(); // 1-31
+      const currentYear = today.getFullYear();
 
-    // Fetch users with dateOfBirth set
-    const usersWithDob = await prisma.user.findMany({
-      where: {
-        dateOfBirth: { not: null },
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        dateOfBirth: true,
-      },
-    });
-
-    // Filter users whose month and day match today
-    const birthdayUsers = usersWithDob.filter((user) => {
-      if (!user.dateOfBirth) return false;
-      const dob = new Date(user.dateOfBirth);
-      return dob.getMonth() + 1 === currentMonth && dob.getDate() === currentDay;
-    });
-
-    let generatedCount = 0;
-
-    for (const user of birthdayUsers) {
-      if (!user.email) continue;
-
-      // Check if offer already generated for this user this year
-      const userTag = user.id.slice(-6).toUpperCase();
-      const codePrefix = `BDAY-${currentYear}-${userTag}`;
-      const existingOffer = await prisma.offer.findFirst({
+      // Fetch users with dateOfBirth set
+      const usersWithDob = await prisma.user.findMany({
         where: {
-          code: { startsWith: codePrefix },
+          dateOfBirth: { not: null },
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          dateOfBirth: true,
         },
       });
 
-      if (existingOffer) continue;
-
-      const randomSuffix = crypto.randomBytes(2).toString("hex").toUpperCase();
-      const code = `${codePrefix}-${randomSuffix}`;
-      const expiresAt = new Date(today);
-      expiresAt.setDate(expiresAt.getDate() + 30); // 30 days validity
-
-      await prisma.offer.create({
-        data: {
-          name: `Birthday ${discountPercent}% Off`,
-          kind: "PERCENT_OFF",
-          code,
-          active: true,
-          startsAt: new Date(today),
-          endsAt: expiresAt,
-          audience: "BIRTHDAY",
-          maxUsesTotal: 1,
-          maxUsesPerCustomer: 1,
-          priority: 100,
-          config: { percent: discountPercent },
-        },
+      // Filter users whose month and day match today
+      const birthdayUsers = usersWithDob.filter((user) => {
+        if (!user.dateOfBirth) return false;
+        const dob = new Date(user.dateOfBirth);
+        return dob.getMonth() + 1 === currentMonth && dob.getDate() === currentDay;
       });
 
-      await sendBirthdayDiscountEmail(user.email, user.name || "Valued Customer", code, discountPercent);
-      generatedCount++;
-    }
+      let generatedCount = 0;
+
+      for (const user of birthdayUsers) {
+        if (!user.email) continue;
+
+        // Check if offer already generated for this user this year
+        const userTag = user.id.slice(-6).toUpperCase();
+        const codePrefix = `BDAY-${currentYear}-${userTag}`;
+        const existingOffer = await prisma.offer.findFirst({
+          where: {
+            code: { startsWith: codePrefix },
+          },
+        });
+
+        if (existingOffer) continue;
+
+        const randomSuffix = crypto.randomBytes(2).toString("hex").toUpperCase();
+        const code = `${codePrefix}-${randomSuffix}`;
+        const expiresAt = new Date(today);
+        expiresAt.setDate(expiresAt.getDate() + 30); // 30 days validity
+
+        await prisma.offer.create({
+          data: {
+            name: `Birthday ${discountPercent}% Off`,
+            kind: "PERCENT_OFF",
+            code,
+            active: true,
+            startsAt: new Date(today),
+            endsAt: expiresAt,
+            audience: "BIRTHDAY",
+            maxUsesTotal: 1,
+            maxUsesPerCustomer: 1,
+            priority: 100,
+            config: { percent: discountPercent },
+          },
+        });
+
+        await sendBirthdayDiscountEmail(user.email, user.name || "Valued Customer", code, discountPercent);
+        generatedCount++;
+      }
+
+      return {
+        birthdayUsersFound: birthdayUsers.length,
+        couponsGenerated: generatedCount,
+        itemsProcessed: generatedCount,
+      };
+    });
 
     return NextResponse.json({
       success: true,
-      birthdayUsersFound: birthdayUsers.length,
-      couponsGenerated: generatedCount,
+      birthdayUsersFound: result.birthdayUsersFound,
+      couponsGenerated: result.couponsGenerated,
     });
   } catch (error) {
     console.error("[Cron Birthday Discount Error]:", error);

@@ -317,13 +317,7 @@ export async function issueInvoiceForOrder(
       lines: {
         create: calc.lines.map((l) => ({
           orderItemId: l.orderItemId,
-          kind: l.description.toLowerCase().includes("shipping")
-            ? InvoiceLineKind.SHIPPING
-            : l.description.toLowerCase().includes("delivery fee") ||
-              l.description.toLowerCase().includes("cash on delivery") ||
-              l.description.toLowerCase().includes("cod")
-            ? InvoiceLineKind.COD
-            : InvoiceLineKind.GOODS,
+          kind: (l.kind as InvoiceLineKind) || (l.orderItemId ? InvoiceLineKind.GOODS : InvoiceLineKind.SHIPPING),
           description: l.description,
           hsn: l.hsn,
           qty: l.qty,

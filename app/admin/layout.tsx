@@ -56,6 +56,9 @@ export default async function AdminLayout({
               <Link href="/admin/gst" className="hover:text-ink transition-colors">
                 GST & Invoicing
               </Link>
+              <Link href="/admin/jobs" className="hover:text-ink transition-colors">
+                Jobs & Outbox
+              </Link>
               {isOwner && (
                 <Link href="/admin/team" className="hover:text-ink transition-colors">
                   Team

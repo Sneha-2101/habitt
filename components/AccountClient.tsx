@@ -70,6 +70,19 @@ interface AccountClientProps {
     courierName?: string | null;
     awbNumber?: string | null;
     trackingUrl?: string | null;
+    shipment?: {
+      status: string;
+      courierName?: string | null;
+      awb?: string | null;
+      trackingUrl?: string | null;
+      events?: Array<{
+        id: string;
+        status: string;
+        rawStatus?: string | null;
+        location?: string | null;
+        occurredAt: Date;
+      }>;
+    } | null;
     createdAt: Date;
     statusEvents?: Array<{
       id: string;
@@ -824,10 +837,27 @@ export default function AccountClient({
                       <OrderStatusTimeline
                         currentStatus={o.status}
                         events={o.statusEvents}
-                        courierName={o.courierName}
-                        awbNumber={o.awbNumber}
-                        trackingUrl={o.trackingUrl}
+                        courierName={o.shipment?.courierName || o.courierName}
+                        awbNumber={o.shipment?.awb || o.awbNumber}
+                        trackingUrl={o.shipment?.trackingUrl || o.trackingUrl}
                       />
+                      {o.shipment?.events && o.shipment.events.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-stone/30 space-y-1.5 text-xs">
+                          <p className="text-[11px] font-semibold text-stone-dark uppercase tracking-wider">Tracking Updates</p>
+                          {o.shipment.events.map((ev) => (
+                            <div key={ev.id} className="flex justify-between items-center text-stone-dark py-0.5">
+                              <div>
+                                <span className="font-medium text-ink">{ev.status}</span>
+                                {ev.rawStatus && ev.rawStatus !== ev.status && <span> - {ev.rawStatus}</span>}
+                                {ev.location && <span className="font-mono text-[11px] ml-1">({ev.location})</span>}
+                              </div>
+                              <span className="font-mono text-[10px] text-stone-dark">
+                                {new Date(ev.occurredAt).toLocaleDateString("en-IN", { month: "short", day: "numeric" })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <p className="text-xs font-semibold text-stone-dark uppercase tracking-wider">

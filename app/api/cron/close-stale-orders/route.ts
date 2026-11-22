@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { failOrder } from "@/lib/orders/fail-order";
 import crypto from "crypto";
+import { withCronRun } from "@/lib/cron/run-log";
 
 export async function GET(request: Request) {
   try {
@@ -22,36 +23,40 @@ export async function GET(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const result = await withCronRun("close-stale-orders", async () => {
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
-    const staleOrders = await prisma.order.findMany({
-      where: {
-        paymentMethod: "RAZORPAY",
-        paymentStatus: "PENDING",
-        fulfilmentStatus: "CREATED",
-        createdAt: { lte: twoHoursAgo },
-      },
-      include: {
-        items: true,
-      },
+      const staleOrders = await prisma.order.findMany({
+        where: {
+          paymentMethod: "RAZORPAY",
+          paymentStatus: "PENDING",
+          fulfilmentStatus: "CREATED",
+          createdAt: { lte: twoHoursAgo },
+        },
+        include: {
+          items: true,
+        },
+      });
+
+      let closedCount = 0;
+      for (const order of staleOrders) {
+        try {
+          const res = await prisma.$transaction(async (tx) => {
+            return await failOrder(tx, order, "Order timed out waiting for payment");
+          });
+          if (res.updated) {
+            closedCount++;
+          }
+        } catch (orderErr) {
+          console.error(`Failed to close stale order ${order.id}:`, orderErr);
+        }
+      }
+
+      return { closedCount, itemsProcessed: closedCount };
     });
 
-    let closedCount = 0;
-    for (const order of staleOrders) {
-      try {
-        const result = await prisma.$transaction(async (tx) => {
-          return await failOrder(tx, order, "Order timed out waiting for payment");
-        });
-        if (result.updated) {
-          closedCount++;
-        }
-      } catch (orderErr) {
-        console.error(`Failed to close stale order ${order.id}:`, orderErr);
-      }
-    }
-
-    return NextResponse.json({ success: true, closedCount });
-  } catch (err: any) {
+    return NextResponse.json({ success: true, closedCount: result.closedCount });
+  } catch (err: unknown) {
     console.error("Close stale orders cron error:", err);
     return NextResponse.json({ error: "Failed to close stale orders" }, { status: 500 });
   }
