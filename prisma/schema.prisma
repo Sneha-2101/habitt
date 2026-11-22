@@ -95,7 +95,9 @@ model Order {
   items             OrderItem[]
   subtotal          Int
   shippingFee       Int                @default(0)
+  codFee            Int                @default(0)
   total             Int
+  feesRefunded      Boolean            @default(false)
   paymentStatus     PaymentStatus      @default(PENDING)
   fulfilmentStatus  FulfilmentStatus   @default(CREATED)
   paymentMethod     PaymentMethod      @default(RAZORPAY) // RAZORPAY or COD
@@ -119,6 +121,7 @@ model Order {
   offerRedemptions  OfferRedemption[]
   invoice           Invoice?
   creditNotes       CreditNote[]
+  refunds           Refund[]
   couponCode        String?
   discountAmount    Int?
   giftMessage       String?
@@ -193,6 +196,7 @@ model OrderItem {
   isGift        Boolean         @default(false)
   discounts     OrderDiscount[]
   invoiceLines  InvoiceLine[]
+  returnItems   ReturnItem[]
 }
 
 model OrderStatusEvent {
@@ -374,23 +378,87 @@ model StockNotification {
 }
 
 model ReturnRequest {
-  id        String       @id @default(cuid())
-  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderId   String
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
-  reason    String
-  status    ReturnStatus @default(REQUESTED)
-  adminNote String?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id                String           @id @default(cuid())
+  order             Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId           String
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  reason            String
+  status            ReturnStatus     @default(REQUESTED)
+  adminNote         String?
+  reasonCode        ReturnReasonCode @default(OTHER)
+  customerNote      String?
+  rejectedReason    String?
+  approvedAt        DateTime?
+  receivedAt        DateTime?
+  refundInitiatedAt DateTime?
+  items             ReturnItem[]
+  refunds           Refund[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 }
 
 enum ReturnStatus {
   REQUESTED
   APPROVED
   REJECTED
+  RECEIVED
   REFUNDED
+  CANCELLED
+}
+
+enum ReturnReasonCode {
+  WRONG_SIZE
+  DEFECTIVE
+  NOT_AS_DESCRIBED
+  CHANGED_MIND
+  OTHER
+}
+
+model ReturnItem {
+  id          String        @id @default(cuid())
+  return      ReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  returnId    String
+  orderItem   OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  orderItemId String
+  qty         Int
+  restock     Boolean?
+  condition   String?
+  createdAt   DateTime      @default(now())
+
+  @@index([orderItemId])
+}
+
+enum RefundMethod {
+  RAZORPAY
+  STORE_CREDIT
+  MANUAL
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+model Refund {
+  id               String         @id @default(cuid())
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId          String
+  returnRequest    ReturnRequest? @relation(fields: [returnId], references: [id], onDelete: SetNull)
+  returnId         String?
+  method           RefundMethod
+  status           RefundStatus
+  amountPaise      Int
+  providerRefundId String?
+  idempotencyKey   String         @unique
+  initiatedAt      DateTime       @default(now())
+  processedAt      DateTime?
+  failureReason    String?
+  createdAt        DateTime       @default(now())
+
+  @@index([orderId])
+  @@index([returnId])
 }
 
 model OrderNote {

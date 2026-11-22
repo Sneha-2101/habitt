@@ -11,7 +11,7 @@ import {
 } from "@/lib/actions/account";
 import { INDIAN_STATES } from "@/lib/validation/address";
 import { cancelOrderAsCustomer } from "@/lib/actions/cancellation";
-import { requestReturn } from "@/lib/actions/returns";
+import { requestReturn, cancelReturn } from "@/lib/actions/returns";
 import { requestStepUpAction, confirmStepUpAction } from "@/lib/actions/step-up";
 import { requestContactChangeAction, confirmContactChangeAction } from "@/lib/actions/contact";
 import { signOutEverywhereAction } from "@/lib/actions/sessions";
@@ -79,12 +79,20 @@ interface AccountClientProps {
       note?: string | null;
       createdAt: Date;
     }>;
+    isReturnWindowOpen?: boolean;
     returnRequests?: Array<{
       id: string;
       reason: string;
+      reasonCode?: string;
       status: ReturnStatus;
       adminNote?: string | null;
+      customerNote?: string | null;
       createdAt: Date;
+      items?: Array<{
+        id: string;
+        orderItemId: string;
+        qty: number;
+      }>;
     }>;
     items: Array<{
       id: string;
@@ -96,6 +104,8 @@ interface AccountClientProps {
       unitPrice: number;
       qty: number;
       currentStock?: number;
+      isGift?: boolean;
+      remainingReturnable?: number;
     }>;
   }>;
 }
@@ -243,7 +253,12 @@ export default function AccountClient({
   }
 
   const [returningOrderId, setReturningOrderId] = useState<string | null>(null);
-  const [returnReason, setReturnReason] = useState("");
+  const [returningItemQtys, setReturningItemQtys] = useState<Record<string, number>>({});
+  const [returnReasonCode, setReturnReasonCode] = useState<
+    "WRONG_SIZE" | "DEFECTIVE" | "NOT_AS_DESCRIBED" | "CHANGED_MIND" | "OTHER"
+  >("WRONG_SIZE");
+  const [returnCustomerNote, setReturnCustomerNote] = useState("");
+  const [cancellingReturnId, setCancellingReturnId] = useState<string | null>(null);
   const [orderSearchQuery, setOrderSearchQuery] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState("ALL");
 
@@ -298,13 +313,44 @@ export default function AccountClient({
 
   function handleReturnSubmit(orderId: string) {
     setReturnErrorMsg(null);
+    const itemsToReturn = Object.entries(returningItemQtys)
+      .filter(([, qty]) => qty > 0)
+      .map(([orderItemId, qty]) => ({ orderItemId, qty }));
+
+    if (itemsToReturn.length === 0) {
+      setReturnErrorMsg("Please select at least one item to return.");
+      return;
+    }
+
     startReturnTransition(async () => {
       try {
-        await requestReturn(orderId, returnReason);
+        await requestReturn({
+          orderId,
+          items: itemsToReturn,
+          reasonCode: returnReasonCode,
+          note: returnCustomerNote,
+        });
         setReturningOrderId(null);
-        setReturnReason("");
+        setReturningItemQtys({});
+        setReturnCustomerNote("");
+        router.refresh();
       } catch (err) {
         setReturnErrorMsg(err instanceof Error ? err.message : "Failed to submit return request");
+      }
+    });
+  }
+
+  function handleCancelReturn(returnId: string) {
+    setReturnErrorMsg(null);
+    setCancellingReturnId(returnId);
+    startReturnTransition(async () => {
+      try {
+        await cancelReturn(returnId);
+        setCancellingReturnId(null);
+        router.refresh();
+      } catch (err) {
+        setReturnErrorMsg(err instanceof Error ? err.message : "Failed to cancel return");
+        setCancellingReturnId(null);
       }
     });
   }
@@ -896,35 +942,191 @@ export default function AccountClient({
 
                     {/* Return Request Control for Delivered Orders */}
                     {o.status === "DELIVERED" && (
-                      <div className="pt-3 border-t border-stone/50">
-                        {o.returnRequests && o.returnRequests.length > 0 ? (
-                          <div className="p-3 bg-paper border border-stone rounded-sm text-xs space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-ink">Return Status:</span>
-                              <span className="font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800 uppercase">
-                                {o.returnRequests[0].status}
-                              </span>
-                            </div>
-                            <p className="text-stone-dark">Reason: {o.returnRequests[0].reason}</p>
-                            {o.returnRequests[0].adminNote && (
-                              <p className="text-stone-dark">Note: {o.returnRequests[0].adminNote}</p>
-                            )}
+                      <div className="pt-3 border-t border-stone/50 space-y-3">
+                        {/* List Existing Return Requests */}
+                        {o.returnRequests && o.returnRequests.length > 0 && (
+                          <div className="space-y-2">
+                            {o.returnRequests.map((req) => (
+                              <div
+                                key={req.id}
+                                className="p-3 bg-paper border border-stone rounded-sm text-xs space-y-1.5"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-ink">Return Status:</span>
+                                    <span
+                                      className={`font-semibold px-2 py-0.5 rounded uppercase text-[10px] ${
+                                        req.status === "REFUNDED"
+                                          ? "bg-emerald-100 text-emerald-800"
+                                          : req.status === "REJECTED" || req.status === "CANCELLED"
+                                          ? "bg-stone-200 text-stone-700"
+                                          : "bg-amber-100 text-amber-800"
+                                      }`}
+                                    >
+                                      {req.status}
+                                    </span>
+                                  </div>
+                                  {req.status === "REQUESTED" && (
+                                    <button
+                                      type="button"
+                                      disabled={isPendingReturn || cancellingReturnId === req.id}
+                                      onClick={() => handleCancelReturn(req.id)}
+                                      className="text-[11px] text-clay hover:underline disabled:opacity-50"
+                                    >
+                                      {cancellingReturnId === req.id ? "Cancelling..." : "Cancel Return"}
+                                    </button>
+                                  )}
+                                </div>
+                                <p className="text-stone-dark">
+                                  <strong>Reason:</strong> {req.reason || req.reasonCode || "Return requested"}
+                                </p>
+                                {req.customerNote && (
+                                  <p className="text-stone-dark">
+                                    <strong>Your Note:</strong> {req.customerNote}
+                                  </p>
+                                )}
+                                {req.adminNote && (
+                                  <p className="text-stone-dark border-t border-stone/30 pt-1 mt-1">
+                                    <strong>Admin Note:</strong> {req.adminNote}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
                           </div>
-                        ) : returningOrderId === o.id ? (
-                          <div className="p-4 bg-amber-50 border border-amber-300 rounded-sm space-y-3">
-                            <p className="text-xs font-semibold text-amber-900 uppercase tracking-wider">
-                              Request Return & Refund
+                        )}
+
+                        {/* Request Return Panel */}
+                        {returningOrderId === o.id ? (
+                          <div className="p-4 bg-amber-50 border border-amber-300 rounded-sm space-y-3 text-xs">
+                            <p className="font-semibold text-amber-900 uppercase tracking-wider text-[11px]">
+                              Select Items to Return
                             </p>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Reason for return (e.g. Size didn't fit, defective material)"
-                              value={returnReason}
-                              onChange={(e) => setReturnReason(e.target.value)}
-                              className="w-full px-3 py-2 text-xs border border-stone bg-white rounded-sm focus:outline-none focus:border-ink"
-                            />
+
+                            <div className="space-y-2 border border-amber-200 bg-white p-3 rounded-sm">
+                              {o.items
+                                .filter((item) => !item.isGift && (item.remainingReturnable ?? item.qty) > 0)
+                                .map((item) => {
+                                  const maxQty = item.remainingReturnable ?? item.qty;
+                                  const currentSelected = returningItemQtys[item.id] || 0;
+                                  const isChecked = currentSelected > 0;
+
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className="flex items-center justify-between py-1.5 border-b border-stone/20 last:border-0"
+                                    >
+                                      <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              setReturningItemQtys((prev) => ({
+                                                ...prev,
+                                                [item.id]: 1,
+                                              }));
+                                            } else {
+                                              setReturningItemQtys((prev) => {
+                                                const next = { ...prev };
+                                                delete next[item.id];
+                                                return next;
+                                              });
+                                            }
+                                          }}
+                                          className="rounded text-ink focus:ring-0"
+                                        />
+                                        <div>
+                                          <p className="font-medium text-ink">
+                                            {item.name} ({item.size})
+                                          </p>
+                                          <p className="text-[11px] text-stone-dark">
+                                            {formatINR(item.unitPrice)} · Returnable: {maxQty}
+                                          </p>
+                                        </div>
+                                      </label>
+
+                                      {isChecked && (
+                                        <div className="flex items-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (currentSelected > 1) {
+                                                setReturningItemQtys((prev) => ({
+                                                  ...prev,
+                                                  [item.id]: currentSelected - 1,
+                                                }));
+                                              }
+                                            }}
+                                            className="w-6 h-6 border border-stone bg-paper rounded flex items-center justify-center font-mono hover:bg-stone/10"
+                                          >
+                                            -
+                                          </button>
+                                          <span className="w-6 text-center font-mono font-medium">
+                                            {currentSelected}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (currentSelected < maxQty) {
+                                                setReturningItemQtys((prev) => ({
+                                                  ...prev,
+                                                  [item.id]: currentSelected + 1,
+                                                }));
+                                              }
+                                            }}
+                                            className="w-6 h-6 border border-stone bg-paper rounded flex items-center justify-center font-mono hover:bg-stone/10"
+                                          >
+                                            +
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-medium text-stone-dark mb-1">
+                                Reason for Return
+                              </label>
+                              <select
+                                value={returnReasonCode}
+                                onChange={(e) =>
+                                  setReturnReasonCode(
+                                    e.target.value as
+                                      | "WRONG_SIZE"
+                                      | "DEFECTIVE"
+                                      | "NOT_AS_DESCRIBED"
+                                      | "CHANGED_MIND"
+                                      | "OTHER"
+                                  )
+                                }
+                                className="w-full px-3 py-1.5 text-xs border border-stone bg-white rounded-sm focus:outline-none focus:border-ink"
+                              >
+                                <option value="WRONG_SIZE">Wrong Size / Fit Issue</option>
+                                <option value="DEFECTIVE">Defective / Damaged</option>
+                                <option value="NOT_AS_DESCRIBED">Not as Described</option>
+                                <option value="CHANGED_MIND">Changed Mind</option>
+                                <option value="OTHER">Other Reason</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-medium text-stone-dark mb-1">
+                                Additional Notes (optional)
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Details about fit or defect"
+                                value={returnCustomerNote}
+                                onChange={(e) => setReturnCustomerNote(e.target.value)}
+                                className="w-full px-3 py-2 text-xs border border-stone bg-white rounded-sm focus:outline-none focus:border-ink"
+                              />
+                            </div>
+
                             {returnErrorMsg && <p className="text-xs text-clay">{returnErrorMsg}</p>}
-                            <div className="flex gap-2">
+
+                            <div className="flex gap-2 pt-1">
                               <button
                                 type="button"
                                 disabled={isPendingReturn}
@@ -937,6 +1139,8 @@ export default function AccountClient({
                                 type="button"
                                 onClick={() => {
                                   setReturningOrderId(null);
+                                  setReturningItemQtys({});
+                                  setReturnCustomerNote("");
                                   setReturnErrorMsg(null);
                                 }}
                                 className="px-3 py-2 text-xs text-stone-dark hover:text-ink"
@@ -946,17 +1150,23 @@ export default function AccountClient({
                             </div>
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setReturningOrderId(o.id);
-                              setReturnReason("");
-                              setReturnErrorMsg(null);
-                            }}
-                            className="text-xs font-medium text-moss hover:underline"
-                          >
-                            Request Return / Refund
-                          </button>
+                          o.isReturnWindowOpen !== false &&
+                          o.items.some(
+                            (item) => !item.isGift && (item.remainingReturnable ?? item.qty) > 0
+                          ) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReturningOrderId(o.id);
+                                setReturningItemQtys({});
+                                setReturnCustomerNote("");
+                                setReturnErrorMsg(null);
+                              }}
+                              className="text-xs font-medium text-moss hover:underline"
+                            >
+                              Return Items
+                            </button>
+                          )
                         )}
                       </div>
                     )}

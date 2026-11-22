@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import AccountClient from "@/components/AccountClient";
 import AccountSignOutButton from "@/components/AccountSignOutButton";
 import { legacyStage, getOrderStatusLabel } from "@/lib/orders/status-label";
+import { getSettings } from "@/lib/settings";
+import { isReturnWindowOpen, remainingReturnableQty } from "@/lib/returns/rules";
 
 export default async function AccountPage() {
   const sessionUser = await getSessionUser();
@@ -12,7 +14,7 @@ export default async function AccountPage() {
 
   const userId = sessionUser.id;
 
-  const [user, addresses, orders] = await Promise.all([
+  const [user, addresses, orders, settings] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -37,12 +39,16 @@ export default async function AccountPage() {
       include: {
         items: true,
         statusEvents: { orderBy: { createdAt: "asc" } },
-        returnRequests: { orderBy: { createdAt: "desc" } },
+        returnRequests: {
+          orderBy: { createdAt: "desc" },
+          include: { items: true },
+        },
         invoice: { select: { id: true } },
         creditNotes: { select: { id: true }, take: 1 },
       },
       orderBy: { createdAt: "desc" },
     }),
+    getSettings(),
   ]);
 
   if (!user) redirect("/login?redirect=/account");
@@ -58,8 +64,29 @@ export default async function AccountPage() {
 
   const ordersWithStock = orders.map((o) => {
     const { invoice, creditNotes, ...orderRest } = o;
+    const windowOpen = isReturnWindowOpen(
+      o.deliveredAt,
+      new Date(),
+      settings.returnWindowDays || 7
+    );
+
+    const activeReturns = o.returnRequests.filter(
+      (r) => r.status !== "CANCELLED" && r.status !== "REJECTED"
+    );
+
+    const existingReturnedByItem = new Map<string, number>();
+    for (const req of activeReturns) {
+      for (const it of req.items) {
+        existingReturnedByItem.set(
+          it.orderItemId,
+          (existingReturnedByItem.get(it.orderItemId) || 0) + it.qty
+        );
+      }
+    }
+
     return {
       ...orderRest,
+      isReturnWindowOpen: windowOpen,
       hasInvoice: Boolean(invoice),
       hasCreditNote: Boolean(creditNotes && creditNotes.length > 0),
       status: legacyStage(o),
@@ -68,6 +95,10 @@ export default async function AccountPage() {
         ...item,
         color: item.color,
         currentStock: variantStockMap.get(item.variantId) ?? 0,
+        remainingReturnable: remainingReturnableQty(
+          item,
+          existingReturnedByItem.get(item.id) || 0
+        ),
       })),
     };
   });

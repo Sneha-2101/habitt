@@ -8,6 +8,7 @@ import { legacyStage } from "@/lib/orders/status-label";
 import { revalidatePath } from "next/cache";
 import { releaseOfferUsage } from "@/lib/offers/release";
 import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
+import { issueRefund } from "@/lib/refunds/issue-refund";
 
 export async function markCodRefused(orderId: string, note?: string) {
   await requireStaff();
@@ -88,6 +89,21 @@ export async function markCodRefused(orderId: string, note?: string) {
       },
     });
   });
+
+  if (order.storeCreditApplied > 0) {
+    try {
+      await issueRefund({
+        orderId: order.id,
+        method: "STORE_CREDIT",
+        amountPaise: order.storeCreditApplied,
+        idempotencyKey: `cod-refusal-sc-${order.id}`,
+        recordOnly: true,
+        reason: refusalNote,
+      });
+    } catch (refErr) {
+      console.error("Failed to record refund ledger for COD refusal:", refErr);
+    }
+  }
 
   // Issue Credit Note in its own transaction after COD refusal transaction commits
   try {

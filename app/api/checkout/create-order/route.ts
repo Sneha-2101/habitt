@@ -397,6 +397,7 @@ export async function POST(req: Request) {
             shippingAddress: data.shippingAddress,
             subtotal,
             shippingFee,
+            codFee: quote.codFee || 0,
             total,
             storeCreditApplied,
             couponCode: appliedCouponCode,

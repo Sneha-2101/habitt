@@ -9,6 +9,8 @@ describe("Final Cleanup Check", () => {
 
     const checks = {
       orderStatusEvents: await prisma.orderStatusEvent.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
+      refunds: await prisma.refund.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
+      returnItems: await prisma.returnItem.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { return: { orderId: { startsWith: "m1test" } } }] } }),
       returnRequests: await prisma.returnRequest.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
       orderItems: await prisma.orderItem.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
       storeCreditTransactions: await prisma.storeCreditTransaction.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),

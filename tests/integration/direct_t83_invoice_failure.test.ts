@@ -16,7 +16,7 @@ import * as guardsModule from "@/lib/guards";
 import * as issueInvoiceModule from "@/lib/gst/issue-invoice";
 import * as creditNoteModule from "@/lib/gst/credit-note";
 import { markOrderShipped } from "@/lib/actions/fulfillment";
-import { approveReturn } from "@/lib/actions/returns";
+import { approveReturn, receiveReturn, refundReturn } from "@/lib/actions/returns";
 import {
   retryInvoiceIssueAction,
   retryCreditNoteIssueAction,
@@ -168,31 +168,48 @@ describe("T83: Invoice and Credit Note Failure Resilience & Admin Retry", () => 
       await issueInvoiceModule.issueInvoiceForOrder(tx, order.id);
     });
 
-    // Create a ReturnRequest
+    // Create a ReturnRequest with items
     const returnReq = await prisma.returnRequest.create({
       data: {
         orderId: order.id,
         userId: user.id,
         reason: "Wrong fit",
         status: "REQUESTED",
+        items: {
+          create: {
+            orderItemId: order.items[0].id,
+            qty: 1,
+          },
+        },
       },
+      include: { items: true },
     });
+
+    await approveReturn(returnReq.id, "Approved customer return");
+    await receiveReturn(returnReq.id, [
+      { returnItemId: returnReq.items[0].id, restock: true, condition: "Good" },
+    ]);
 
     // Force createCreditNoteForRefund to throw
     const cnSpy = vi
       .spyOn(creditNoteModule, "createCreditNoteForRefund")
       .mockRejectedValueOnce(new Error("Simulated credit note failure"));
 
-    // approveReturn must succeed despite credit note failure
+    // refundReturn must succeed despite credit note failure
     await expect(
-      approveReturn(returnReq.id, "Approved customer return")
+      refundReturn(returnReq.id)
     ).resolves.not.toThrow();
 
-    // Check returnRequest is refunded and order is cancelled
+    // Check returnRequest is refunded
     const updatedReturnReq = await prisma.returnRequest.findUnique({
       where: { id: returnReq.id },
     });
     expect(updatedReturnReq?.status).toBe("REFUNDED");
+
+    const refund = await prisma.refund.findFirst({
+      where: { returnId: returnReq.id },
+    });
+    expect(refund).toBeDefined();
 
     const updatedOrder = await prisma.order.findUnique({
       where: { id: order.id },
@@ -202,21 +219,20 @@ describe("T83: Invoice and Credit Note Failure Resilience & Admin Retry", () => 
       },
     });
 
-    expect(updatedOrder?.fulfilmentStatus).toBe("CANCELLED");
     expect(updatedOrder?.creditNotes).toHaveLength(0);
 
-    // Verify CREDIT NOTE PENDING note exists with refundRef
+    // Verify CREDIT NOTE PENDING note exists with refundRef = refund.id
     const pendingCnEvent = updatedOrder?.statusEvents.find(
       (e) =>
         e.note?.includes("CREDIT NOTE PENDING") &&
-        e.note?.includes(`refundRef=${returnReq.id}`)
+        e.note?.includes(`refundRef=${refund!.id}`)
     );
     expect(pendingCnEvent).toBeDefined();
 
     // Restore spy and execute admin retry
     cnSpy.mockRestore();
 
-    const retryResult = await retryCreditNoteIssueAction(order.id, returnReq.id);
+    const retryResult = await retryCreditNoteIssueAction(order.id, refund!.id);
     expect(retryResult.success).toBe(true);
     expect(retryResult.creditNote).toBeDefined();
 
@@ -225,11 +241,11 @@ describe("T83: Invoice and Credit Note Failure Resilience & Admin Retry", () => 
       where: { orderId: order.id },
     });
     expect(creditNotes).toHaveLength(1);
-    expect(creditNotes[0].refundRef).toBe(returnReq.id);
+    expect(creditNotes[0].refundRef).toBe(refund!.id);
     expect(creditNotes[0].number).toMatch(/^HB\/CN\/\d{4}-\d{2}\/\d{5}$/);
 
     // Repeated retry is idempotent
-    const secondRetry = await retryCreditNoteIssueAction(order.id, returnReq.id);
+    const secondRetry = await retryCreditNoteIssueAction(order.id, refund!.id);
     expect(secondRetry.success).toBe(true);
     const creditNotesAfterSecond = await prisma.creditNote.findMany({
       where: { orderId: order.id },

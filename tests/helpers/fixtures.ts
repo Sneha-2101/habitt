@@ -133,11 +133,14 @@ export async function createTestOrder(opts: {
   couponCode?: string;
   discountAmount?: number;
   shippingFee?: number;
+  codFee?: number;
+  feesRefunded?: boolean;
   total?: number;
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   paidAt?: Date;
   shippedAt?: Date;
+  deliveredAt?: Date | null;
   createdAt?: Date;
   customerName?: string;
   shippingAddress?: any;
@@ -229,7 +232,9 @@ export async function createTestOrder(opts: {
       },
       subtotal,
       shippingFee: opts.shippingFee ?? 0,
+      codFee: opts.codFee ?? 0,
       total,
+      feesRefunded: opts.feesRefunded ?? false,
       paymentStatus: derivedPaymentStatus,
       fulfilmentStatus: derivedFulfilmentStatus,
       paymentMethod: opts.paymentMethod ?? "RAZORPAY",
@@ -244,6 +249,12 @@ export async function createTestOrder(opts: {
         opts.shippedAt !== undefined
           ? opts.shippedAt
           : derivedFulfilmentStatus === "SHIPPED" || derivedFulfilmentStatus === "DELIVERED" || derivedFulfilmentStatus === "RTO"
+          ? opts.paidAt ?? new Date()
+          : null,
+      deliveredAt:
+        opts.deliveredAt !== undefined
+          ? opts.deliveredAt
+          : derivedFulfilmentStatus === "DELIVERED"
           ? opts.paidAt ?? new Date()
           : null,
       createdAt: opts.createdAt,
@@ -318,6 +329,28 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
         { id: { startsWith: "m1test" } },
         { orderId: { in: m1OrderIds } },
         { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 1b. Refund
+  await prisma.refund.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 1c. ReturnItem
+  await prisma.returnItem.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { return: { orderId: { in: m1OrderIds } } },
+        { return: { orderId: { startsWith: "m1test" } } },
       ],
     },
   });
@@ -661,6 +694,8 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
   // Report counts of any remaining m1test rows
   const remainingCounts = {
     orderStatusEvents: await prisma.orderStatusEvent.count({ where: { id: { startsWith: "m1test" } } }),
+    refunds: await prisma.refund.count({ where: { id: { startsWith: "m1test" } } }),
+    returnItems: await prisma.returnItem.count({ where: { id: { startsWith: "m1test" } } }),
     returnRequests: await prisma.returnRequest.count({ where: { id: { startsWith: "m1test" } } }),
     orderItems: await prisma.orderItem.count({ where: { id: { startsWith: "m1test" } } }),
     storeCreditTransactions: await prisma.storeCreditTransaction.count({ where: { id: { startsWith: "m1test" } } }),

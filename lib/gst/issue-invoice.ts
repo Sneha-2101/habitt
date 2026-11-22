@@ -319,7 +319,9 @@ export async function issueInvoiceForOrder(
           orderItemId: l.orderItemId,
           kind: l.description.toLowerCase().includes("shipping")
             ? InvoiceLineKind.SHIPPING
-            : l.description.toLowerCase().includes("delivery fee")
+            : l.description.toLowerCase().includes("delivery fee") ||
+              l.description.toLowerCase().includes("cash on delivery") ||
+              l.description.toLowerCase().includes("cod")
             ? InvoiceLineKind.COD
             : InvoiceLineKind.GOODS,
           description: l.description,

@@ -23,9 +23,14 @@ vi.mock("next/cache", () => ({
 
 vi.mock("@/lib/email", () => ({
   sendStoreCreditIssuedEmail: vi.fn().mockResolvedValue({}),
+  sendReturnRequestedEmail: vi.fn().mockResolvedValue({}),
+  sendReturnApprovedEmail: vi.fn().mockResolvedValue({}),
+  sendReturnRejectedEmail: vi.fn().mockResolvedValue({}),
+  sendReturnReceivedEmail: vi.fn().mockResolvedValue({}),
+  sendReturnRefundedEmail: vi.fn().mockResolvedValue({}),
 }));
 
-import { requestReturn, approveReturn, rejectReturn } from "@/lib/actions/returns";
+import { requestReturn, approveReturn, rejectReturn, receiveReturn, refundReturn } from "@/lib/actions/returns";
 import { markCodRefused } from "@/lib/actions/cod-refusal";
 
 describe("T14 & T15: Returns and COD Refusal", () => {
@@ -84,10 +89,22 @@ describe("T14 & T15: Returns and COD Refusal", () => {
     const rejReason = (rejected[0] as PromiseRejectedResult).reason;
     expect(rejReason?.message).toContain("already processed");
 
-    // Order status is CANCELLED
-    const cancelledOrder = await prisma.order.findUnique({ where: { id: shippedOrder.id } });
-    expect(cancelledOrder?.fulfilmentStatus).toBe("CANCELLED");
-    expect(cancelledOrder?.stockDeducted).toBe(false);
+    // Stock UNCHANGED at approval (still 3, not restocked at approval)
+    const midVariant = await prisma.productVariant.findUnique({ where: { id: variant.id } });
+    expect(midVariant?.stock).toBe(3);
+
+    // 4. rejectReturn after approval throws
+    await expect(rejectReturn(returnReq.id, "Too late")).rejects.toThrow(
+      "Return request already processed"
+    );
+
+    // 5. Mark RECEIVED with restock: true -> restores stock exactly once
+    const returnItems = await prisma.returnItem.findMany({ where: { returnId: returnReq.id } });
+    expect(returnItems).toHaveLength(1);
+
+    await receiveReturn(returnReq.id, [
+      { returnItemId: returnItems[0].id, restock: true, condition: "Good" },
+    ]);
 
     // Stock incremented from 3 to 4 (once only)
     const checkedVariant = await prisma.productVariant.findUnique({ where: { id: variant.id } });
@@ -99,18 +116,15 @@ describe("T14 & T15: Returns and COD Refusal", () => {
     expect(movements[0].delta).toBe(1);
     expect(movements[0].reason).toBe("RETURN");
 
-    // Store credit voucher issued exactly once for COD return (100000 paise)
+    // 6. Initiate refund -> Store credit voucher issued exactly once for COD return (100000 paise)
+    await refundReturn(returnReq.id);
+
     const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
     expect(updatedUser?.storeCreditBalance).toBe(100000);
 
     const creditTxs = await prisma.storeCreditTransaction.findMany({ where: { userId: user.id } });
     expect(creditTxs).toHaveLength(1);
     expect(creditTxs[0].amount).toBe(100000);
-
-    // 4. rejectReturn after approval throws
-    await expect(rejectReturn(returnReq.id, "Too late")).rejects.toThrow(
-      "Return request already processed"
-    );
   });
 
   it("T15 COD refusal: SHIPPED COD order cancelled, stock restored only if deducted, credit & coupon released, non-COD throws", async () => {

@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { sendCancellationEmail } from "@/lib/email";
 import { releaseOfferUsage } from "@/lib/offers/release";
 import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
+import { issueRefund } from "@/lib/refunds/issue-refund";
 
 export async function cancelOrderAsCustomer(orderId: string, reason: string) {
   const user = await requireUser();
@@ -127,6 +128,16 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
           paymentStatus: nextPaymentStatus,
           note: `Razorpay refund processed: ${refund.id} (₹${(razorpayAmountToRefund / 100).toFixed(2)})`,
         },
+      });
+
+      await issueRefund({
+        orderId,
+        method: "RAZORPAY",
+        amountPaise: razorpayAmountToRefund,
+        idempotencyKey: `cancel-customer-razorpay-${orderId}`,
+        recordOnly: true,
+        providerRefundId: refund.id,
+        reason: cancellationReason,
       });
     } catch (err: any) {
       console.error("Razorpay refund error during customer cancellation:", err);
@@ -265,6 +276,16 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
           paymentStatus: nextPaymentStatus,
           note: `Razorpay refund processed: ${refund.id} (₹${(razorpayAmountToRefund / 100).toFixed(2)})`,
         },
+      });
+
+      await issueRefund({
+        orderId,
+        method: "RAZORPAY",
+        amountPaise: razorpayAmountToRefund,
+        idempotencyKey: `cancel-admin-razorpay-${orderId}`,
+        recordOnly: true,
+        providerRefundId: refund.id,
+        reason: cancellationReason,
       });
     } catch (err: any) {
       console.error("Razorpay refund error during admin cancellation:", err);

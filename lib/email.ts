@@ -677,3 +677,273 @@ export async function sendContactChangedAlertEmail(params: {
   }
 }
 
+export async function sendReturnRequestedEmail(returnId: string) {
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping return requested email for return ${returnId}.`);
+    return { success: false, reason: "No API Key" };
+  }
+
+  try {
+    const returnReq = await prisma.returnRequest.findUnique({
+      where: { id: returnId },
+      include: {
+        order: { include: { user: true } },
+        items: { include: { orderItem: true } },
+      },
+    });
+
+    if (!returnReq) return { success: false, reason: "Return request not found" };
+
+    const recipientEmail = returnReq.order.customerEmail || returnReq.order.user?.email;
+    if (!recipientEmail) return { success: false, reason: "No recipient email" };
+
+    const emailInfo = await getEmailSenderInfo();
+    const itemsHtml = returnReq.items
+      .map(
+        (it) =>
+          `<li style="margin-bottom: 6px;">${escapeHtml(it.orderItem.name)} (${escapeHtml(
+            it.orderItem.size
+          )}) × ${it.qty}</li>`
+      )
+      .join("");
+
+    const htmlContent = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Return Request Received</h2>
+        <p style="color: #666; margin-bottom: 16px;">Hi ${escapeHtml(
+          returnReq.order.customerName
+        )}, we received your return request for Order #${escapeHtml(returnReq.order.displayId)}.</p>
+        <div style="background-color: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 16px; margin-bottom: 16px;">
+          <p style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">Items to Return:</p>
+          <ul style="padding-left: 20px; margin: 0; font-size: 13px;">${itemsHtml}</ul>
+        </div>
+        <p style="font-size: 13px; color: #666;">Our team will review your request shortly. You can track status in your account.</p>
+        <p style="font-size: 12px; color: #888; text-align: center; margin-top: 24px;">${escapeHtml(
+          emailInfo.businessName
+        )}</p>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: emailInfo.from,
+      replyTo: emailInfo.replyTo,
+      to: recipientEmail,
+      subject: `Return Request Received: Order #${returnReq.order.displayId}`,
+      html: htmlContent,
+    });
+
+    return { success: true, data: response };
+  } catch (error) {
+    console.error(`[Email] Failed to send return requested email for return ${returnId}:`, error);
+    return { success: false, error };
+  }
+}
+
+export async function sendReturnApprovedEmail(returnId: string) {
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping return approved email for return ${returnId}.`);
+    return { success: false, reason: "No API Key" };
+  }
+
+  try {
+    const returnReq = await prisma.returnRequest.findUnique({
+      where: { id: returnId },
+      include: { order: { include: { user: true } } },
+    });
+
+    if (!returnReq) return { success: false, reason: "Return request not found" };
+
+    const recipientEmail = returnReq.order.customerEmail || returnReq.order.user?.email;
+    if (!recipientEmail) return { success: false, reason: "No recipient email" };
+
+    const emailInfo = await getEmailSenderInfo();
+    const htmlContent = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Return Approved</h2>
+        <p style="color: #666; margin-bottom: 16px;">Hi ${escapeHtml(
+          returnReq.order.customerName
+        )}, your return request for Order #${escapeHtml(
+      returnReq.order.displayId
+    )} has been approved.</p>
+        <p style="font-size: 13px; color: #666;">Please pack the items securely. Our courier partner will schedule reverse pickup. Once received and inspected, your refund will be processed.</p>
+        <p style="font-size: 12px; color: #888; text-align: center; margin-top: 24px;">${escapeHtml(
+          emailInfo.businessName
+        )}</p>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: emailInfo.from,
+      replyTo: emailInfo.replyTo,
+      to: recipientEmail,
+      subject: `Return Approved: Order #${returnReq.order.displayId}`,
+      html: htmlContent,
+    });
+
+    return { success: true, data: response };
+  } catch (error) {
+    console.error(`[Email] Failed to send return approved email for return ${returnId}:`, error);
+    return { success: false, error };
+  }
+}
+
+export async function sendReturnRejectedEmail(returnId: string, reason: string) {
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping return rejected email for return ${returnId}.`);
+    return { success: false, reason: "No API Key" };
+  }
+
+  try {
+    const returnReq = await prisma.returnRequest.findUnique({
+      where: { id: returnId },
+      include: { order: { include: { user: true } } },
+    });
+
+    if (!returnReq) return { success: false, reason: "Return request not found" };
+
+    const recipientEmail = returnReq.order.customerEmail || returnReq.order.user?.email;
+    if (!recipientEmail) return { success: false, reason: "No recipient email" };
+
+    const emailInfo = await getEmailSenderInfo();
+    const htmlContent = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Return Request Update</h2>
+        <p style="color: #666; margin-bottom: 16px;">Hi ${escapeHtml(
+          returnReq.order.customerName
+        )}, your return request for Order #${escapeHtml(
+      returnReq.order.displayId
+    )} could not be approved.</p>
+        <div style="background-color: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 16px; margin-bottom: 16px;">
+          <p style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Reason:</p>
+          <p style="font-size: 13px; color: #666; margin: 0;">${escapeHtml(reason)}</p>
+        </div>
+        <p style="font-size: 13px; color: #666;">If you have any questions, please reply to this email.</p>
+        <p style="font-size: 12px; color: #888; text-align: center; margin-top: 24px;">${escapeHtml(
+          emailInfo.businessName
+        )}</p>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: emailInfo.from,
+      replyTo: emailInfo.replyTo,
+      to: recipientEmail,
+      subject: `Return Request Rejected: Order #${returnReq.order.displayId}`,
+      html: htmlContent,
+    });
+
+    return { success: true, data: response };
+  } catch (error) {
+    console.error(`[Email] Failed to send return rejected email for return ${returnId}:`, error);
+    return { success: false, error };
+  }
+}
+
+export async function sendReturnReceivedEmail(returnId: string) {
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping return received email for return ${returnId}.`);
+    return { success: false, reason: "No API Key" };
+  }
+
+  try {
+    const returnReq = await prisma.returnRequest.findUnique({
+      where: { id: returnId },
+      include: { order: { include: { user: true } } },
+    });
+
+    if (!returnReq) return { success: false, reason: "Return request not found" };
+
+    const recipientEmail = returnReq.order.customerEmail || returnReq.order.user?.email;
+    if (!recipientEmail) return { success: false, reason: "No recipient email" };
+
+    const emailInfo = await getEmailSenderInfo();
+    const htmlContent = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Returned Items Received</h2>
+        <p style="color: #666; margin-bottom: 16px;">Hi ${escapeHtml(
+          returnReq.order.customerName
+        )}, we have received the returned items for Order #${escapeHtml(
+      returnReq.order.displayId
+    )}.</p>
+        <p style="font-size: 13px; color: #666;">Your refund will be initiated following standard verification.</p>
+        <p style="font-size: 12px; color: #888; text-align: center; margin-top: 24px;">${escapeHtml(
+          emailInfo.businessName
+        )}</p>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: emailInfo.from,
+      replyTo: emailInfo.replyTo,
+      to: recipientEmail,
+      subject: `Returned Items Received: Order #${returnReq.order.displayId}`,
+      html: htmlContent,
+    });
+
+    return { success: true, data: response };
+  } catch (error) {
+    console.error(`[Email] Failed to send return received email for return ${returnId}:`, error);
+    return { success: false, error };
+  }
+}
+
+export async function sendReturnRefundedEmail(
+  returnId: string,
+  amountPaise: number,
+  method: string
+) {
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping return refunded email for return ${returnId}.`);
+    return { success: false, reason: "No API Key" };
+  }
+
+  try {
+    const returnReq = await prisma.returnRequest.findUnique({
+      where: { id: returnId },
+      include: { order: { include: { user: true } } },
+    });
+
+    if (!returnReq) return { success: false, reason: "Return request not found" };
+
+    const recipientEmail = returnReq.order.customerEmail || returnReq.order.user?.email;
+    if (!recipientEmail) return { success: false, reason: "No recipient email" };
+
+    const emailInfo = await getEmailSenderInfo();
+    const methodDescription =
+      method === "STORE_CREDIT"
+        ? "credited to your Store Credit wallet"
+        : "initiated to your original payment method";
+
+    const htmlContent = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">
+        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Refund Initiated</h2>
+        <p style="color: #666; margin-bottom: 16px;">Hi ${escapeHtml(
+          returnReq.order.customerName
+        )}, a refund of ₹${(amountPaise / 100).toFixed(2)} has been ${methodDescription} for Order #${escapeHtml(
+      returnReq.order.displayId
+    )}.</p>
+        <p style="font-size: 13px; color: #666;">Thank you for shopping with ${escapeHtml(
+          emailInfo.businessName
+        )}.</p>
+        <p style="font-size: 12px; color: #888; text-align: center; margin-top: 24px;">${escapeHtml(
+          emailInfo.businessName
+        )}</p>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: emailInfo.from,
+      replyTo: emailInfo.replyTo,
+      to: recipientEmail,
+      subject: `Refund Initiated: Order #${returnReq.order.displayId}`,
+      html: htmlContent,
+    });
+
+    return { success: true, data: response };
+  } catch (error) {
+    console.error(`[Email] Failed to send return refunded email for return ${returnId}:`, error);
+    return { success: false, error };
+  }
+}
+
+

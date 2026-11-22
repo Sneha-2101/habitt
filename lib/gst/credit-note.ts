@@ -103,7 +103,8 @@ export async function createCreditNoteForRefund(
       goodsLines.length > 0 &&
       goodsLines.every((gLine) => {
         const item = params.refundedItems?.find((i) => i.orderItemId === gLine.orderItemId);
-        return item && item.qty >= gLine.qty;
+        const alreadyQty = creditedQtyPerLine.get(gLine.id) || 0;
+        return (alreadyQty + (item?.qty || 0)) >= gLine.qty;
       });
 
     for (const refItem of params.refundedItems) {

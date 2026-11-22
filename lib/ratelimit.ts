@@ -25,6 +25,7 @@ export type RateLimitPolicy =
   | "staffOtpSendIdentifier"
   | "stepUpSend"
   | "cartSync"
+  | "returnRequest"
   | "reviewerVerify";
 
 export interface PolicyConfig {
@@ -51,6 +52,7 @@ export const POLICY_CONFIGS: Record<RateLimitPolicy, PolicyConfig> = {
   staffOtpSendIdentifier: { limit: 3, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
   stepUpSend: { limit: 5, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
   cartSync: { limit: 60, windowMs: 60 * 1000, upstashDuration: "1 m", failMode: "open" },
+  returnRequest: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "open" },
   reviewerVerify: { limit: 5, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
 };
 
