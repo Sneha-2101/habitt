@@ -36,27 +36,27 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
   });
 
   beforeEach(async () => {
-    // Default test settings: GST enabled, Kerala seller
+    // Default test settings: GST enabled, Punjab seller
     await prisma.siteSettings.upsert({
       where: { id: "default" },
       create: {
         id: "default",
         gstEnabled: true,
         gstRate: 18.0,
-        gstin: "32AAAAA0000A1Z5",
+        gstin: "03AAAAA0000A1Z5",
         gstFeeMode: "COMPOSITE",
         gstFeeRate: 18.0,
         invoicePrefix: "HB",
-        businessState: "Kerala",
+        businessState: "Punjab",
       },
       update: {
         gstEnabled: true,
         gstRate: 18.0,
-        gstin: "32AAAAA0000A1Z5",
+        gstin: "03AAAAA0000A1Z5",
         gstFeeMode: "COMPOSITE",
         gstFeeRate: 18.0,
         invoicePrefix: "HB",
-        businessState: "Kerala",
+        businessState: "Punjab",
       },
     });
   });
@@ -72,13 +72,13 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
     const order1 = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 199900 }],
-      status: "PAID",
+      status: "SHIPPED",
       shippingAddress: {
         fullName: "Test Customer",
-        line1: "MG Road",
-        city: "Kochi",
-        state: "Kerala",
-        pincode: "682001",
+        line1: "Mall Road",
+        city: "Ludhiana",
+        state: "Punjab",
+        pincode: "141001",
       },
     });
 
@@ -88,9 +88,9 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
 
     expect(invoice1.mode).toBe("TAX");
     expect(invoice1.number).toMatch(/^HB\/\d{4}-\d{2}\/\d{5}$/);
-    expect(invoice1.sellerGstin).toBe("32AAAAA0000A1Z5");
-    expect(invoice1.sellerState).toBe("Kerala");
-    expect(invoice1.isInterState).toBe(false); // Same state Kerala -> intra-state
+    expect(invoice1.sellerGstin).toBe("03AAAAA0000A1Z5");
+    expect(invoice1.sellerState).toBe("Punjab");
+    expect(invoice1.isInterState).toBe(false); // Same state Punjab -> intra-state
     expect(invoice1.cgstPaise).toBeGreaterThan(0);
     expect(invoice1.sgstPaise).toBeGreaterThan(0);
     expect(invoice1.igstPaise).toBe(0);
@@ -100,7 +100,7 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
     const order2 = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 199900 }],
-      status: "PAID",
+      status: "SHIPPED",
       shippingAddress: {
         fullName: "Test Customer 2",
         line1: "Brigade Road",
@@ -115,7 +115,7 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
     });
 
     expect(invoice2.sequence).toBe((invoice1.sequence || 0) + 1);
-    expect(invoice2.isInterState).toBe(true); // Kerala -> Karnataka inter-state
+    expect(invoice2.isInterState).toBe(true); // Punjab -> Karnataka inter-state
     expect(invoice2.igstPaise).toBeGreaterThan(0);
     expect(invoice2.cgstPaise).toBe(0);
     expect(invoice2.sgstPaise).toBe(0);
@@ -128,7 +128,7 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
     const order = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 99900 }],
-      status: "PAID",
+      status: "SHIPPED",
     });
 
     const first = await prisma.$transaction((tx) => issueInvoiceForOrder(tx, order.id));
@@ -142,7 +142,7 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
     const orderNext = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 99900 }],
-      status: "PAID",
+      status: "SHIPPED",
     });
     const nextInv = await prisma.$transaction((tx) => issueInvoiceForOrder(tx, orderNext.id));
     expect(nextInv.sequence).toBe((first.sequence || 0) + 1);
@@ -157,7 +157,7 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
         createTestOrder({
           userId: user.id,
           items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 100000 }],
-          status: "PAID",
+          status: "SHIPPED",
         })
       )
     );
@@ -194,7 +194,7 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
     const order = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 150000 }],
-      status: "PAID",
+      status: "SHIPPED",
     });
 
     const receipt = await prisma.$transaction((tx) => issueInvoiceForOrder(tx, order.id));
@@ -222,7 +222,7 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
         { productId: product.id, variantId: variants[0].id, name: product.name, qty: 1, unitPrice: 200000 },
         { productId: giftProd.id, variantId: giftVariants[0].id, name: giftProd.name, qty: 1, unitPrice: 0, isGift: true },
       ],
-      status: "PAID",
+      status: "SHIPPED",
       shippingFee: 0,
       total: 200000,
     });
@@ -246,7 +246,7 @@ describe("T81: GST Invoice Generation, Sequencing and Tax Integrity", () => {
     const order = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 199900 }],
-      status: "PAID",
+      status: "SHIPPED",
     });
 
     const invoice = await prisma.$transaction((tx) => issueInvoiceForOrder(tx, order.id));

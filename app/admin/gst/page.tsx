@@ -20,7 +20,7 @@ export default async function AdminGstPage() {
         gstEnabled: false,
         gstRate: 0.0,
         invoicePrefix: "HB",
-        businessState: "Kerala",
+        businessState: null,
       },
     });
   }

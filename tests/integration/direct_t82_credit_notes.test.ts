@@ -43,20 +43,20 @@ describe("T82: Credit Notes Proportional Calculation and Cap Enforcement", () =>
         id: "default",
         gstEnabled: true,
         gstRate: 18.0,
-        gstin: "32AAAAA0000A1Z5",
+        gstin: "03AAAAA0000A1Z5",
         gstFeeMode: "COMPOSITE",
         gstFeeRate: 18.0,
         invoicePrefix: "HB",
-        businessState: "Kerala",
+        businessState: "Punjab",
       },
       update: {
         gstEnabled: true,
         gstRate: 18.0,
-        gstin: "32AAAAA0000A1Z5",
+        gstin: "03AAAAA0000A1Z5",
         gstFeeMode: "COMPOSITE",
         gstFeeRate: 18.0,
         invoicePrefix: "HB",
-        businessState: "Kerala",
+        businessState: "Punjab",
       },
     });
   });
@@ -72,7 +72,7 @@ describe("T82: Credit Notes Proportional Calculation and Cap Enforcement", () =>
     const order = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 2, unitPrice: 100000 }],
-      status: "PAID",
+      status: "SHIPPED",
       total: 200000,
     });
 
@@ -105,7 +105,7 @@ describe("T82: Credit Notes Proportional Calculation and Cap Enforcement", () =>
     const order = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 100000 }],
-      status: "PAID",
+      status: "SHIPPED",
       total: 100000,
     });
 
@@ -152,7 +152,7 @@ describe("T82: Credit Notes Proportional Calculation and Cap Enforcement", () =>
     const order = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 50000 }],
-      status: "PAID",
+      status: "SHIPPED",
       total: 50000,
     });
 
@@ -192,7 +192,7 @@ describe("T82: Credit Notes Proportional Calculation and Cap Enforcement", () =>
     const order = await createTestOrder({
       userId: user.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 80000 }],
-      status: "PAID",
+      status: "SHIPPED",
       total: 80000,
     });
 

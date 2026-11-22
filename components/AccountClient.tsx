@@ -58,6 +58,8 @@ interface AccountClientProps {
     displayId: string;
     status: string;
     statusLabel?: string;
+    hasInvoice?: boolean;
+    hasCreditNote?: boolean;
     paymentStatus?: string;
     fulfilmentStatus?: string;
     paymentMethod?: string;
@@ -798,15 +800,17 @@ export default function AccountClient({
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t border-stone/40 text-xs">
                       <div className="flex items-center gap-3">
-                        <a
-                          href={`/api/orders/${o.id}/invoice`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 font-medium text-ink underline hover:text-moss"
-                        >
-                          📄 Download Invoice
-                        </a>
-                        {(o.fulfilmentStatus === "CANCELLED" || o.paymentStatus === "REFUNDED") && (
+                        {o.hasInvoice && (
+                          <a
+                            href={`/api/orders/${o.id}/invoice`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-medium text-ink underline hover:text-moss"
+                          >
+                            📄 Download Invoice
+                          </a>
+                        )}
+                        {o.hasCreditNote && (
                           <a
                             href={`/api/orders/${o.id}/credit-note`}
                             target="_blank"

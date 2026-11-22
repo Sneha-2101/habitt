@@ -232,6 +232,9 @@ export async function approveReturn(returnId: string, adminNote?: string) {
         reason: `Return approved: ${returnReq.reason}`,
         refundRef: returnReq.id,
         refundedItems: order.items.map((i) => ({ orderItemId: i.id, qty: i.qty })),
+        includeFeeShare: true,
+        refundShippingFee: true,
+        refundCodFee: true,
       });
     });
   } catch (cnErr) {

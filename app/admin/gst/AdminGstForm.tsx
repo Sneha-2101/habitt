@@ -8,6 +8,7 @@ import {
   toggleGstRuleActive,
   deleteGstRule,
 } from "@/lib/actions/gst";
+import { INDIAN_STATES_GST } from "@/lib/gst/states";
 
 interface CategoryOption {
   id: string;
@@ -54,7 +55,7 @@ export default function AdminGstForm({
   const [gstFeeMode, setGstFeeMode] = useState(settings.gstFeeMode);
   const [gstFeeRate, setGstFeeRate] = useState(settings.gstFeeRate);
   const [invoicePrefix, setInvoicePrefix] = useState(settings.invoicePrefix);
-  const [businessState, setBusinessState] = useState(settings.businessState || "Kerala");
+  const [businessState, setBusinessState] = useState(settings.businessState || "");
 
   // New Rule State
   const [newRuleName, setNewRuleName] = useState("");
@@ -77,7 +78,7 @@ export default function AdminGstForm({
           gstFeeMode,
           gstFeeRate: Number(gstFeeRate),
           invoicePrefix: invoicePrefix.trim() || "HB",
-          businessState: businessState.trim() || "Kerala",
+          businessState: businessState.trim() || null,
         });
         setMessage({ text: "GST Settings saved successfully!" });
       } catch (err: unknown) {
@@ -208,14 +209,18 @@ export default function AdminGstForm({
 
             <div>
               <label className="block font-medium text-ink mb-1">Seller Business State</label>
-              <input
-                type="text"
+              <select
                 value={businessState}
                 onChange={(e) => setBusinessState(e.target.value)}
-                placeholder="e.g. Kerala"
-                required
                 className="w-full px-3 py-1.5 border border-stone rounded-sm bg-paper"
-              />
+              >
+                <option value="">Select state...</option>
+                {INDIAN_STATES_GST.map((s) => (
+                  <option key={s.code} value={s.name}>
+                    {s.name} ({s.code}) - TIN {s.tin}
+                  </option>
+                ))}
+              </select>
               <span className="text-[11px] text-stone-dark">Used for Intra-state (CGST+SGST) vs Inter-state (IGST) split</span>
             </div>
 

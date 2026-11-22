@@ -38,6 +38,8 @@ export default async function AccountPage() {
         items: true,
         statusEvents: { orderBy: { createdAt: "asc" } },
         returnRequests: { orderBy: { createdAt: "desc" } },
+        invoice: { select: { id: true } },
+        creditNotes: { select: { id: true }, take: 1 },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -54,16 +56,21 @@ export default async function AccountPage() {
   });
   const variantStockMap = new Map(variants.map((v) => [v.id, v.stock]));
 
-  const ordersWithStock = orders.map((o) => ({
-    ...o,
-    status: legacyStage(o),
-    statusLabel: getOrderStatusLabel(o).label,
-    items: o.items.map((item) => ({
-      ...item,
-      color: item.color,
-      currentStock: variantStockMap.get(item.variantId) ?? 0,
-    })),
-  }));
+  const ordersWithStock = orders.map((o) => {
+    const { invoice, creditNotes, ...orderRest } = o;
+    return {
+      ...orderRest,
+      hasInvoice: Boolean(invoice),
+      hasCreditNote: Boolean(creditNotes && creditNotes.length > 0),
+      status: legacyStage(o),
+      statusLabel: getOrderStatusLabel(o).label,
+      items: o.items.map((item) => ({
+        ...item,
+        color: item.color,
+        currentStock: variantStockMap.get(item.variantId) ?? 0,
+      })),
+    };
+  });
 
   return (
     <main className="max-w-xl mx-auto px-4 sm:px-7 py-12">

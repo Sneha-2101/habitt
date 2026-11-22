@@ -18,6 +18,8 @@ export interface CreateCreditNoteInput {
   reason: string;
   refundRef?: string;
   includeFeeShare?: boolean;
+  refundShippingFee?: boolean;
+  refundCodFee?: boolean;
 }
 
 /**
@@ -77,8 +79,9 @@ export async function createCreditNoteForRefund(
 
   const draftLines: LineDraft[] = [];
 
-  // Track already credited amount per invoice line
+  // Track already credited amount and quantity per invoice line
   const creditedPerLine = new Map<string, number>();
+  const creditedQtyPerLine = new Map<string, number>();
   for (const cn of invoice.creditNotes) {
     for (const cl of cn.lines) {
       if (cl.invoiceLineId) {
@@ -86,11 +89,23 @@ export async function createCreditNoteForRefund(
           cl.invoiceLineId,
           (creditedPerLine.get(cl.invoiceLineId) || 0) + cl.totalPaise
         );
+        creditedQtyPerLine.set(
+          cl.invoiceLineId,
+          (creditedQtyPerLine.get(cl.invoiceLineId) || 0) + cl.qty
+        );
       }
     }
   }
 
   if (params.refundedItems && params.refundedItems.length > 0) {
+    const goodsLines = invoice.lines.filter((l) => l.kind === "GOODS");
+    const isFullGoodsRefund =
+      goodsLines.length > 0 &&
+      goodsLines.every((gLine) => {
+        const item = params.refundedItems?.find((i) => i.orderItemId === gLine.orderItemId);
+        return item && item.qty >= gLine.qty;
+      });
+
     for (const refItem of params.refundedItems) {
       const line = invoice.lines.find(
         (l) => l.orderItemId === refItem.orderItemId
@@ -101,7 +116,14 @@ export async function createCreditNoteForRefund(
       const remainingLine = Math.max(0, line.netPaise - alreadyLine);
       if (remainingLine <= 0) continue;
 
-      const ratio = Math.min(1, refItem.qty / line.qty);
+      const alreadyQty = creditedQtyPerLine.get(line.id) || 0;
+      const remainingQty = Math.max(0, line.qty - alreadyQty);
+      if (remainingQty <= 0) continue;
+
+      const effectiveQty = Math.min(refItem.qty, remainingQty);
+      if (effectiveQty <= 0) continue;
+
+      const ratio = Math.min(1, effectiveQty / line.qty);
       let lineTotal = Math.round(line.netPaise * ratio);
       lineTotal = Math.min(lineTotal, remainingLine);
       if (lineTotal <= 0) continue;
@@ -114,7 +136,7 @@ export async function createCreditNoteForRefund(
         invoiceLineId: line.id,
         kind: line.kind,
         description: `Credit: ${line.description}`,
-        qty: refItem.qty,
+        qty: effectiveQty,
         ratePercent: line.ratePercent,
         taxablePaise: tax.taxablePaise,
         cgstPaise: split.cgstPaise,
@@ -124,18 +146,23 @@ export async function createCreditNoteForRefund(
       });
 
       creditedPerLine.set(line.id, alreadyLine + lineTotal);
+      creditedQtyPerLine.set(line.id, alreadyQty + effectiveQty);
     }
 
-    if (params.includeFeeShare) {
+    if (params.includeFeeShare || isFullGoodsRefund) {
       const feeLines = invoice.lines.filter((l) => l.kind !== "GOODS");
-      const goodsInvoiceNet = invoice.lines
-        .filter((l) => l.kind === "GOODS")
-        .reduce((sum, l) => sum + l.netPaise, 0);
+      const goodsInvoiceNet = goodsLines.reduce((sum, l) => sum + l.netPaise, 0);
       const goodsRefundedNet = draftLines.reduce((sum, l) => sum + l.totalPaise, 0);
-      const feeRatio =
-        goodsInvoiceNet > 0 ? goodsRefundedNet / goodsInvoiceNet : 1;
+      const feeRatio = isFullGoodsRefund
+        ? 1
+        : goodsInvoiceNet > 0
+        ? goodsRefundedNet / goodsInvoiceNet
+        : 1;
 
       for (const feeLine of feeLines) {
+        if (feeLine.kind === "SHIPPING" && params.refundShippingFee === false) continue;
+        if (feeLine.kind === "COD" && params.refundCodFee === false) continue;
+
         const alreadyFee = creditedPerLine.get(feeLine.id) || 0;
         const remainingFee = Math.max(0, feeLine.netPaise - alreadyFee);
         if (remainingFee <= 0) continue;

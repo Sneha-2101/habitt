@@ -137,6 +137,7 @@ export async function createTestOrder(opts: {
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   paidAt?: Date;
+  shippedAt?: Date;
   createdAt?: Date;
   customerName?: string;
   shippingAddress?: any;
@@ -239,6 +240,12 @@ export async function createTestOrder(opts: {
       razorpayOrderId: opts.razorpayOrderId,
       razorpayPaymentId: opts.razorpayPaymentId,
       paidAt: opts.paidAt,
+      shippedAt:
+        opts.shippedAt !== undefined
+          ? opts.shippedAt
+          : derivedFulfilmentStatus === "SHIPPED" || derivedFulfilmentStatus === "DELIVERED" || derivedFulfilmentStatus === "RTO"
+          ? opts.paidAt ?? new Date()
+          : null,
       createdAt: opts.createdAt,
       items: {
         create: opts.items.map((it) => ({

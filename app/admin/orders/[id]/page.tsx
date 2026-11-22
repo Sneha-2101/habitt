@@ -10,9 +10,10 @@ import { requireStaff } from "@/lib/guards";
 import { canTransition, nextStatusOptions } from "@/lib/orders/transitions";
 import { updateOrderShippingAddress } from "@/lib/actions/order-address";
 import { getOrderStatusLabel } from "@/lib/orders/status-label";
-import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
+import { issueInvoiceForOrder, canIssueInvoice } from "@/lib/gst/issue-invoice";
 import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
 import { writeAudit } from "@/lib/audit";
+import PartialCreditNoteForm from "./PartialCreditNoteForm";
 
 async function generateInvoice(orderId: string) {
   "use server";
@@ -116,11 +117,50 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
       items: true,
       statusEvents: { orderBy: { createdAt: "asc" } },
       notes: { orderBy: { createdAt: "desc" } },
-      invoice: true,
-      creditNotes: { orderBy: { issuedAt: "desc" } },
+      invoice: {
+        include: { lines: true },
+      },
+      creditNotes: {
+        include: { lines: true },
+        orderBy: { issuedAt: "desc" },
+      },
     },
   });
   if (!order) notFound();
+
+  const siteSettings = await prisma.siteSettings.findUnique({ where: { id: "default" } });
+  const gstFeeMode = siteSettings?.gstFeeMode ?? "COMPOSITE";
+
+  const creditedTotal = (order.creditNotes || []).reduce((s, cn) => s + cn.totalPaise, 0);
+  const remainingCreditablePaise = order.invoice ? Math.max(0, order.invoice.totalPaise - creditedTotal) : 0;
+
+  const partialCreditNoteItems = (order.items || []).map((it) => {
+    const creditedQty = (order.creditNotes || []).reduce((sum, cn) => {
+      const invLine = order.invoice?.lines.find((l) => l.orderItemId === it.id);
+      if (!invLine) return sum;
+      const cnLine = cn.lines.find((cl) => cl.invoiceLineId === invLine.id);
+      return sum + (cnLine?.qty ?? 0);
+    }, 0);
+    return {
+      orderItemId: it.id,
+      name: it.name,
+      orderedQty: it.qty,
+      creditedQty,
+      remainingQty: Math.max(0, it.qty - creditedQty),
+      unitPricePaise: it.unitPrice,
+    };
+  });
+
+  const feeLines = order.invoice?.lines.filter((l) => l.kind !== "GOODS") || [];
+  const feeCredited =
+    feeLines.length > 0 &&
+    feeLines.every((fl) => {
+      const totalFeeCredited = (order.creditNotes || []).reduce((sum, cn) => {
+        const cl = cn.lines.find((l) => l.invoiceLineId === fl.id);
+        return sum + (cl?.totalPaise ?? 0);
+      }, 0);
+      return totalFeeCredited >= fl.netPaise;
+    });
 
   const updateWithId = updateStatus.bind(null, order.id);
   const generateInvoiceWithId = generateInvoice.bind(null, order.id);
@@ -134,6 +174,8 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
     ? order.creditNotes.some((cn) => cn.refundRef === pendingRefundRef)
     : false;
   const pendingCreditNoteRef = pendingRefundRef && !hasCnForPendingRef ? pendingRefundRef : null;
+
+  const invoiceEligibility = canIssueInvoice(order);
 
   const generateCreditNoteWithRef = pendingCreditNoteRef
     ? generateCreditNote.bind(null, order.id, pendingCreditNoteRef)
@@ -322,17 +364,21 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
         ) : (
           <div className="flex items-center justify-between pt-1">
             <p className="text-stone-dark text-xs">
-              Invoice is automatically generated when order is marked shipped.
+              {invoiceEligibility.allowed
+                ? "Order is eligible for invoice generation."
+                : invoiceEligibility.reason || "Invoice will be available after shipment."}
             </p>
             <div className="flex items-center gap-2">
-              <form action={generateInvoiceWithId}>
-                <button
-                  type="submit"
-                  className="text-xs px-3 py-1 border border-moss text-moss hover:bg-moss/10 rounded font-medium"
-                >
-                  ⚡ Generate Invoice Now
-                </button>
-              </form>
+              {invoiceEligibility.allowed && (
+                <form action={generateInvoiceWithId}>
+                  <button
+                    type="submit"
+                    className="text-xs px-3 py-1 border border-moss text-moss hover:bg-moss/10 rounded font-medium"
+                  >
+                    ⚡ Generate Invoice Now
+                  </button>
+                </form>
+              )}
               {pendingCreditNoteRef && generateCreditNoteWithRef && (
                 <form action={generateCreditNoteWithRef}>
                   <button
@@ -385,6 +431,9 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
                 <div key={cn.id} className="flex items-center justify-between text-xs py-1 px-2 bg-paper/50 rounded">
                   <div>
                     <span className="font-mono font-medium">{cn.number}</span>
+                    <span className="text-stone-dark ml-2 text-[11px]">
+                      {new Date(cn.issuedAt).toLocaleDateString("en-IN")}
+                    </span>
                     <span className="text-stone-dark ml-2">({cn.reason})</span>
                   </div>
                   <span className="font-mono font-semibold text-red-800">
@@ -393,6 +442,19 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Partial Credit Note Creation */}
+        {order.invoice && order.invoice.mode === "TAX" && (
+          <div className="pt-2 border-t border-stone/20">
+            <PartialCreditNoteForm
+              orderId={order.id}
+              items={partialCreditNoteItems}
+              gstFeeMode={gstFeeMode}
+              feeCredited={feeCredited}
+              remainingCreditablePaise={remainingCreditablePaise}
+            />
           </div>
         )}
       </div>

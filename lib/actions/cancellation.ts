@@ -287,6 +287,9 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
         reason: `Cancelled by admin: ${cancellationReason}`,
         refundRef: `cancel-admin-${order.id}`,
         refundedItems: order.items.map((i) => ({ orderItemId: i.id, qty: i.qty })),
+        includeFeeShare: true,
+        refundShippingFee: true,
+        refundCodFee: true,
       });
     });
   } catch (cnErr) {

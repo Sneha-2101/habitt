@@ -40,7 +40,7 @@ export async function GET(
   }
 
   if (!order.creditNotes || order.creditNotes.length === 0) {
-    return new NextResponse("No credit notes found for this order", {
+    return new NextResponse("Credit note not available yet", {
       status: 404,
     });
   }

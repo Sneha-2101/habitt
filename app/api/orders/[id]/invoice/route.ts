@@ -3,7 +3,6 @@ import { getSessionUser } from "@/lib/sessions";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import { escapeHtml } from "@/lib/escape-html";
-import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
 
 export async function GET(
   req: Request,
@@ -38,20 +37,10 @@ export async function GET(
     return new NextResponse("Forbidden", { status: 403 });
   }
 
-  // Retrieve stored invoice or generate if not yet issued
-  let invoice = order.invoice;
+  // Serve ONLY stored invoice
+  const invoice = order.invoice;
   if (!invoice) {
-    try {
-      invoice = await prisma.$transaction(async (tx) => {
-        return issueInvoiceForOrder(tx, order.id);
-      });
-    } catch (err) {
-      console.error("Failed to generate invoice on GET:", err);
-    }
-  }
-
-  if (!invoice) {
-    return new NextResponse("Invoice not found and could not be generated", {
+    return new NextResponse("Invoice not available yet", {
       status: 404,
     });
   }

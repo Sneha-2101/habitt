@@ -97,6 +97,9 @@ export async function markCodRefused(orderId: string, note?: string) {
         reason: refusalNote,
         refundRef: `cod-refusal-${order.id}`,
         refundedItems: order.items.map((i) => ({ orderItemId: i.id, qty: i.qty })),
+        includeFeeShare: true,
+        refundShippingFee: true,
+        refundCodFee: true,
       });
     });
   } catch (cnErr) {

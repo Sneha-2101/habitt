@@ -12,6 +12,64 @@ import { computeInvoiceLines } from "@/lib/gst/tax";
 
 type DbClient = Prisma.TransactionClient | PrismaClient;
 
+export class InvoiceNotAllowedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvoiceNotAllowedError";
+  }
+}
+
+export const ALLOWED_INVOICE_FULFILMENT_STATUSES = [
+  "SHIPPED",
+  "DELIVERED",
+  "RTO",
+] as const;
+
+export const ALLOWED_INVOICE_PAYMENT_STATUSES = [
+  "PAID",
+  "COD_PENDING",
+  "COD_COLLECTED",
+  "PARTIALLY_REFUNDED",
+  "REFUNDED",
+] as const;
+
+export function canIssueInvoice(order: {
+  fulfilmentStatus: string;
+  paymentStatus: string;
+  shippedAt?: Date | null;
+}): { allowed: boolean; reason?: string } {
+  if (
+    !ALLOWED_INVOICE_FULFILMENT_STATUSES.includes(
+      order.fulfilmentStatus as (typeof ALLOWED_INVOICE_FULFILMENT_STATUSES)[number]
+    )
+  ) {
+    return {
+      allowed: false,
+      reason: `Invoice cannot be issued for order with fulfilmentStatus: ${order.fulfilmentStatus}. Must be SHIPPED, DELIVERED, or RTO.`,
+    };
+  }
+
+  if (
+    !ALLOWED_INVOICE_PAYMENT_STATUSES.includes(
+      order.paymentStatus as (typeof ALLOWED_INVOICE_PAYMENT_STATUSES)[number]
+    )
+  ) {
+    return {
+      allowed: false,
+      reason: `Invoice cannot be issued for order with paymentStatus: ${order.paymentStatus}. Must be PAID, COD_PENDING, COD_COLLECTED, PARTIALLY_REFUNDED, or REFUNDED.`,
+    };
+  }
+
+  if (!order.shippedAt) {
+    return {
+      allowed: false,
+      reason: "Invoice cannot be issued without shipment date (shippedAt).",
+    };
+  }
+
+  return { allowed: true };
+}
+
 /**
  * Issues an invoice for an order.
  * If the order already has an invoice, returns it idempotently.
@@ -39,6 +97,22 @@ export async function issueInvoiceForOrder(
     throw new Error(`Order ${orderId} not found`);
   }
 
+  // Refuse unless allowed fulfilmentStatus and paymentStatus, and shippedAt exists
+  const check = canIssueInvoice({
+    fulfilmentStatus: order.fulfilmentStatus,
+    paymentStatus: order.paymentStatus,
+    shippedAt: order.shippedAt,
+  });
+  if (!check.allowed) {
+    throw new InvoiceNotAllowedError(check.reason || "Invoice not allowed for this order");
+  }
+
+  if (!order.shippedAt) {
+    throw new InvoiceNotAllowedError(
+      "Shipment date (shippedAt) is required to determine the invoice financial year"
+    );
+  }
+
   const siteSettings = await tx.siteSettings.findUnique({
     where: { id: "default" },
   });
@@ -57,7 +131,7 @@ export async function issueInvoiceForOrder(
     phone: siteSettings?.businessPhone || "",
     email: siteSettings?.supportEmail || "",
   };
-  const sellerState = siteSettings?.businessState || "Kerala";
+  const sellerState = siteSettings?.businessState || "";
 
   const rawBuyerAddr = (order.shippingAddress as Record<string, unknown>) || {};
   const buyerName =
@@ -156,7 +230,7 @@ export async function issueInvoiceForOrder(
   }
 
   // TAX INVOICE MODE
-  const fy = getIndianFinancialYear(order.shippedAt || new Date());
+  const fy = getIndianFinancialYear(order.shippedAt!);
 
   // Atomic counter reservation with row lock
   await tx.$executeRaw`

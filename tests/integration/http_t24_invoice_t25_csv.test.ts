@@ -7,6 +7,7 @@ import {
   cleanupM1TestRows,
 } from "../helpers/fixtures";
 import { createSessionCookie } from "../helpers/session";
+import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
@@ -29,7 +30,7 @@ describe("T24 & T25: HTTP Output Safety (HTML Invoice XSS & CSV Injection)", () 
     const order = await createTestOrder({
       userId: owner.id,
       items: [{ productId: product.id, variantId: variants[0].id, qty: 1, unitPrice: 299900 }],
-      status: "PAID",
+      status: "SHIPPED",
       shippingAddress: {
         line1: "<script>alert(1)</script>",
         city: "Mumbai",
@@ -37,6 +38,8 @@ describe("T24 & T25: HTTP Output Safety (HTML Invoice XSS & CSV Injection)", () 
         pincode: "400001",
       },
     });
+
+    await prisma.$transaction((tx) => issueInvoiceForOrder(tx, order.id));
 
     // 1. Unauthenticated request should be rejected (401)
     const unauthRes = await fetch(`${BASE_URL}/api/orders/${order.id}/invoice`);
