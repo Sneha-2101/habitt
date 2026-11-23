@@ -50,6 +50,11 @@ export default async function AdminProductsPage() {
                   <span className="w-6 h-7 bg-stone/40 inline-block" />
                 )}
                 <span className="font-medium">{p.name}</span>
+                {p.status === "ACTIVE" && p.publishAt && new Date(p.publishAt) > new Date() && (
+                  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono uppercase bg-amber-100 text-amber-900 border border-amber-300">
+                    Scheduled for {new Date(p.publishAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
               </span>
               <span className="text-stone-dark text-[12px]">
                 {p.category?.name}

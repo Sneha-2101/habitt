@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { storefrontProductWhere } from "@/lib/catalog/visibility";
 import { getSettings } from "@/lib/settings";
 import { isEligibleForCod } from "@/lib/actions/cod-eligibility";
 import { calcShippingAndFees, ShippingNote } from "@/lib/pricing/shipping";
@@ -156,7 +157,7 @@ export async function calculateQuote({
   const products = await prisma.product.findMany({
     where: {
       id: { in: productIds },
-      status: "ACTIVE",
+      ...storefrontProductWhere(new Date()),
     },
     include: { variants: true },
   });
@@ -305,7 +306,10 @@ export async function calculateQuote({
   let giftVariants: { id: string; stock: number; size: string; color: string; product: { name: string } }[] = [];
   if (variantGiftIds.length > 0) {
     giftVariants = await prisma.productVariant.findMany({
-      where: { id: { in: variantGiftIds } },
+      where: {
+        id: { in: variantGiftIds },
+        product: storefrontProductWhere(new Date()),
+      },
       select: {
         id: true,
         stock: true,

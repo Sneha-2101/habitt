@@ -187,6 +187,13 @@ export async function createProduct(formData: FormData) {
   if (user.role === "OWNER" && fieldData.costPrice !== undefined) {
     productData.costPrice = fieldData.costPrice;
   }
+  if (formData.has("publishAt")) {
+    const rawPublishAt = formData.get("publishAt");
+    if (typeof rawPublishAt === "string" && rawPublishAt.trim() !== "") {
+      const parsedDate = new Date(rawPublishAt.trim());
+      productData.publishAt = isNaN(parsedDate.getTime()) ? null : parsedDate;
+    }
+  }
 
   const product = await prisma.product.create({
     data: productData,
@@ -352,6 +359,15 @@ export async function updateProduct(productId: string, formData: FormData) {
     if (hasCompareAt) {
       updateData.compareAtPrice = fieldData.compareAtPrice ?? null;
     }
+    if (formData.has("publishAt")) {
+      const rawPublishAt = formData.get("publishAt");
+      if (typeof rawPublishAt === "string" && rawPublishAt.trim() !== "") {
+        const parsedDate = new Date(rawPublishAt.trim());
+        updateData.publishAt = isNaN(parsedDate.getTime()) ? null : parsedDate;
+      } else {
+        updateData.publishAt = null;
+      }
+    }
     if (formData.has("hsn")) updateData.hsn = fieldData.hsn ?? null;
     if (formData.has("fabric")) updateData.fabric = fieldData.fabric ?? null;
     if (formData.has("fit")) updateData.fit = fieldData.fit ?? null;
@@ -369,6 +385,7 @@ export async function updateProduct(productId: string, formData: FormData) {
       price: current.price,
       categoryId: current.categoryId,
       compareAtPrice: current.compareAtPrice,
+      publishAt: current.publishAt,
       ...(user.role === "OWNER"
         ? {
             costPrice:
@@ -417,6 +434,7 @@ export async function updateProduct(productId: string, formData: FormData) {
         price: updatedProduct.price,
         categoryId: updatedProduct.categoryId,
         compareAtPrice: updatedProduct.compareAtPrice,
+        publishAt: updatedProduct.publishAt,
         ...(user.role === "OWNER"
           ? {
               costPrice:

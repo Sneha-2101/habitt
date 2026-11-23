@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/guards";
 import { limit } from "@/lib/ratelimit";
 import { mergeCarts } from "@/lib/cart/merge";
 import { CartItem as ClientCartItem } from "@/lib/cart-store";
+import { storefrontProductWhere } from "@/lib/catalog/visibility";
 
 const incomingCartItemSchema = z
   .object({
@@ -50,7 +51,7 @@ export async function loadCartAction(): Promise<SyncCartResult> {
     const activeVariants = await tx.productVariant.findMany({
       where: {
         id: { in: variantIds },
-        product: { status: "ACTIVE" },
+        product: storefrontProductWhere(),
       },
       include: {
         product: {
@@ -115,7 +116,7 @@ export async function syncCartAction(localItems: unknown): Promise<SyncCartResul
     const activeVariants = await tx.productVariant.findMany({
       where: {
         id: { in: candidateVariantIds },
-        product: { status: "ACTIVE" },
+        product: storefrontProductWhere(),
       },
       include: {
         product: {
@@ -192,9 +193,7 @@ export async function saveCartAction(items: unknown): Promise<{ ok: boolean }> {
     const activeVariants = await tx.productVariant.findMany({
       where: {
         id: { in: candidateVariantIds },
-        product: {
-          status: "ACTIVE",
-        },
+        product: storefrontProductWhere(),
       },
     });
 

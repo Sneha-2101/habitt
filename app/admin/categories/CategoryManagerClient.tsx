@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { createCategoryAction, updateCategoryAction, deleteCategoryAction } from "@/lib/actions/categories";
+import {
+  createCategoryAction,
+  updateCategoryAction,
+  deleteCategoryAction,
+  renameCategorySizeAction,
+  addMissingVariantsForCategoryAction,
+} from "@/lib/actions/categories";
 
 interface CategoryWithCount {
   id: string;
@@ -111,6 +117,68 @@ export default function CategoryManagerClient({
       setCategories((prev) => prev.filter((c) => c.id !== id));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to delete category");
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const [renameStates, setRenameStates] = useState<Record<string, { from: string; to: string }>>({});
+
+  const handleRenameSize = async (categoryId: string) => {
+    const st = renameStates[categoryId];
+    if (!st?.from || !st?.to?.trim()) {
+      setError("Please select a size to rename and enter the new size.");
+      return;
+    }
+    setError(null);
+    setLoadingId(categoryId);
+    try {
+      const res = await renameCategorySizeAction(categoryId, st.from, st.to.trim());
+      if (res?.success) {
+        setCategories((prev) =>
+          prev.map((c) =>
+            c.id === categoryId
+              ? {
+                  ...c,
+                  sizes: c.sizes.map((s) => (s.toLowerCase() === st.from.toLowerCase() ? st.to.trim() : s)),
+                }
+              : c
+          )
+        );
+        setEditStates((prev) => {
+          const current = prev[categoryId];
+          if (!current) return prev;
+          return {
+            ...prev,
+            [categoryId]: {
+              ...current,
+              sizes: current.sizes
+                .split(",")
+                .map((s) => (s.trim().toLowerCase() === st.from.toLowerCase() ? st.to.trim() : s.trim()))
+                .join(", "),
+            },
+          };
+        });
+        setRenameStates((prev) => ({ ...prev, [categoryId]: { from: "", to: "" } }));
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to rename size");
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleAddMissingVariants = async (categoryId: string, name: string) => {
+    if (!confirm(`Add missing stock-0 variants for all products in category "${name}"?`)) return;
+    setError(null);
+    setLoadingId(categoryId);
+    try {
+      const res = await addMissingVariantsForCategoryAction(categoryId);
+      if (res?.success) {
+        alert(`Successfully created ${res.createdCount} missing variant(s) across ${res.affectedProductsCount} product(s).`);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to add missing variants");
     } finally {
       setLoadingId(null);
     }
@@ -238,6 +306,60 @@ export default function CategoryManagerClient({
                       Delete
                     </button>
                   </div>
+                </div>
+
+                {/* Size and Variant Tools */}
+                <div className="pt-3 border-t border-stone/40 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[10.5px] uppercase tracking-wider text-stone-dark">Rename Size:</span>
+                    <select
+                      value={renameStates[cat.id]?.from || ""}
+                      onChange={(e) =>
+                        setRenameStates((prev) => ({
+                          ...prev,
+                          [cat.id]: { from: e.target.value, to: prev[cat.id]?.to || "" },
+                        }))
+                      }
+                      className="px-2 py-1 border border-stone bg-paper text-xs font-mono"
+                    >
+                      <option value="">Select size...</option>
+                      {cat.sizes.map((sz) => (
+                        <option key={sz} value={sz}>
+                          {sz}
+                        </option>
+                      ))}
+                    </select>
+                    <span>→</span>
+                    <input
+                      type="text"
+                      placeholder="New size"
+                      value={renameStates[cat.id]?.to || ""}
+                      onChange={(e) =>
+                        setRenameStates((prev) => ({
+                          ...prev,
+                          [cat.id]: { from: prev[cat.id]?.from || "", to: e.target.value },
+                        }))
+                      }
+                      className="w-24 px-2 py-1 border border-stone bg-paper text-xs font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRenameSize(cat.id)}
+                      disabled={isLoading}
+                      className="px-2.5 py-1 bg-stone-dark text-paper text-[11px] font-mono uppercase tracking-wider hover:opacity-90 disabled:opacity-50"
+                    >
+                      Rename
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAddMissingVariants(cat.id, cat.name)}
+                    disabled={isLoading}
+                    className="px-3 py-1 bg-moss/20 border border-moss text-moss text-[11px] font-mono uppercase tracking-wider hover:bg-moss/30 disabled:opacity-50"
+                  >
+                    + Add missing variants for all products
+                  </button>
                 </div>
               </div>
             );

@@ -1,10 +1,16 @@
+import Link from "next/link";
 import { getSettings } from "@/lib/settings";
 import { formatINR } from "@/lib/money";
+import { getSessionUser } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
 export default async function ShippingPolicyPage() {
-  const settings = await getSettings();
+  const [settings, sessionUser] = await Promise.all([
+    getSettings(),
+    getSessionUser().catch(() => null),
+  ]);
+  const isStaff = sessionUser?.role === "STAFF" || sessionUser?.role === "OWNER";
   const freeThresholdStr = formatINR(settings.freeShippingThreshold);
   const shippingFeeStr = formatINR(settings.shippingFee);
 
@@ -17,14 +23,7 @@ export default async function ShippingPolicyPage() {
 
       <div className="text-xs text-[#4B473F] leading-relaxed space-y-4 pt-4 border-t border-stone/50">
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-ink">1. Processing Time</h3>
-          <p>
-            All orders are processed and handed over to courier partners within 24–48 hours on business days (Monday to Saturday). Orders placed on Sundays or public holidays are processed the following business day.
-          </p>
-        </section>
-
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-ink">2. Shipping Charges & Free Shipping</h3>
+          <h3 className="text-sm font-semibold text-ink">1. Shipping Charges & Free Shipping</h3>
           <p>
             {settings.freeShippingOnPrepaid && (
               <span>We offer <strong>Free Shipping</strong> on all prepaid orders (UPI, Cards, Netbanking). </span>
@@ -34,19 +33,26 @@ export default async function ShippingPolicyPage() {
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-ink">3. Delivery Timelines</h3>
+          <h3 className="text-sm font-semibold text-ink">2. Delivery Timelines</h3>
           <p>
-            All packages are dispatched from our primary facility in {settings.businessState || "Punjab"} and delivered across India within {settings.maxDeliveryDays} business days post-dispatch.
+            {settings.businessState
+              ? `All packages are dispatched from our primary facility in ${settings.businessState} and delivered across India within ${settings.maxDeliveryDays} days of dispatch.`
+              : `All packages are dispatched from our primary facility and delivered across India within ${settings.maxDeliveryDays} days of dispatch.`}
           </p>
+          {!settings.businessState && isStaff && (
+            <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-[11.5px] rounded-xs">
+              Set business state in <Link href="/admin/gst" className="underline font-medium">/admin/gst</Link>
+            </div>
+          )}
           <ul className="list-disc pl-5 space-y-1">
-            <li><strong>Standard Delivery:</strong> Up to {settings.maxDeliveryDays} business days post-dispatch.</li>
+            <li><strong>Standard Delivery:</strong> Up to {settings.maxDeliveryDays} days post-dispatch.</li>
           </ul>
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-ink">4. Tracking & Notifications</h3>
+          <h3 className="text-sm font-semibold text-ink">3. Tracking & Notifications</h3>
           <p>
-            As soon as your package is dispatched, you will receive an email and SMS notification containing your courier partner details (e.g. Delhivery, Bluedart) and tracking AWB number.
+            As soon as your package is dispatched, you will receive notification containing your courier partner details and tracking AWB number.
           </p>
         </section>
       </div>

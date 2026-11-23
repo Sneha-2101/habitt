@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getClientIp } from "@/lib/client-ip";
 import { limit } from "@/lib/ratelimit";
+import { isProductPurchasable } from "@/lib/catalog/visibility";
 
 const emailSchema = z.string().email("Please enter a valid email address.");
 
@@ -39,7 +40,7 @@ export async function requestStockNotification(
     include: { variants: true },
   });
 
-  if (!product || product.status !== "ACTIVE") {
+  if (!product || !isProductPurchasable(product)) {
     throw new Error("Product is no longer available.");
   }
 

@@ -145,8 +145,15 @@ export default async function AccountPage() {
       status: legacyStage(o),
       statusLabel: getOrderStatusLabel(o).label,
       items: o.items.map((item) => ({
-        ...item,
-        color: item.color,
+        id: item.id,
+        productId: item.productId,
+        variantId: item.variantId,
+        name: item.name,
+        size: item.size,
+        color: item.color || undefined,
+        unitPrice: item.unitPrice,
+        qty: item.qty,
+        isGift: item.isGift,
         currentStock: variantStockMap.get(item.variantId) ?? 0,
         remainingReturnable: remainingReturnableQty(
           item,

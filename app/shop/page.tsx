@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import ProductCard from "@/components/ProductCard";
 import { getWishlistProductIds } from "@/lib/actions/wishlist";
 import { getActiveAutomaticOfferBadges, resolveOfferBadge } from "@/lib/offers/load";
+import { storefrontProductWhere } from "@/lib/catalog/visibility";
 
 export default async function ShopPage({
   searchParams,
@@ -36,7 +37,7 @@ export default async function ShopPage({
     const [dbProducts, wishlistIds, offerBadges] = await Promise.all([
       prisma.product.findMany({
         where: {
-          status: "ACTIVE",
+          ...storefrontProductWhere(),
           ...(activeCategory ? { categoryId: activeCategory.id } : {}),
           ...(searchQuery ? { name: { contains: searchQuery, mode: "insensitive" } } : {}),
         },

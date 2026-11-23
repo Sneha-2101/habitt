@@ -15,6 +15,7 @@ import { getReviewsForProduct, getAverageRating } from "@/lib/actions/reviews";
 import { auth } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { getActiveAutomaticOfferBadges, resolveOfferBadge } from "@/lib/offers/load";
+import { isProductVisible } from "@/lib/catalog/visibility";
 
 export async function generateMetadata({
   params,
@@ -30,10 +31,16 @@ export async function generateMetadata({
       seoTitle: true,
       seoDescription: true,
       status: true,
+      publishAt: true,
     },
   });
 
-  if (!product || product.status !== "ACTIVE") {
+  if (!product) {
+    return {
+      title: "Product Not Found — Habitt",
+    };
+  }
+  if (!isProductVisible(product)) {
     return {
       title: "Product Not Found — Habitt",
     };
@@ -58,6 +65,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const session = await auth(); // display only
   const userId = session?.user?.id;
 
+  const user = session?.user as { role?: string } | undefined;
+  const isStaff = user?.role === "STAFF" || user?.role === "OWNER";
   const [product, wishlistIds, settings, offerBadges] = await Promise.all([
     prisma.product.findUnique({
       where: { slug: resolvedParams.slug },
@@ -73,7 +82,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     getActiveAutomaticOfferBadges(),
   ]);
 
-  if (!product || product.status !== "ACTIVE") notFound();
+  if (!product) notFound();
+  const visible = isProductVisible(product);
+  if (!visible && !isStaff) notFound();
 
   const offerBadge = resolveOfferBadge(
     product.id,
@@ -115,6 +126,12 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
   return (
     <main className="px-4 sm:px-7 py-10 max-w-5xl mx-auto">
+      {!visible && isStaff && (
+        <div className="mb-6 p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs font-mono uppercase tracking-wider flex items-center justify-between">
+          <span>Scheduled / not public</span>
+          <span>Staff Preview Mode</span>
+        </div>
+      )}
       <RecordRecentlyViewed
         product={{
           id: product.id,

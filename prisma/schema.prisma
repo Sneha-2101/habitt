@@ -12,26 +12,26 @@ datasource db {
 }
 
 model Category {
-  id        String    @id @default(cuid())
-  slug      String    @unique
-  name      String
-  position  Int       @default(0)
-  sizes     String[]
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  products  Product[]
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  name         String
+  position     Int           @default(0)
+  sizes        String[]
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  products     Product[]
   offerTargets OfferTarget[]
-  gstRules  GstRule[]
+  gstRules     GstRule[]
 }
 
 model Product {
-  id          String           @id @default(cuid())
-  name        String
-  slug        String           @unique
-  description String
-  categoryId  String
-  category    Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  id             String              @id @default(cuid())
+  name           String
+  slug           String              @unique
+  description    String
+  categoryId     String
+  category       Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   price          Int // paise
   compareAtPrice Int?
   costPrice      Int?
@@ -43,16 +43,16 @@ model Product {
   seoTitle       String?
   seoDescription String?
   publishAt      DateTime?
-  status         ProductStatus    @default(DRAFT)
-  images      ProductImage[]
-  cartItems   CartItem[]
-  variants    ProductVariant[]
-  wishlistItems WishlistItem[]
-  reviews     Review[]
-  collections ProductCollection[]
-  offerTargets OfferTarget[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  status         ProductStatus       @default(DRAFT)
+  images         ProductImage[]
+  cartItems      CartItem[]
+  variants       ProductVariant[]
+  wishlistItems  WishlistItem[]
+  reviews        Review[]
+  collections    ProductCollection[]
+  offerTargets   OfferTarget[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 }
 
 model ProductImage {
@@ -64,14 +64,14 @@ model ProductImage {
 }
 
 model ProductVariant {
-  id        String  @id @default(cuid())
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String     @id @default(cuid())
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId String
   size      String
-  color     String  @default("")
+  color     String     @default("")
   colorHex  String?
-  sku       String? @unique
-  stock     Int     @default(0)
+  sku       String?    @unique
+  stock     Int        @default(0)
   cartItems CartItem[]
 
   @@unique([productId, size, color])
@@ -84,55 +84,55 @@ enum ProductStatus {
 }
 
 model Order {
-  id                String             @id @default(cuid())
-  displayId         String             @unique
-  user              User               @relation(fields: [userId], references: [id])
-  userId            String
-  customerName      String
-  customerPhone     String
-  customerEmail     String?
-  shippingAddress   Json
-  items             OrderItem[]
-  subtotal          Int
-  shippingFee       Int                @default(0)
-  codFee            Int                @default(0)
-  total             Int
-  feesRefunded      Boolean            @default(false)
-  paymentStatus     PaymentStatus      @default(PENDING)
-  fulfilmentStatus  FulfilmentStatus   @default(CREATED)
-  paymentMethod     PaymentMethod      @default(RAZORPAY) // RAZORPAY or COD
-  razorpayOrderId   String?            @unique
-  razorpayPaymentId String?
-  paidAt            DateTime?
-  razorpayRefundId  String?
-  refundedAt        DateTime?
-  refundAmount      Int?
-  cancellationReason String?
-  courierName       String?
-  awbNumber         String?
-  shiprocketOrderId String?
-  shippedAt         DateTime?
-  deliveredAt       DateTime?
-  trackingUrl       String?
-  statusEvents      OrderStatusEvent[]
-  returnRequests    ReturnRequest[]
-  notes             OrderNote[]
-  discounts         OrderDiscount[]
-  offerRedemptions  OfferRedemption[]
-  invoice           Invoice?
-  creditNotes       CreditNote[]
-  refunds           Refund[]
-  shipments         Shipment[]
-  tickets           Ticket[]
-  couponCode        String?
-  discountAmount    Int?
-  giftMessage       String?
-  storeCreditApplied Int               @default(0) // paise
-  idempotencyKey    String?            @unique
-  stockDeducted     Boolean            @default(false)
+  id                   String             @id @default(cuid())
+  displayId            String             @unique
+  user                 User               @relation(fields: [userId], references: [id])
+  userId               String
+  customerName         String
+  customerPhone        String
+  customerEmail        String?
+  shippingAddress      Json
+  items                OrderItem[]
+  subtotal             Int
+  shippingFee          Int                @default(0)
+  codFee               Int                @default(0)
+  total                Int
+  feesRefunded         Boolean            @default(false)
+  paymentStatus        PaymentStatus      @default(PENDING)
+  fulfilmentStatus     FulfilmentStatus   @default(CREATED)
+  paymentMethod        PaymentMethod      @default(RAZORPAY) // RAZORPAY or COD
+  razorpayOrderId      String?            @unique
+  razorpayPaymentId    String?
+  paidAt               DateTime?
+  razorpayRefundId     String?
+  refundedAt           DateTime?
+  refundAmount         Int?
+  cancellationReason   String?
+  courierName          String?
+  awbNumber            String?
+  shiprocketOrderId    String?
+  shippedAt            DateTime?
+  deliveredAt          DateTime?
+  trackingUrl          String?
+  statusEvents         OrderStatusEvent[]
+  returnRequests       ReturnRequest[]
+  notes                OrderNote[]
+  discounts            OrderDiscount[]
+  offerRedemptions     OfferRedemption[]
+  invoice              Invoice?
+  creditNotes          CreditNote[]
+  refunds              Refund[]
+  shipments            Shipment[]
+  tickets              Ticket[]
+  couponCode           String?
+  discountAmount       Int?
+  giftMessage          String?
+  storeCreditApplied   Int                @default(0) // paise
+  idempotencyKey       String?            @unique
+  stockDeducted        Boolean            @default(false)
   abandonedEmailSentAt DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   @@index([paymentStatus, fulfilmentStatus, createdAt])
 }
@@ -144,46 +144,46 @@ enum PaymentMethod {
 }
 
 model SiteSettings {
-  id                     String   @id @default("default")
-  codEnabled             Boolean  @default(true)
-  codOrderCap            Int      @default(500000) // in paise (e.g. 500000 = â‚¹5,000)
-  shippingFee            Int      @default(9900)   // in paise (e.g. 9900 = â‚¹99)
-  freeShippingThreshold  Int      @default(299900) // in paise (e.g. 299900 = â‚¹2,999)
-  codFeeEnabled          Boolean  @default(false)
-  codFee                 Int      @default(0)      // in paise (e.g. 5000 = â‚¹50)
-  gstEnabled             Boolean  @default(false)
-  gstRate                Float    @default(0.0)    // percentage (e.g. 18.0)
-  gstin                  String?
-  businessName           String   @default("habitt")
-  businessTagline        String   @default("Minimalist Apparel Essentials")
-  supportEmail           String   @default("support@habitt.in")
-  orderSenderEmail       String   @default("orders@habitt.in")
-  businessAddress        String?
-  lowStockThreshold       Int      @default(3)
-  welcomeCouponCode      String   @default("WELCOME10")
-  welcomeCouponPercent   Int      @default(10)
-  birthdayDiscountPercent Int     @default(10)
-  returnWindowDays       Int      @default(7)
-  abandonedCartDelayHours Int     @default(24)
-  freeShippingOnPrepaid  Boolean  @default(true)
-  codRequiresDeliveredOrder Boolean @default(true)
-  freeReturnShipping     Boolean  @default(true)
-  refundProcessingHours  Int      @default(48)
-  maxDeliveryDays        Int      @default(7)
-  legalName              String?
-  businessPhone          String?
-  businessState          String?
-  businessPincode        String?
-  whatsappSupportNumber  String?
-  shiprocketPickupLocation String @default("Primary")
-  gstFeeMode             GstFeeMode @default(COMPOSITE)
-  gstFeeRate             Float    @default(18.0)
-  invoicePrefix          String   @default("HB")
-  grievanceOfficerName    String?
-  grievanceOfficerEmail   String?
-  grievanceOfficerPhone   String?
-  grievanceOfficerAddress String?
-  updatedAt              DateTime @updatedAt
+  id                        String     @id @default("default")
+  codEnabled                Boolean    @default(true)
+  codOrderCap               Int        @default(500000) // in paise (e.g. 500000 = â‚¹5,000)
+  shippingFee               Int        @default(9900) // in paise (e.g. 9900 = â‚¹99)
+  freeShippingThreshold     Int        @default(299900) // in paise (e.g. 299900 = â‚¹2,999)
+  codFeeEnabled             Boolean    @default(false)
+  codFee                    Int        @default(0) // in paise (e.g. 5000 = â‚¹50)
+  gstEnabled                Boolean    @default(false)
+  gstRate                   Float      @default(0.0) // percentage (e.g. 18.0)
+  gstin                     String?
+  businessName              String     @default("habitt")
+  businessTagline           String     @default("Minimalist Apparel Essentials")
+  supportEmail              String     @default("support@habitt.in")
+  orderSenderEmail          String     @default("orders@habitt.in")
+  businessAddress           String?
+  lowStockThreshold         Int        @default(3)
+  welcomeCouponCode         String     @default("WELCOME10")
+  welcomeCouponPercent      Int        @default(10)
+  birthdayDiscountPercent   Int        @default(10)
+  returnWindowDays          Int        @default(7)
+  abandonedCartDelayHours   Int        @default(24)
+  freeShippingOnPrepaid     Boolean    @default(true)
+  codRequiresDeliveredOrder Boolean    @default(true)
+  freeReturnShipping        Boolean    @default(true)
+  refundProcessingHours     Int        @default(48)
+  maxDeliveryDays           Int        @default(7)
+  legalName                 String?
+  businessPhone             String?
+  businessState             String?
+  businessPincode           String?
+  whatsappSupportNumber     String?
+  shiprocketPickupLocation  String     @default("Primary")
+  gstFeeMode                GstFeeMode @default(COMPOSITE)
+  gstFeeRate                Float      @default(18.0)
+  invoicePrefix             String     @default("HB")
+  grievanceOfficerName      String?
+  grievanceOfficerEmail     String?
+  grievanceOfficerPhone     String?
+  grievanceOfficerAddress   String?
+  updatedAt                 DateTime   @updatedAt
 }
 
 model OrderItem {
@@ -242,37 +242,37 @@ enum FulfilmentStatus {
 // buy, and the same /login page authenticates both â€” the header decides
 // whether to show the Admin link based on `role`.
 model User {
-  id                     String                   @id @default(cuid())
-  email                  String?                  @unique
-  name                   String                   @default("")
-  phone                  String?                  @unique
-  dateOfBirth            DateTime?
-  emailVerifiedAt        DateTime?
-  phoneVerifiedAt        DateTime?
-  cart                   Cart?
-  storeCreditBalance     Int                      @default(0) // paise
-  role                   Role                     @default(CUSTOMER)
-  status                 UserStatus               @default(ACTIVE)
-  orders                 Order[]
-  wishlistItems          WishlistItem[]
-  addresses              Address[]
-  reviews                Review[]
-  returnRequests         ReturnRequest[]
+  id                      String                   @id @default(cuid())
+  email                   String?                  @unique
+  name                    String                   @default("")
+  phone                   String?                  @unique
+  dateOfBirth             DateTime?
+  emailVerifiedAt         DateTime?
+  phoneVerifiedAt         DateTime?
+  cart                    Cart?
+  storeCreditBalance      Int                      @default(0) // paise
+  role                    Role                     @default(CUSTOMER)
+  status                  UserStatus               @default(ACTIVE)
+  orders                  Order[]
+  wishlistItems           WishlistItem[]
+  addresses               Address[]
+  reviews                 Review[]
+  returnRequests          ReturnRequest[]
   storeCreditTransactions StoreCreditTransaction[]
-  sessions               Session[]
-  auditLogs              AuditLog[]
-  offerRedemptions       OfferRedemption[]
-  tickets                Ticket[]                 @relation("UserTickets")
-  assignedTickets        Ticket[]                 @relation("AssignedTickets")
-  ticketMessages         TicketMessage[]          @relation("UserTicketMessages")
-  createdAt              DateTime                 @default(now())
+  sessions                Session[]
+  auditLogs               AuditLog[]
+  offerRedemptions        OfferRedemption[]
+  tickets                 Ticket[]                 @relation("UserTickets")
+  assignedTickets         Ticket[]                 @relation("AssignedTickets")
+  ticketMessages          TicketMessage[]          @relation("UserTicketMessages")
+  createdAt               DateTime                 @default(now())
 }
 
 model StoreCreditTransaction {
   id             String   @id @default(cuid())
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId         String
-  amount         Int      // paise (+ for credit, - for debit)
+  amount         Int // paise (+ for credit, - for debit)
   reason         String
   relatedOrderId String?
   createdAt      DateTime @default(now())
@@ -372,8 +372,6 @@ model Review {
 
   @@unique([userId, productId])
 }
-
-
 
 model StockNotification {
   id        String   @id @default(cuid())
@@ -509,7 +507,6 @@ model StockMovement {
   @@index([variantId, createdAt])
 }
 
-
 model NewsletterSubscriber {
   id          String   @id @default(cuid())
   email       String   @unique
@@ -517,7 +514,6 @@ model NewsletterSubscriber {
   source      String   @default("website")
   createdAt   DateTime @default(now())
 }
-
 
 model Session {
   id                String    @id @default(cuid())
@@ -719,12 +715,12 @@ model InvoiceCounter {
 }
 
 model Invoice {
-  id            String          @id @default(cuid())
-  orderId       String          @unique
-  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  mode          InvoiceMode     @default(TAX)
+  id            String        @id @default(cuid())
+  orderId       String        @unique
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  mode          InvoiceMode   @default(TAX)
   fy            String?
-  number        String?         @unique
+  number        String?       @unique
   prefix        String?
   sequence      Int?
   sellerGstin   String?
@@ -738,11 +734,11 @@ model Invoice {
   placeOfSupply String?
   totalPaise    Int
   taxablePaise  Int
-  cgstPaise     Int             @default(0)
-  sgstPaise     Int             @default(0)
-  igstPaise     Int             @default(0)
-  isInterState  Boolean         @default(false)
-  issuedAt      DateTime        @default(now())
+  cgstPaise     Int           @default(0)
+  sgstPaise     Int           @default(0)
+  igstPaise     Int           @default(0)
+  isInterState  Boolean       @default(false)
+  issuedAt      DateTime      @default(now())
   lines         InvoiceLine[]
   creditNotes   CreditNote[]
 
@@ -751,23 +747,23 @@ model Invoice {
 }
 
 model InvoiceLine {
-  id            String          @id @default(cuid())
-  invoiceId     String
-  invoice       Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  orderItemId   String?
-  orderItem     OrderItem?      @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
-  kind          InvoiceLineKind @default(GOODS)
-  description   String
-  hsn           String?
-  qty           Int             @default(1)
-  unitPaise     Int
-  discountPaise Int             @default(0)
-  netPaise      Int
-  ratePercent   Decimal         @db.Decimal(5, 2)
-  taxablePaise  Int
-  cgstPaise     Int             @default(0)
-  sgstPaise     Int             @default(0)
-  igstPaise     Int             @default(0)
+  id              String           @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderItemId     String?
+  orderItem       OrderItem?       @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  kind            InvoiceLineKind  @default(GOODS)
+  description     String
+  hsn             String?
+  qty             Int              @default(1)
+  unitPaise       Int
+  discountPaise   Int              @default(0)
+  netPaise        Int
+  ratePercent     Decimal          @db.Decimal(5, 2)
+  taxablePaise    Int
+  cgstPaise       Int              @default(0)
+  sgstPaise       Int              @default(0)
+  igstPaise       Int              @default(0)
   creditNoteLines CreditNoteLine[]
 
   @@index([invoiceId])
@@ -866,7 +862,7 @@ model ShipmentEvent {
   rawStatus  String
   location   String?
   occurredAt DateTime
-  source     String         // 'WEBHOOK' | 'POLL' | 'MANUAL'
+  source     String // 'WEBHOOK' | 'POLL' | 'MANUAL'
   dedupeKey  String         @unique
   createdAt  DateTime       @default(now())
 
@@ -883,7 +879,7 @@ enum OutboxStatus {
 model EventOutbox {
   id            String       @id @default(cuid())
   type          String
-  channel       String       // 'EMAIL' | 'WHATSAPP'
+  channel       String // 'EMAIL' | 'WHATSAPP'
   orderId       String?
   payload       Json
   status        OutboxStatus @default(PENDING)
@@ -940,36 +936,40 @@ enum TicketAuthor {
 }
 
 model Ticket {
-  id              String          @id @default(cuid())
-  number          String          @unique
-  user            User?           @relation("UserTickets", fields: [userId], references: [id], onDelete: SetNull)
-  userId          String?
-  guestEmail      String?
-  guestName       String?
-  guestVerifiedAt DateTime?
-  order           Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  orderId         String?
-  orderRef        String?
-  category        TicketCategory
-  subject         String
-  status          TicketStatus    @default(OPEN)
-  source          TicketSource
-  assignedTo      User?           @relation("AssignedTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
-  assignedToId    String?
-  accessTokenHash String?
-  acknowledgedAt  DateTime?
-  resolvedAt      DateTime?
-  closedAt        DateTime?
-  ackDueAt        DateTime
-  resolveDueAt    DateTime
-  slaAlertedAt    DateTime?
-  messages        TicketMessage[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  number           String          @unique
+  user             User?           @relation("UserTickets", fields: [userId], references: [id], onDelete: SetNull)
+  userId           String?
+  guestEmail       String?
+  guestName        String?
+  guestVerifiedAt  DateTime?
+  order            Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId          String?
+  orderRef         String?
+  category         TicketCategory
+  subject          String
+  status           TicketStatus    @default(OPEN)
+  source           TicketSource
+  assignedTo       User?           @relation("AssignedTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToId     String?
+  accessTokenHash  String?
+  acknowledgedAt   DateTime?
+  resolvedAt       DateTime?
+  closedAt         DateTime?
+  ackDueAt         DateTime
+  resolveDueAt     DateTime
+  slaAlertedAt     DateTime?
+  ackAlertedAt     DateTime?
+  resolveAlertedAt DateTime?
+  messages         TicketMessage[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([status, resolveDueAt])
   @@index([userId])
   @@index([guestEmail])
+  @@index([ackAlertedAt])
+  @@index([resolveAlertedAt])
 }
 
 model TicketMessage {
@@ -985,6 +985,3 @@ model TicketMessage {
 
   @@index([ticketId, createdAt])
 }
-
-
-

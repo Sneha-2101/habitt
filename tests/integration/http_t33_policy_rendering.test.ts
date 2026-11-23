@@ -41,7 +41,7 @@ describe("T33: Policy Pages and Footer Dynamic Rendering", () => {
     const shipRes = await fetch(`${BASE_URL}/policies/shipping`);
     expect(shipRes.status).toBe(200);
     const shipHtml = (await shipRes.text()).replace(/<!--.*?-->/g, "");
-    expect(shipHtml).toContain("9 business days");
+    expect(shipHtml).toContain("9 days");
     expect(shipHtml).toContain("Free Shipping");
 
     // 2. /policies/returns

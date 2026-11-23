@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { requireStaff } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
@@ -180,4 +181,223 @@ export async function deleteCategoryAction(id: string) {
   revalidatePath("/admin/categories");
 
   return { success: true };
+}
+
+const renameSizeSchema = z.object({
+  categoryId: z.string().min(1, "Category ID is required"),
+  from: z
+    .string()
+    .trim()
+    .min(1, "Current size cannot be empty")
+    .max(12, "Size cannot exceed 12 characters")
+    .refine((s) => !s.includes(","), "Size cannot contain commas"),
+  to: z
+    .string()
+    .trim()
+    .min(1, "New size cannot be empty")
+    .max(12, "Size cannot exceed 12 characters")
+    .refine((s) => !s.includes(","), "Size cannot contain commas"),
+});
+
+export async function renameCategorySizeAction(
+  categoryId: string,
+  from: string,
+  to: string
+): Promise<{ success: boolean; renamedVariantsCount: number; affectedProductsCount: number }> {
+  const user = await requireStaff();
+  const parsed = renameSizeSchema.parse({ categoryId, from, to });
+
+  const result = await prisma.$transaction(async (tx) => {
+    const category = await tx.category.findUnique({
+      where: { id: parsed.categoryId },
+    });
+    if (!category) {
+      throw new Error("Category not found");
+    }
+
+    const fromLower = parsed.from.toLowerCase();
+    const toLower = parsed.to.toLowerCase();
+
+    const fromIndex = category.sizes.findIndex((s) => s.toLowerCase() === fromLower);
+    if (fromIndex === -1) {
+      throw new Error(`Size "${parsed.from}" not found in category "${category.name}"`);
+    }
+
+    if (fromLower !== toLower) {
+      const alreadyHasTo = category.sizes.some((s) => s.toLowerCase() === toLower);
+      if (alreadyHasTo) {
+        throw new Error(`Category "${category.name}" already contains size "${parsed.to}"`);
+      }
+    }
+
+    // Update Category.sizes preserving order
+    const updatedSizes = category.sizes.map((s, idx) => (idx === fromIndex ? parsed.to : s));
+
+    // Load all products in this category with their variants
+    const products = await tx.product.findMany({
+      where: { categoryId: parsed.categoryId },
+      include: { variants: true },
+    });
+
+    const collisions: string[] = [];
+    const variantIdsToUpdate: string[] = [];
+    const affectedProductIds = new Set<string>();
+
+    for (const prod of products) {
+      const fromVariants = prod.variants.filter((v) => v.size.toLowerCase() === fromLower);
+      if (fromVariants.length === 0) continue;
+
+      for (const fv of fromVariants) {
+        const fColor = (fv.color || "").toLowerCase();
+        // Check if prod already has a variant with size `to` and same color
+        const collides = prod.variants.some(
+          (other) =>
+            other.id !== fv.id &&
+            other.size.toLowerCase() === toLower &&
+            (other.color || "").toLowerCase() === fColor
+        );
+        if (collides) {
+          collisions.push(`${prod.name} (${prod.slug})`);
+          break;
+        }
+      }
+
+      if (collisions.length === 0) {
+        for (const fv of fromVariants) {
+          variantIdsToUpdate.push(fv.id);
+          affectedProductIds.add(prod.id);
+        }
+      }
+    }
+
+    if (collisions.length > 0) {
+      throw new Error(
+        `Cannot rename size "${parsed.from}" to "${parsed.to}": collision with existing variants in products: ${Array.from(new Set(collisions)).join(", ")}`
+      );
+    }
+
+    // 1. Update Category sizes
+    await tx.category.update({
+      where: { id: parsed.categoryId },
+      data: { sizes: updatedSizes },
+    });
+
+    // 2. Update ProductVariant.size for all matching variants
+    if (variantIdsToUpdate.length > 0) {
+      await tx.productVariant.updateMany({
+        where: { id: { in: variantIdsToUpdate } },
+        data: { size: parsed.to },
+      });
+    }
+
+    return {
+      renamedVariantsCount: variantIdsToUpdate.length,
+      affectedProductsCount: affectedProductIds.size,
+    };
+  });
+
+  await writeAudit({
+    actorId: user.id,
+    action: "category.rename_size",
+    entity: "Category",
+    entityId: parsed.categoryId,
+    meta: {
+      from: parsed.from,
+      to: parsed.to,
+      renamedVariantsCount: result.renamedVariantsCount,
+      affectedProductsCount: result.affectedProductsCount,
+    },
+  });
+
+  revalidatePath("/admin/categories");
+  revalidatePath("/admin/products");
+  revalidatePath("/shop");
+
+  return { success: true, ...result };
+}
+
+export async function addMissingVariantsForCategoryAction(
+  categoryId: string
+): Promise<{ success: boolean; createdCount: number; affectedProductsCount: number }> {
+  const user = await requireStaff();
+
+  const result = await prisma.$transaction(async (tx) => {
+    const category = await tx.category.findUnique({
+      where: { id: categoryId },
+      include: { products: { include: { variants: true } } },
+    });
+    if (!category) {
+      throw new Error("Category not found");
+    }
+
+    let createdTotal = 0;
+    let affectedProds = 0;
+
+    for (const prod of category.products) {
+      const colorMap = new Map<string, string | null>();
+      if (prod.variants.length === 0) {
+        colorMap.set("", null);
+      } else {
+        for (const v of prod.variants) {
+          const c = v.color || "";
+          if (!colorMap.has(c)) {
+            colorMap.set(c, v.colorHex ?? null);
+          }
+        }
+      }
+
+      const toCreate: {
+        productId: string;
+        size: string;
+        color: string;
+        colorHex: string | null;
+        stock: number;
+      }[] = [];
+
+      for (const [colorName, colorHex] of colorMap.entries()) {
+        const cLower = colorName.toLowerCase();
+        for (const sz of category.sizes) {
+          const szLower = sz.toLowerCase();
+          const exists = prod.variants.some(
+            (v) => (v.color || "").toLowerCase() === cLower && v.size.toLowerCase() === szLower
+          );
+          if (!exists) {
+            toCreate.push({
+              productId: prod.id,
+              size: sz,
+              color: colorName,
+              colorHex,
+              stock: 0,
+            });
+          }
+        }
+      }
+
+      if (toCreate.length > 0) {
+        await tx.productVariant.createMany({
+          data: toCreate,
+        });
+        createdTotal += toCreate.length;
+        affectedProds++;
+      }
+    }
+
+    return { createdCount: createdTotal, affectedProductsCount: affectedProds };
+  });
+
+  await writeAudit({
+    actorId: user.id,
+    action: "category.add_missing_variants",
+    entity: "Category",
+    entityId: categoryId,
+    meta: {
+      createdCount: result.createdCount,
+      affectedProductsCount: result.affectedProductsCount,
+    },
+  });
+
+  revalidatePath("/admin/categories");
+  revalidatePath("/admin/products");
+
+  return { success: true, ...result };
 }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/guards";
 import { writeAudit } from "@/lib/audit";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { getSettings, type UpdateSiteSettingsInput } from "@/lib/settings";
 
@@ -83,6 +84,17 @@ const settingsSchema = z.object({
   grievanceOfficerAddress: z.string().nullish(),
 });
 
+function formatAuditValue(key: string, val: unknown): unknown {
+  if (val === undefined || val === null) return null;
+  if (key.toLowerCase().includes("gstin") && typeof val === "string") {
+    return val.length > 4 ? `***${val.slice(-4)}` : val;
+  }
+  if (typeof val === "string") {
+    return val.length > 200 ? val.substring(0, 200) + "..." : val;
+  }
+  return val;
+}
+
 export async function updateSettings(data: UpdateSiteSettingsInput) {
   const staff = await requireStaff();
 
@@ -136,15 +148,32 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
     },
   });
 
-  await writeAudit({
-    actorId: staff.id,
-    action: "SETTINGS_UPDATED",
-    entity: "SiteSettings",
-    entityId: "default",
-    meta: {
-      updatedFields: Object.keys(validated),
-    },
-  });
+  const changedFields: Record<string, { before: unknown; after: unknown }> = {};
+  for (const [key, afterVal] of Object.entries(updated)) {
+    if (key === "id" || key === "createdAt" || key === "updatedAt") continue;
+    const beforeVal = (current as Record<string, unknown>)[key];
+    const beforeNorm = beforeVal === undefined ? null : beforeVal;
+    const afterNorm = afterVal === undefined ? null : afterVal;
+    if (beforeNorm !== afterNorm) {
+      changedFields[key] = {
+        before: formatAuditValue(key, beforeNorm),
+        after: formatAuditValue(key, afterNorm),
+      };
+    }
+  }
+
+  if (Object.keys(changedFields).length > 0) {
+    await writeAudit({
+      actorId: staff.id,
+      action: "SETTINGS_UPDATED",
+      entity: "SiteSettings",
+      entityId: "default",
+      meta: {
+        changes: changedFields as unknown as Prisma.InputJsonValue,
+        changedKeys: Object.keys(changedFields),
+      },
+    });
+  }
 
   revalidatePath("/admin/settings");
   revalidatePath("/checkout");

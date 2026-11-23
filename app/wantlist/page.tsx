@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/sessions";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
+import { storefrontProductWhere } from "@/lib/catalog/visibility";
 import { CareTag } from "@/components/CareTag";
 import { ProductSwatchImage } from "@/components/ProductSwatchImage";
 import WishlistButton from "@/components/WishlistButton";
@@ -25,7 +26,10 @@ export default async function WantlistPage() {
   let items: any[] = [];
   try {
     items = await prisma.wishlistItem.findMany({
-      where: { userId },
+      where: {
+        userId,
+        product: storefrontProductWhere(),
+      },
       include: {
         product: {
           include: { images: true, category: true },

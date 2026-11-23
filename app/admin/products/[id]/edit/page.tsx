@@ -15,6 +15,7 @@ import {
   renameColorAction,
   removeColorAction,
   setVariantSkuAction,
+  addMissingSizeVariantsAction,
 } from "@/lib/actions/variants";
 
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
@@ -285,6 +286,24 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
           />
         </div>
         <div>
+          <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">
+            PUBLISH DATE &amp; TIME (IST)
+          </label>
+          <input
+            name="publishAt"
+            type="datetime-local"
+            defaultValue={
+              product.publishAt
+                ? new Date(product.publishAt.getTime() - product.publishAt.getTimezoneOffset() * 60000)
+                    .toISOString()
+                    .slice(0, 16)
+                : ""
+            }
+            className="w-full h-[44px] px-3.5 py-3 border border-stone bg-card text-[13.5px] rounded-none"
+          />
+          <p className="text-[11px] text-stone-dark mt-1">Leave empty to publish immediately once active. Clear to remove schedule.</p>
+        </div>
+        <div>
           <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">STATUS</label>
           <select
             name="status"
@@ -428,6 +447,30 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
                     </button>
                   </form>
                 </div>
+
+                {(() => {
+                  const existingSizes = new Set(cg.variants.map((v) => v.size.toLowerCase()));
+                  const missingSizes = categorySizes.filter((sz) => !existingSizes.has(sz.toLowerCase()));
+                  if (missingSizes.length === 0) return null;
+                  return (
+                    <div className="flex items-center justify-between text-xs px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-900">
+                      <span>Missing category sizes: <strong>{missingSizes.join(", ")}</strong></span>
+                      <form
+                        action={async () => {
+                          "use server";
+                          await addMissingSizeVariantsAction(product.id);
+                        }}
+                      >
+                        <button
+                          type="submit"
+                          className="px-2.5 py-1 bg-moss text-paper text-[11px] font-mono uppercase hover:opacity-90 transition-opacity"
+                        >
+                          + Add missing sizes (stock 0)
+                        </button>
+                      </form>
+                    </div>
+                  );
+                })()}
 
                 {/* Rename Color Form */}
                 <form

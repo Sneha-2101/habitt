@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { prisma } from "../helpers/prisma";
 import {
   createTestUser,
@@ -6,6 +6,7 @@ import {
   createTestOrder,
   cleanupM1TestRows,
 } from "../helpers/fixtures";
+import { SiteSettings } from "@prisma/client";
 
 let mockCurrentUser: { id: string; role: string } = { id: "default_user", role: "STAFF" };
 const mockRefund = vi.fn();
@@ -47,6 +48,71 @@ import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
 import { sendReturnRefundedEmail } from "@/lib/email";
 
 describe("T86: Return Refunds & Restock Invariants", () => {
+  let originalSettings: SiteSettings | null = null;
+  let createdGstRuleId: string | null = null;
+
+  beforeAll(async () => {
+    originalSettings = await prisma.siteSettings.findUnique({ where: { id: "default" } });
+
+    // t86 asserts SEPARATE-mode amounts; COMPOSITE partial-return credit notes are an open CA question
+    await prisma.siteSettings.upsert({
+      where: { id: "default" },
+      create: {
+        id: "default",
+        gstEnabled: true,
+        gstFeeMode: "SEPARATE",
+        gstFeeRate: 18.0,
+        gstRate: 18.0,
+        gstin: "03AAAAA0000A1Z5",
+        invoicePrefix: "HB",
+        businessState: "Punjab",
+      },
+      update: {
+        gstEnabled: true,
+        gstFeeMode: "SEPARATE",
+        gstFeeRate: 18.0,
+        gstRate: 18.0,
+        gstin: "03AAAAA0000A1Z5",
+        invoicePrefix: "HB",
+        businessState: "Punjab",
+      },
+    });
+
+    const activeRule = await prisma.gstRule.findFirst({ where: { active: true } });
+    if (!activeRule) {
+      const created = await prisma.gstRule.create({
+        data: {
+          id: `m1test_rule_${Date.now()}`,
+          name: "m1test Active GST Rule",
+          ratePercent: 18.0,
+          minUnitPaise: 0,
+          active: true,
+        },
+      });
+      createdGstRuleId = created.id;
+    }
+  });
+
+  afterAll(async () => {
+    try {
+      if (createdGstRuleId) {
+        await prisma.gstRule.delete({ where: { id: createdGstRuleId } }).catch(() => {});
+      }
+      if (originalSettings) {
+        const { id: _id, updatedAt: _up, ...rest } = originalSettings;
+        void _id;
+        void _up;
+        await prisma.siteSettings.upsert({
+          where: { id: "default" },
+          create: { id: "default", ...rest },
+          update: { ...rest },
+        });
+      }
+    } finally {
+      await cleanupM1TestRows();
+    }
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
     mockRefund.mockResolvedValue({ id: "rfnd_m1test_default" });

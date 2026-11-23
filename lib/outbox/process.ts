@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import {
   sendShipmentNotificationEmail,
   sendOutForDeliveryEmail,
@@ -6,6 +7,27 @@ import {
   sendTicketEventEmail,
 } from "@/lib/email";
 import { isWhatsappMessagesLive } from "@/lib/whatsapp-flag";
+
+function redactOutboxPayload(payload: unknown): Prisma.InputJsonValue | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  const copy = { ...(payload as Record<string, unknown>) };
+  let modified = false;
+  if ("token" in copy) {
+    copy.token = "[redacted]";
+    modified = true;
+  }
+  if (typeof copy.viewUrl === "string" && copy.viewUrl.includes("?t=")) {
+    copy.viewUrl = copy.viewUrl.split("?t=")[0] + "?t=[redacted]";
+    modified = true;
+  }
+  if ("accessToken" in copy) {
+    copy.accessToken = "[redacted]";
+    modified = true;
+  }
+  return modified ? (copy as Prisma.InputJsonObject) : undefined;
+}
 
 const BACKOFF_MS = [
   5 * 60 * 1000, // 5 min
@@ -138,6 +160,7 @@ export async function processOutboxBatch(batchSize = 25): Promise<ProcessOutboxR
       const attempts = item.attempts + 1;
 
       if (emailSuccess) {
+        const redacted = redactOutboxPayload(item.payload);
         await prisma.eventOutbox.update({
           where: { id: item.id },
           data: {
@@ -145,18 +168,21 @@ export async function processOutboxBatch(batchSize = 25): Promise<ProcessOutboxR
             attempts,
             sentAt: new Date(),
             lastError: null,
+            ...(redacted !== undefined ? { payload: redacted } : {}),
           },
         });
         sent++;
       } else {
         if (attempts >= 5) {
           // Exhausted max attempts
+          const redacted = redactOutboxPayload(item.payload);
           await prisma.eventOutbox.update({
             where: { id: item.id },
             data: {
               status: "FAILED",
               attempts,
               lastError: errorMsg,
+              ...(redacted !== undefined ? { payload: redacted } : {}),
             },
           });
           failed++;

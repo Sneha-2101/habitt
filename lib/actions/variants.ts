@@ -362,3 +362,95 @@ export async function setVariantSkuAction(
 
   return { success: true, sku: parsedSku };
 }
+
+export async function addMissingSizeVariantsAction(
+  productId: string
+): Promise<{ success: boolean; createdCount: number }> {
+  const staff = await requireStaff();
+
+  const result = await prisma.$transaction(async (tx) => {
+    const product = await tx.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: true,
+        variants: true,
+      },
+    });
+
+    if (!product) {
+      throw new Error("Product not found");
+    }
+
+    if (!product.category) {
+      throw new Error("Product does not belong to a category");
+    }
+
+    const categorySizes = product.category.sizes || [];
+    if (categorySizes.length === 0) {
+      return { createdCount: 0 };
+    }
+
+    const colorMap = new Map<string, string | null>();
+    if (product.variants.length === 0) {
+      colorMap.set("", null);
+    } else {
+      for (const v of product.variants) {
+        const c = v.color || "";
+        if (!colorMap.has(c)) {
+          colorMap.set(c, v.colorHex ?? null);
+        }
+      }
+    }
+
+    const toCreate: {
+      productId: string;
+      size: string;
+      color: string;
+      colorHex: string | null;
+      stock: number;
+    }[] = [];
+
+    for (const [colorName, colorHex] of colorMap.entries()) {
+      const cLower = colorName.toLowerCase();
+      for (const sz of categorySizes) {
+        const szLower = sz.toLowerCase();
+        const exists = product.variants.some(
+          (v) => (v.color || "").toLowerCase() === cLower && v.size.toLowerCase() === szLower
+        );
+        if (!exists) {
+          toCreate.push({
+            productId: product.id,
+            size: sz,
+            color: colorName,
+            colorHex,
+            stock: 0,
+          });
+        }
+      }
+    }
+
+    if (toCreate.length > 0) {
+      await tx.productVariant.createMany({
+        data: toCreate,
+      });
+    }
+
+    return { createdCount: toCreate.length };
+  });
+
+  await writeAudit({
+    actorId: staff.id,
+    action: "variant.add_missing_sizes",
+    entity: "Product",
+    entityId: productId,
+    meta: {
+      createdCount: result.createdCount,
+    },
+  });
+
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${productId}/edit`);
+  revalidatePath("/shop");
+
+  return { success: true, createdCount: result.createdCount };
+}

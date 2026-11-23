@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import { getSettings } from "@/lib/settings";
+import { storefrontProductWhere } from "@/lib/catalog/visibility";
 import ProductCard from "@/components/ProductCard";
 import RecentlyViewed from "@/components/RecentlyViewed";
 
@@ -17,7 +18,7 @@ export default async function HomePage() {
   }>>> = [];
   try {
     featured = await prisma.product.findMany({
-      where: { status: "ACTIVE" },
+      where: storefrontProductWhere(),
       include: {
         images: true,
         variants: { select: { id: true, size: true, color: true, colorHex: true, stock: true } },

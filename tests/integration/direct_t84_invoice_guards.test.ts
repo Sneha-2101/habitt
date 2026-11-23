@@ -29,11 +29,14 @@ import {
 } from "@/lib/actions/gst";
 import { GET as getInvoiceRoute } from "@/app/api/orders/[id]/invoice/route";
 import { NextRequest } from "next/server";
+import { SiteSettings } from "@prisma/client";
 
 describe("T84: Invoice and Credit Note Guards, Validation, and Invariants", () => {
   let staffUser: { id: string; email: string | null };
+  let originalSettings: SiteSettings | null = null;
 
   beforeAll(async () => {
+    originalSettings = await prisma.siteSettings.findUnique({ where: { id: "default" } });
     await cleanupM1TestRows();
     staffUser = await createTestUser({ role: "STAFF" });
     vi.spyOn(guardsModule, "requireStaff").mockResolvedValue({
@@ -403,5 +406,22 @@ describe("T84: Invoice and Credit Note Guards, Validation, and Invariants", () =
       _sum: { totalPaise: true },
     });
     expect(totalCredited._sum.totalPaise).toBe(150000);
+  });
+
+  afterAll(async () => {
+    try {
+      if (originalSettings) {
+        const { id: _id, updatedAt: _up, ...rest } = originalSettings;
+        void _id;
+        void _up;
+        await prisma.siteSettings.upsert({
+          where: { id: "default" },
+          create: { id: "default", ...rest },
+          update: { ...rest },
+        });
+      }
+    } finally {
+      await cleanupM1TestRows();
+    }
   });
 });

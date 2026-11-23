@@ -145,6 +145,17 @@ export default async function NewProductPage() {
           />
         </div>
         <div>
+          <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">
+            PUBLISH DATE &amp; TIME (IST)
+          </label>
+          <input
+            name="publishAt"
+            type="datetime-local"
+            className="w-full h-[44px] px-3.5 py-3 border border-stone bg-card text-[13.5px] rounded-none"
+          />
+          <p className="text-[11px] text-stone-dark mt-1">Leave empty to publish immediately once active.</p>
+        </div>
+        <div>
           <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">DESCRIPTION</label>
           <textarea
             name="description"

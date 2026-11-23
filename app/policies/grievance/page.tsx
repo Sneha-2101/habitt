@@ -39,7 +39,7 @@ export default async function GrievanceOfficerPage() {
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-ink">2. Statutory Timelines</h2>
           <p>
-            Our Grievance Redressal mechanism adheres strictly to legal mandates:
+            Our Grievance Redressal mechanism adheres strictly to legal mandates under the Consumer Protection (E-Commerce) Rules, 2020:
           </p>
           <ul className="list-disc pl-5 space-y-1">
             <li>

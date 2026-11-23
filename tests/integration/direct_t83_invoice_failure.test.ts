@@ -12,6 +12,7 @@ import {
   createTestOrder,
   cleanupM1TestRows,
 } from "../helpers/fixtures";
+import { SiteSettings } from "@prisma/client";
 import * as guardsModule from "@/lib/guards";
 import * as issueInvoiceModule from "@/lib/gst/issue-invoice";
 import * as creditNoteModule from "@/lib/gst/credit-note";
@@ -23,7 +24,12 @@ import {
 } from "@/lib/actions/gst";
 
 describe("T83: Invoice and Credit Note Failure Resilience & Admin Retry", () => {
+  let originalSettings: SiteSettings | null = null;
+
   beforeAll(async () => {
+    originalSettings = await prisma.siteSettings.findUnique({
+      where: { id: "default" },
+    });
     await cleanupM1TestRows();
     const staffUser = await createTestUser({ role: "STAFF" });
     vi.spyOn(guardsModule, "requireStaff").mockResolvedValue({
@@ -61,6 +67,16 @@ describe("T83: Invoice and Credit Note Failure Resilience & Admin Retry", () => 
   });
 
   afterAll(async () => {
+    if (originalSettings) {
+      const { id: _id, updatedAt: _up, ...rest } = originalSettings;
+      void _id;
+      void _up;
+      await prisma.siteSettings.upsert({
+        where: { id: "default" },
+        update: { ...rest },
+        create: { id: "default", ...rest },
+      });
+    }
     vi.restoreAllMocks();
     await cleanupM1TestRows();
   });

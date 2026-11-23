@@ -99,6 +99,10 @@ export async function createCreditNoteForRefund(
 
   if (params.refundedItems && params.refundedItems.length > 0) {
     const goodsLines = invoice.lines.filter((l) => l.kind === "GOODS");
+    const feeLines = invoice.lines.filter((l) => l.kind !== "GOODS");
+    const isComposite = feeLines.length === 0;
+
+    // Check if after this return, all goods items in the order have been fully refunded
     const isFullGoodsRefund =
       goodsLines.length > 0 &&
       goodsLines.every((gLine) => {
@@ -106,6 +110,27 @@ export async function createCreditNoteForRefund(
         const alreadyQty = creditedQtyPerLine.get(gLine.id) || 0;
         return (alreadyQty + (item?.qty || 0)) >= gLine.qty;
       });
+
+    // Also check if this return completes the entire order return (as signalled by caller or full return)
+    const isFinalReturn = params.includeFeeShare || isFullGoodsRefund;
+
+    // Fetch order items to determine pre-fee item prices for COMPOSITE mode
+    const orderItemMap = new Map<string, { unitPrice: number; discountPaise: number; qty: number }>();
+    if (isComposite) {
+      const order = await tx.order.findUnique({
+        where: { id: params.orderId },
+        include: { items: true },
+      });
+      if (order) {
+        for (const item of order.items) {
+          orderItemMap.set(item.id, {
+            unitPrice: item.unitPrice,
+            discountPaise: item.discountPaise || 0,
+            qty: item.qty,
+          });
+        }
+      }
+    }
 
     for (const refItem of params.refundedItems) {
       const line = invoice.lines.find(
@@ -124,9 +149,28 @@ export async function createCreditNoteForRefund(
       const effectiveQty = Math.min(refItem.qty, remainingQty);
       if (effectiveQty <= 0) continue;
 
-      const ratio = Math.min(1, effectiveQty / line.qty);
-      let lineTotal = Math.round(line.netPaise * ratio);
-      lineTotal = Math.min(lineTotal, remainingLine);
+      let lineTotal = 0;
+      if (isComposite) {
+        if (isFinalReturn) {
+          // On final return in COMPOSITE mode: sweep all remaining balance of the line
+          // (including fee share and any rounding remainder)
+          lineTotal = remainingLine;
+        } else {
+          // On partial return in COMPOSITE mode: credit item net price only (no fee share)
+          const oi = line.orderItemId ? orderItemMap.get(line.orderItemId) : null;
+          const itemNetTotal = oi
+            ? Math.max(0, oi.unitPrice * oi.qty - oi.discountPaise)
+            : Math.max(0, line.unitPaise * line.qty - line.discountPaise);
+          const ratio = Math.min(1, effectiveQty / line.qty);
+          lineTotal = Math.round(itemNetTotal * ratio);
+          lineTotal = Math.min(lineTotal, remainingLine);
+        }
+      } else {
+        // SEPARATE mode or RECEIPT mode fallback
+        const ratio = Math.min(1, effectiveQty / line.qty);
+        lineTotal = Math.round(line.netPaise * ratio);
+        lineTotal = Math.min(lineTotal, remainingLine);
+      }
       if (lineTotal <= 0) continue;
 
       const rate = Number(line.ratePercent);
@@ -150,8 +194,49 @@ export async function createCreditNoteForRefund(
       creditedQtyPerLine.set(line.id, alreadyQty + effectiveQty);
     }
 
+    // In COMPOSITE mode, if isFinalReturn is true, any remaining creditable balance across
+    // goods lines (e.g. from lines not in refundedItems that still have remaining fee share)
+    // should be swept into draftLines so total of all credit notes equals invoice total exactly.
+    if (isComposite && isFinalReturn) {
+      for (const line of goodsLines) {
+        const alreadyLine = creditedPerLine.get(line.id) || 0;
+        const remainingLine = Math.max(0, line.netPaise - alreadyLine);
+        if (remainingLine <= 0) continue;
+
+        // Check if line was already added to draftLines
+        const existingDraft = draftLines.find((d) => d.invoiceLineId === line.id);
+        if (existingDraft) {
+          existingDraft.totalPaise += remainingLine;
+          const rate = Number(existingDraft.ratePercent);
+          const tax = extractInclusiveTax(existingDraft.totalPaise, rate);
+          const split = splitTax(tax.taxPaise, invoice.isInterState);
+          existingDraft.taxablePaise = tax.taxablePaise;
+          existingDraft.cgstPaise = split.cgstPaise;
+          existingDraft.sgstPaise = split.sgstPaise;
+          existingDraft.igstPaise = split.igstPaise;
+          creditedPerLine.set(line.id, alreadyLine + remainingLine);
+        } else {
+          const rate = Number(line.ratePercent);
+          const tax = extractInclusiveTax(remainingLine, rate);
+          const split = splitTax(tax.taxPaise, invoice.isInterState);
+          draftLines.push({
+            invoiceLineId: line.id,
+            kind: line.kind,
+            description: `Credit: ${line.description}`,
+            qty: 0,
+            ratePercent: line.ratePercent,
+            taxablePaise: tax.taxablePaise,
+            cgstPaise: split.cgstPaise,
+            sgstPaise: split.sgstPaise,
+            igstPaise: split.igstPaise,
+            totalPaise: remainingLine,
+          });
+          creditedPerLine.set(line.id, alreadyLine + remainingLine);
+        }
+      }
+    }
+
     if (params.includeFeeShare || isFullGoodsRefund) {
-      const feeLines = invoice.lines.filter((l) => l.kind !== "GOODS");
       const goodsInvoiceNet = goodsLines.reduce((sum, l) => sum + l.netPaise, 0);
       const goodsRefundedNet = draftLines.reduce((sum, l) => sum + l.totalPaise, 0);
       const feeRatio = isFullGoodsRefund

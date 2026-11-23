@@ -107,13 +107,52 @@ export async function updateGstSettings(data: UpdateGstSettingsInput) {
     },
   });
 
-  await writeAudit({
-    actorId: user.id,
-    action: "GST_SETTINGS_UPDATE",
-    entity: "SiteSettings",
-    entityId: "default",
-    meta: parsed,
-  });
+  const changedFields: Record<string, { before: unknown; after: unknown }> = {};
+  const fieldsToCheck = [
+    "gstEnabled",
+    "gstRate",
+    "gstin",
+    "gstFeeMode",
+    "gstFeeRate",
+    "invoicePrefix",
+    "businessState",
+  ] as const;
+
+  for (const field of fieldsToCheck) {
+    const beforeVal = currentSettings ? currentSettings[field] : null;
+    const afterVal = updated[field];
+    const bNorm = beforeVal === undefined ? null : beforeVal;
+    const aNorm = afterVal === undefined ? null : afterVal;
+    if (bNorm !== aNorm) {
+      changedFields[field] = {
+        before:
+          field === "gstin" && typeof bNorm === "string"
+            ? (bNorm.length > 4 ? `***${bNorm.slice(-4)}` : bNorm)
+            : typeof bNorm === "string" && bNorm.length > 200
+            ? bNorm.substring(0, 200) + "..."
+            : bNorm,
+        after:
+          field === "gstin" && typeof aNorm === "string"
+            ? (aNorm.length > 4 ? `***${aNorm.slice(-4)}` : aNorm)
+            : typeof aNorm === "string" && aNorm.length > 200
+            ? aNorm.substring(0, 200) + "..."
+            : aNorm,
+      };
+    }
+  }
+
+  if (Object.keys(changedFields).length > 0) {
+    await writeAudit({
+      actorId: user.id,
+      action: "GST_SETTINGS_UPDATE",
+      entity: "SiteSettings",
+      entityId: "default",
+      meta: {
+        changes: changedFields as unknown as Prisma.InputJsonValue,
+        changedKeys: Object.keys(changedFields),
+      },
+    });
+  }
 
   revalidatePath("/admin/gst");
   revalidatePath("/admin/settings");

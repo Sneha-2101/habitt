@@ -19,11 +19,13 @@ export interface SlaJobResult {
  */
 export async function runTicketSlaJob(): Promise<SlaJobResult> {
   const settings = await getSettings();
-  const alertRecipient =
-    settings.grievanceOfficerEmail ||
+  const defaultRecipient =
     settings.supportEmail ||
     process.env.SUPPORT_EMAIL ||
-    "alerts@system.local";
+    "support@local.test";
+  const grievanceRecipient =
+    settings.grievanceOfficerEmail ||
+    defaultRecipient;
 
   const now = new Date();
   const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
@@ -41,10 +43,13 @@ export async function runTicketSlaJob(): Promise<SlaJobResult> {
   let resolveBreaches = 0;
 
   for (const ticket of tickets) {
-    let alerted = false;
+    const isGrievance = ticket.category === "GRIEVANCE";
+    const alertRecipient = isGrievance ? grievanceRecipient : defaultRecipient;
 
-    // 1. Acknowledgment SLA check
-    if (ticket.acknowledgedAt === null && ticket.ackDueAt <= now) {
+    const updateData: { ackAlertedAt?: Date; resolveAlertedAt?: Date; slaAlertedAt?: Date } = {};
+
+    // 1. Acknowledgment SLA check (only if not acknowledged and not already alerted for ack)
+    if (ticket.acknowledgedAt === null && ticket.ackDueAt <= now && ticket.ackAlertedAt === null) {
       const ackDedupe = `sla-breach-${ticket.id}-ack`;
       await enqueueOutbox({
         type: "TICKET_SLA_BREACH",
@@ -57,15 +62,17 @@ export async function runTicketSlaJob(): Promise<SlaJobResult> {
           subject: `[SLA Alert] Ticket #${ticket.number} pending acknowledgement`,
           alertType: "ACK_BREACH",
           ackDueAt: ticket.ackDueAt.toISOString(),
+          category: ticket.category,
         },
         dedupeKey: ackDedupe,
       });
       ackBreaches++;
-      alerted = true;
+      updateData.ackAlertedAt = now;
+      updateData.slaAlertedAt = now;
     }
 
-    // 2. Resolution SLA check (overdue or within 3 days of deadline)
-    if (ticket.resolveDueAt <= threeDaysFromNow) {
+    // 2. Resolution SLA check (overdue or within 3 days of deadline, only if not already alerted for resolve)
+    if (ticket.resolveDueAt <= threeDaysFromNow && ticket.resolveAlertedAt === null) {
       const resolveDedupe = `sla-breach-${ticket.id}-resolve`;
       await enqueueOutbox({
         type: "TICKET_SLA_BREACH",
@@ -78,17 +85,19 @@ export async function runTicketSlaJob(): Promise<SlaJobResult> {
           subject: `[SLA Alert] Ticket #${ticket.number} resolution deadline warning/breach`,
           alertType: "RESOLVE_BREACH",
           resolveDueAt: ticket.resolveDueAt.toISOString(),
+          category: ticket.category,
         },
         dedupeKey: resolveDedupe,
       });
       resolveBreaches++;
-      alerted = true;
+      updateData.resolveAlertedAt = now;
+      updateData.slaAlertedAt = now;
     }
 
-    if (alerted && !ticket.slaAlertedAt) {
+    if (Object.keys(updateData).length > 0) {
       await prisma.ticket.update({
         where: { id: ticket.id },
-        data: { slaAlertedAt: now },
+        data: updateData,
       });
     }
   }
