@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "../helpers/prisma";
+import { createTestUser, cleanupM1TestRows } from "../helpers/fixtures";
 import { SiteSettings } from "@prisma/client";
 
-const mockCurrentUser = { id: "staff_1", role: "STAFF", name: "Staff Member" };
+const mockCurrentUser = { id: "", role: "STAFF", name: "Staff Member" };
 
 vi.mock("@/lib/guards", () => ({
   requireStaff: vi.fn(async () => mockCurrentUser),
@@ -18,18 +19,31 @@ import { updateSettings, type UpdateSiteSettingsInput } from "@/lib/actions/sett
 
 describe("T32: Site Settings Validation and Persistence", () => {
   let originalSettings: SiteSettings | null = null;
+  let staffUserId = "";
 
   beforeAll(async () => {
     originalSettings = await prisma.siteSettings.findFirst();
+    const staffUser = await createTestUser({ role: "STAFF" });
+    staffUserId = staffUser.id;
+    mockCurrentUser.id = staffUser.id;
+    mockCurrentUser.name = staffUser.name;
   });
 
   afterAll(async () => {
-    if (originalSettings) {
-      const { id, ...data } = originalSettings;
-      await prisma.siteSettings.update({
-        where: { id },
-        data,
-      });
+    try {
+      if (staffUserId) {
+        await prisma.auditLog.deleteMany({ where: { actorId: staffUserId } });
+        await prisma.user.deleteMany({ where: { id: staffUserId } });
+      }
+      await cleanupM1TestRows();
+    } finally {
+      if (originalSettings) {
+        const { id, ...data } = originalSettings;
+        await prisma.siteSettings.update({
+          where: { id },
+          data,
+        });
+      }
     }
   });
 
@@ -60,37 +74,47 @@ describe("T32: Site Settings Validation and Persistence", () => {
   });
 
   it("successfully validates and updates valid settings", async () => {
-    const updated = await updateSettings({
-      legalName: "Habitt Apparels Pvt Ltd",
-      businessPhone: "+91 9876543210",
-      whatsappSupportNumber: "9876543211",
-      businessState: "Karnataka",
-      businessPincode: "560001",
-      shiprocketPickupLocation: "Warehouse 1",
-      freeShippingOnPrepaid: true,
-      codRequiresDeliveredOrder: true,
-      freeReturnShipping: false,
-      refundProcessingHours: 72,
-      maxDeliveryDays: 5,
-    });
+    const errorSpy = vi.spyOn(console, "error");
+    try {
+      const updated = await updateSettings({
+        legalName: "Habitt Apparels Pvt Ltd",
+        businessPhone: "+91 9876543210",
+        whatsappSupportNumber: "9876543211",
+        businessState: "Karnataka",
+        businessPincode: "560001",
+        shiprocketPickupLocation: "Warehouse 1",
+        freeShippingOnPrepaid: true,
+        codRequiresDeliveredOrder: true,
+        freeReturnShipping: false,
+        refundProcessingHours: 72,
+        maxDeliveryDays: 5,
+      });
 
-    expect(updated.legalName).toBe("Habitt Apparels Pvt Ltd");
-    expect(updated.businessPhone).toBe("9876543210");
-    expect(updated.whatsappSupportNumber).toBe("9876543211");
-    expect(updated.businessState).toBe("Karnataka");
-    expect(updated.businessPincode).toBe("560001");
-    expect(updated.shiprocketPickupLocation).toBe("Warehouse 1");
-    expect(updated.freeShippingOnPrepaid).toBe(true);
-    expect(updated.codRequiresDeliveredOrder).toBe(true);
-    expect(updated.freeReturnShipping).toBe(false);
-    expect(updated.refundProcessingHours).toBe(72);
-    expect(updated.maxDeliveryDays).toBe(5);
+      expect(updated.legalName).toBe("Habitt Apparels Pvt Ltd");
+      expect(updated.businessPhone).toBe("9876543210");
+      expect(updated.whatsappSupportNumber).toBe("9876543211");
+      expect(updated.businessState).toBe("Karnataka");
+      expect(updated.businessPincode).toBe("560001");
+      expect(updated.shiprocketPickupLocation).toBe("Warehouse 1");
+      expect(updated.freeShippingOnPrepaid).toBe(true);
+      expect(updated.codRequiresDeliveredOrder).toBe(true);
+      expect(updated.freeReturnShipping).toBe(false);
+      expect(updated.refundProcessingHours).toBe(72);
+      expect(updated.maxDeliveryDays).toBe(5);
 
-    // Verify persisted directly in database
-    const saved = await prisma.siteSettings.findUnique({ where: { id: "default" } });
-    expect(saved?.legalName).toBe("Habitt Apparels Pvt Ltd");
-    expect(saved?.businessPhone).toBe("9876543210");
-    expect(saved?.businessPincode).toBe("560001");
-    expect(saved?.refundProcessingHours).toBe(72);
+      // Verify persisted directly in database
+      const saved = await prisma.siteSettings.findUnique({ where: { id: "default" } });
+      expect(saved?.legalName).toBe("Habitt Apparels Pvt Ltd");
+      expect(saved?.businessPhone).toBe("9876543210");
+      expect(saved?.businessPincode).toBe("560001");
+      expect(saved?.refundProcessingHours).toBe(72);
+
+      const auditErrors = errorSpy.mock.calls.filter((call) =>
+        call.some((arg) => String(arg).includes("[AuditLog Error]"))
+      );
+      expect(auditErrors).toEqual([]);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

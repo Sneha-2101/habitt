@@ -454,3 +454,150 @@ export async function addMissingSizeVariantsAction(
 
   return { success: true, createdCount: result.createdCount };
 }
+
+export interface GenerateSkusParams {
+  scope?: "product" | "category" | "all";
+  scopeId?: string;
+  preview?: boolean;
+}
+
+export interface SkuCandidate {
+  variantId: string;
+  productId: string;
+  productName: string;
+  color: string;
+  size: string;
+  currentSku: string | null;
+  proposedSku: string;
+}
+
+export interface GenerateSkusResult {
+  preview: boolean;
+  totalMissing: number;
+  assignedCount: number;
+  candidates: SkuCandidate[];
+}
+
+export async function generateMissingSkusAction(
+  params?: GenerateSkusParams
+): Promise<GenerateSkusResult> {
+  const staff = await requireStaff();
+  const scope = params?.scope || "all";
+  const preview = !!params?.preview;
+
+  const whereClause: Prisma.ProductVariantWhereInput = {
+    OR: [{ sku: null }, { sku: "" }],
+  };
+
+  if (scope === "product" && params?.scopeId) {
+    whereClause.productId = params.scopeId;
+  } else if (scope === "category" && params?.scopeId) {
+    whereClause.product = { categoryId: params.scopeId };
+  }
+
+  const missingVariants = await prisma.productVariant.findMany({
+    where: whereClause,
+    include: { product: true },
+    orderBy: [{ productId: "asc" }, { size: "asc" }],
+  });
+
+  if (missingVariants.length === 0) {
+    return {
+      preview,
+      totalMissing: 0,
+      assignedCount: 0,
+      candidates: [],
+    };
+  }
+
+  // Find all existing SKUs to avoid collision
+  const existingVariants = await prisma.productVariant.findMany({
+    where: { sku: { not: null } },
+    select: { sku: true },
+  });
+
+  const usedSet = new Set<string>();
+  for (const ev of existingVariants) {
+    if (ev.sku) {
+      usedSet.add(ev.sku.trim().toUpperCase());
+    }
+  }
+
+  const candidates: SkuCandidate[] = [];
+
+  for (const mv of missingVariants) {
+    const rawCode = (mv.product.slug || mv.product.name)
+      .replace(/[^A-Za-z0-9]/g, "")
+      .toUpperCase()
+      .slice(0, 8);
+    const prodCode = rawCode || "PROD";
+
+    const rawColor = (mv.color || "")
+      .replace(/[^A-Za-z0-9]/g, "")
+      .toUpperCase()
+      .slice(0, 3);
+    const color3 = rawColor || "DEF";
+
+    const rawSize = mv.size.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const sizeStr = rawSize || "STD";
+
+    const baseSku = `${prodCode}-${color3}-${sizeStr}`;
+    let proposedSku = baseSku;
+    let collisionIndex = 2;
+
+    while (usedSet.has(proposedSku)) {
+      proposedSku = `${baseSku}-${collisionIndex}`;
+      collisionIndex += 1;
+    }
+
+    usedSet.add(proposedSku);
+
+    candidates.push({
+      variantId: mv.id,
+      productId: mv.productId,
+      productName: mv.product.name,
+      color: mv.color || "",
+      size: mv.size,
+      currentSku: mv.sku,
+      proposedSku,
+    });
+  }
+
+  if (!preview && candidates.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      for (const cand of candidates) {
+        await tx.productVariant.update({
+          where: { id: cand.variantId },
+          data: { sku: cand.proposedSku },
+        });
+      }
+    });
+
+    await writeAudit({
+      actorId: staff.id,
+      action: "variant.generate_skus",
+      entity: "ProductVariant",
+      entityId: "bulk",
+      meta: {
+        count: candidates.length,
+        scope,
+        scopeId: params?.scopeId,
+      },
+    });
+
+    try {
+      revalidatePath("/admin/products");
+      revalidatePath("/shop");
+    } catch {
+      // Handled outside Next.js request context (e.g. tests)
+    }
+  }
+
+  return {
+    preview,
+    totalMissing: candidates.length,
+    assignedCount: preview ? 0 : candidates.length,
+    candidates,
+  };
+}
+

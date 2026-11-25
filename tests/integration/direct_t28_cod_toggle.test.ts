@@ -12,12 +12,16 @@ describe("T28: COD Toggle and Eligibility Rules", () => {
   });
 
   afterAll(async () => {
-    if (originalSettings) {
-      const { id, ...data } = originalSettings;
-      await prisma.siteSettings.update({
-        where: { id },
-        data,
-      });
+    try {
+      await cleanupM1TestRows();
+    } finally {
+      if (originalSettings) {
+        const { id, ...data } = originalSettings;
+        await prisma.siteSettings.update({
+          where: { id },
+          data,
+        });
+      }
     }
   });
 

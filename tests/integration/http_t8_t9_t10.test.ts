@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
 import { prisma } from "../helpers/prisma";
 import {
@@ -10,10 +10,31 @@ import {
 } from "../helpers/fixtures";
 import { createSessionCookie } from "../helpers/session";
 import { failOrder } from "@/lib/orders/fail-order";
+import { SiteSettings } from "@prisma/client";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
 describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
+  let originalSettings: SiteSettings | null = null;
+
+  beforeAll(async () => {
+    originalSettings = await prisma.siteSettings.findUnique({ where: { id: "default" } });
+  });
+
+  afterAll(async () => {
+    try {
+      await cleanupM1TestRows();
+    } finally {
+      if (originalSettings) {
+        const { id, ...data } = originalSettings;
+        await prisma.siteSettings.update({
+          where: { id },
+          data,
+        });
+      }
+    }
+  });
+
   beforeEach(async () => {
     await cleanupM1TestRows();
   });
@@ -221,13 +242,6 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
   });
 
   it("T10 COD: eligibility check, cap check, and parallel race with stock deduction", async () => {
-    const originalSettings = await prisma.siteSettings.findUnique({ where: { id: "default" } });
-    const saved = {
-      codEnabled: originalSettings?.codEnabled,
-      codRequiresDeliveredOrder: originalSettings?.codRequiresDeliveredOrder,
-      codOrderCap: originalSettings?.codOrderCap,
-    };
-
     await prisma.siteSettings.upsert({
       where: { id: "default" },
       update: {
@@ -243,8 +257,7 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
       },
     });
 
-    try {
-      const user = await createTestUser();
+    const user = await createTestUser();
       const session = await createSessionCookie(user.id);
       const { product, variants } = await createTestProduct({ price: 100000, variants: [{ size: "M", stock: 10 }] });
       const variant = variants[0];
@@ -363,17 +376,5 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
 
       const finalSingleVar = await prisma.productVariant.findUnique({ where: { id: singleVariant.id } });
       expect(finalSingleVar?.stock).toBe(0);
-    } finally {
-      if (saved.codEnabled !== undefined) {
-        await prisma.siteSettings.update({
-          where: { id: "default" },
-          data: {
-            codEnabled: saved.codEnabled,
-            codRequiresDeliveredOrder: saved.codRequiresDeliveredOrder,
-            codOrderCap: saved.codOrderCap,
-          },
-        });
-      }
-    }
   });
 });

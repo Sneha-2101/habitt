@@ -29,19 +29,22 @@ describe("T78: Offers Engine Quote Integration", () => {
   });
 
   afterAll(async () => {
-    if (originalSettings) {
-      const { id, ...data } = originalSettings;
-      await prisma.siteSettings.update({
-        where: { id },
-        data,
-      });
+    try {
+      if (createdOfferIds.length > 0) {
+        await prisma.offerTarget.deleteMany({ where: { offerId: { in: createdOfferIds } } });
+        await prisma.offerRedemption.deleteMany({ where: { offerId: { in: createdOfferIds } } });
+        await prisma.offer.deleteMany({ where: { id: { in: createdOfferIds } } });
+      }
+      await cleanupM1TestRows();
+    } finally {
+      if (originalSettings) {
+        const { id, ...data } = originalSettings;
+        await prisma.siteSettings.update({
+          where: { id },
+          data,
+        });
+      }
     }
-    if (createdOfferIds.length > 0) {
-      await prisma.offerTarget.deleteMany({ where: { offerId: { in: createdOfferIds } } });
-      await prisma.offerRedemption.deleteMany({ where: { offerId: { in: createdOfferIds } } });
-      await prisma.offer.deleteMany({ where: { id: { in: createdOfferIds } } });
-    }
-    await cleanupM1TestRows();
   });
 
   beforeEach(async () => {

@@ -35,12 +35,16 @@ describe("T29: Quote Equals Create-Order Across 6 Scenarios", () => {
   });
 
   afterAll(async () => {
-    if (originalSettings) {
-      const { id, ...data } = originalSettings;
-      await prisma.siteSettings.update({
-        where: { id },
-        data,
-      });
+    try {
+      await cleanupM1TestRows();
+    } finally {
+      if (originalSettings) {
+        const { id, ...data } = originalSettings;
+        await prisma.siteSettings.update({
+          where: { id },
+          data,
+        });
+      }
     }
   });
 

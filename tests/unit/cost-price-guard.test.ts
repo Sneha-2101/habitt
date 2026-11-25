@@ -16,6 +16,10 @@ const COST_PRICE_WHITELIST = [
   "lib/prisma.ts",
   "lib/offers/load.ts",
   "app/admin/products/",
+  "lib/admin/reports.ts",
+  "lib/admin/csv-products.ts",
+  "app/api/admin/reports/",
+  "app/admin/reports/",
 ];
 
 function isWhitelisted(normalizedRelPath: string): boolean {

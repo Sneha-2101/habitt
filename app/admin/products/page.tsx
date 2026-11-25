@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
+import BulkSkuModal from "./BulkSkuModal";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +18,23 @@ export default async function AdminProductsPage() {
 
   return (
     <main className="px-7 py-9 max-w-5xl mx-auto">
-      <div className="flex justify-between items-center mb-7">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-7">
         <h1 className="font-display text-2xl font-medium">Products</h1>
-        <Link
-          href="/admin/products/new"
-          className="px-4 py-2.5 bg-moss text-paper text-[12.5px] tracking-[0.03em] hover:opacity-90 transition-opacity"
-        >
-          + Add product
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/products/import-export"
+            className="px-3 py-2 bg-paper border border-stone hover:bg-stone/20 text-xs font-mono uppercase tracking-wider transition-colors"
+          >
+            Import / Export
+          </Link>
+          <BulkSkuModal />
+          <Link
+            href="/admin/products/new"
+            className="px-4 py-2 bg-moss text-paper text-[12.5px] tracking-[0.03em] hover:opacity-90 transition-opacity"
+          >
+            + Add product
+          </Link>
+        </div>
       </div>
 
       <div className="border border-stone bg-card">

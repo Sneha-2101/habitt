@@ -36,6 +36,12 @@ export default async function AdminDashboard() {
           >
             Returns
           </Link>
+          <Link
+            href="/admin/reports"
+            className="px-3.5 py-1.5 border border-stone bg-white text-xs font-mono uppercase tracking-wider hover:bg-paper"
+          >
+            Reports
+          </Link>
         </div>
       </div>
 
@@ -157,6 +163,28 @@ export default async function AdminDashboard() {
             {stats.failedOutbox}
           </div>
           <div className="text-[10.5px] text-stone-dark mt-1">Dead-letter events</div>
+        </Link>
+
+        <Link
+          href="/admin/reports?tab=sales"
+          className="border border-stone p-4 bg-white hover:border-ink transition-colors block"
+        >
+          <div className="text-[11px] tracking-[0.06em] text-stone-dark mb-1 font-mono uppercase">
+            Business Reports
+          </div>
+          <div className="font-mono text-xl text-ink font-medium">Sales & Trends</div>
+          <div className="text-[10.5px] text-stone-dark mt-1">Settled turnover & net</div>
+        </Link>
+
+        <Link
+          href="/admin/reports?tab=gst"
+          className="border border-stone p-4 bg-white hover:border-ink transition-colors block"
+        >
+          <div className="text-[11px] tracking-[0.06em] text-stone-dark mb-1 font-mono uppercase">
+            Tax Compliance
+          </div>
+          <div className="font-mono text-xl text-ink font-medium">GST Summary</div>
+          <div className="text-[10.5px] text-stone-dark mt-1">Turnover & reverse tax</div>
         </Link>
       </div>
 

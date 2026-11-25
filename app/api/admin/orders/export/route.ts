@@ -3,10 +3,13 @@ import { requireStaff, UnauthorizedError, ForbiddenError } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { sanitizeCsvCell } from "@/lib/csv";
 import { buildOrderWhere } from "@/lib/orders/status-filter";
+import { formatIstDate } from "@/lib/admin/reports";
+import { writeAudit } from "@/lib/audit";
 
 export async function GET(req: Request) {
+  let staff;
   try {
-    await requireStaff();
+    staff = await requireStaff();
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       return new NextResponse("Unauthorized", { status: 401 });
@@ -30,12 +33,17 @@ export async function GET(req: Request) {
 
   const orders = await prisma.order.findMany({
     where: whereClause,
-    include: { items: true },
+    include: {
+      items: true,
+      invoice: true,
+      discounts: true,
+    },
     orderBy: { createdAt: "desc" },
   });
 
   const headers = [
     "Order ID",
+    "Date (IST)",
     "Customer Name",
     "Email",
     "Phone",
@@ -44,16 +52,20 @@ export async function GET(req: Request) {
     "Items Count",
     "Subtotal (INR)",
     "Shipping Fee (INR)",
+    "COD Fee (INR)",
+    "Discount (INR)",
     "Total (INR)",
+    "GST Invoice Number",
     "Courier",
     "AWB Number",
-    "Created Date",
   ];
 
   const rows = orders.map((o) => {
     const itemCount = o.items.reduce((sum, item) => sum + item.qty, 0);
+    const discountPaise = (o.discounts || []).reduce((sum, d) => sum + d.amountPaise, 0);
     return [
       sanitizeCsvCell(o.displayId),
+      sanitizeCsvCell(formatIstDate(o.createdAt)),
       sanitizeCsvCell(o.customerName || ""),
       sanitizeCsvCell(o.customerEmail || ""),
       sanitizeCsvCell(o.customerPhone || ""),
@@ -62,14 +74,27 @@ export async function GET(req: Request) {
       sanitizeCsvCell(itemCount),
       sanitizeCsvCell((o.subtotal / 100).toFixed(2)),
       sanitizeCsvCell((o.shippingFee / 100).toFixed(2)),
+      sanitizeCsvCell(((o.codFee || 0) / 100).toFixed(2)),
+      sanitizeCsvCell((discountPaise / 100).toFixed(2)),
       sanitizeCsvCell((o.total / 100).toFixed(2)),
+      sanitizeCsvCell(o.invoice?.number || ""),
       sanitizeCsvCell(o.courierName || ""),
       sanitizeCsvCell(o.awbNumber || ""),
-      sanitizeCsvCell(new Date(o.createdAt).toISOString().split("T")[0]),
     ];
   });
 
   const csvContent = [headers.map(sanitizeCsvCell).join(","), ...rows.map((row) => row.join(","))].join("\n");
+
+  await writeAudit({
+    actorId: staff.id,
+    action: "export.orders",
+    entity: "Order",
+    entityId: "bulk",
+    meta: {
+      count: orders.length,
+      filters: { status: statusParam, paymentMethod: paymentMethodParam, q: queryParam },
+    },
+  });
 
   return new NextResponse(csvContent, {
     headers: {

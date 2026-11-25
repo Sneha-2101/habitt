@@ -22,67 +22,91 @@ export interface CreateCreditNoteInput {
   refundCodFee?: boolean;
 }
 
+export interface CreditNoteInvoiceLineInput {
+  id: string;
+  orderItemId: string | null;
+  kind: InvoiceLineKind;
+  description: string;
+  qty: number;
+  unitPaise: number;
+  discountPaise: number;
+  netPaise: number;
+  ratePercent: number | Prisma.Decimal;
+}
+
+export interface CreditNoteExistingNoteInput {
+  totalPaise: number;
+  lines: Array<{
+    invoiceLineId: string | null;
+    totalPaise: number;
+    qty: number;
+  }>;
+}
+
+export interface CreditNoteOrderItemInput {
+  id: string;
+  unitPrice: number;
+  discountPaise: number;
+  qty: number;
+}
+
+export interface ComputeCreditNoteAmountsInput {
+  invoiceTotalPaise: number;
+  isInterState: boolean;
+  invoiceLines: CreditNoteInvoiceLineInput[];
+  existingCreditNotes: CreditNoteExistingNoteInput[];
+  orderItems?: CreditNoteOrderItemInput[];
+  refundedItems?: Array<{ orderItemId: string; qty: number }>;
+  refundAmountPaise?: number;
+  includeFeeShare?: boolean;
+  refundShippingFee?: boolean;
+  refundCodFee?: boolean;
+}
+
+export interface CreditNoteLineDraft {
+  invoiceLineId: string;
+  kind: InvoiceLineKind;
+  description: string;
+  qty: number;
+  ratePercent: number;
+  taxablePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
+  totalPaise: number;
+}
+
+export interface ComputeCreditNoteAmountsResult {
+  lines: CreditNoteLineDraft[];
+  totalPaise: number;
+  taxablePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
+}
+
 /**
- * Creates a Credit Note for an order's refund.
- * If the order's invoice was issued in RECEIPT mode (or has no invoice), no Credit Note is issued (returns null).
- * Idempotent: returns existing Credit Note if matching refundRef is found.
+ * Pure calculation of credit note line amounts, fee allocation (COMPOSITE vs SEPARATE),
+ * tax extraction/splitting, and cap enforcement.
  */
-export async function createCreditNoteForRefund(
-  tx: DbClient,
-  params: CreateCreditNoteInput
-): Promise<(CreditNote & { lines: CreditNoteLine[] }) | null> {
-  const invoice = await tx.invoice.findUnique({
-    where: { orderId: params.orderId },
-    include: {
-      lines: true,
-      creditNotes: {
-        include: { lines: true },
-      },
-    },
-  });
-
-  if (!invoice || invoice.mode === "RECEIPT") {
-    return null;
-  }
-
-  // Idempotency check
-  if (params.refundRef) {
-    const existing = invoice.creditNotes.find(
-      (cn) => cn.refundRef === params.refundRef
-    );
-    if (existing) {
-      return existing;
-    }
-  }
-
-  const alreadyCreditedTotal = invoice.creditNotes.reduce(
+export function computeCreditNoteAmounts(
+  input: ComputeCreditNoteAmountsInput
+): ComputeCreditNoteAmountsResult | null {
+  const alreadyCreditedTotal = input.existingCreditNotes.reduce(
     (sum, cn) => sum + cn.totalPaise,
     0
   );
-  const remainingCreditable = Math.max(0, invoice.totalPaise - alreadyCreditedTotal);
+  const remainingCreditable = Math.max(0, input.invoiceTotalPaise - alreadyCreditedTotal);
   if (remainingCreditable <= 0) {
     return null;
   }
 
-  type LineDraft = {
-    invoiceLineId: string;
-    kind: InvoiceLineKind;
-    description: string;
-    qty: number;
-    ratePercent: Prisma.Decimal;
-    taxablePaise: number;
-    cgstPaise: number;
-    sgstPaise: number;
-    igstPaise: number;
-    totalPaise: number;
-  };
-
-  const draftLines: LineDraft[] = [];
+  const draftLines: CreditNoteLineDraft[] = [];
 
   // Track already credited amount and quantity per invoice line
   const creditedPerLine = new Map<string, number>();
   const creditedQtyPerLine = new Map<string, number>();
-  for (const cn of invoice.creditNotes) {
+  for (const cn of input.existingCreditNotes) {
     for (const cl of cn.lines) {
       if (cl.invoiceLineId) {
         creditedPerLine.set(
@@ -97,43 +121,36 @@ export async function createCreditNoteForRefund(
     }
   }
 
-  if (params.refundedItems && params.refundedItems.length > 0) {
-    const goodsLines = invoice.lines.filter((l) => l.kind === "GOODS");
-    const feeLines = invoice.lines.filter((l) => l.kind !== "GOODS");
+  if (input.refundedItems && input.refundedItems.length > 0) {
+    const goodsLines = input.invoiceLines.filter((l) => l.kind === "GOODS");
+    const feeLines = input.invoiceLines.filter((l) => l.kind !== "GOODS");
     const isComposite = feeLines.length === 0;
 
     // Check if after this return, all goods items in the order have been fully refunded
     const isFullGoodsRefund =
       goodsLines.length > 0 &&
       goodsLines.every((gLine) => {
-        const item = params.refundedItems?.find((i) => i.orderItemId === gLine.orderItemId);
+        const item = input.refundedItems?.find((i) => i.orderItemId === gLine.orderItemId);
         const alreadyQty = creditedQtyPerLine.get(gLine.id) || 0;
-        return (alreadyQty + (item?.qty || 0)) >= gLine.qty;
+        return alreadyQty + (item?.qty || 0) >= gLine.qty;
       });
 
     // Also check if this return completes the entire order return (as signalled by caller or full return)
-    const isFinalReturn = params.includeFeeShare || isFullGoodsRefund;
+    const isFinalReturn = Boolean(input.includeFeeShare) || isFullGoodsRefund;
 
-    // Fetch order items to determine pre-fee item prices for COMPOSITE mode
     const orderItemMap = new Map<string, { unitPrice: number; discountPaise: number; qty: number }>();
-    if (isComposite) {
-      const order = await tx.order.findUnique({
-        where: { id: params.orderId },
-        include: { items: true },
-      });
-      if (order) {
-        for (const item of order.items) {
-          orderItemMap.set(item.id, {
-            unitPrice: item.unitPrice,
-            discountPaise: item.discountPaise || 0,
-            qty: item.qty,
-          });
-        }
+    if (isComposite && input.orderItems) {
+      for (const item of input.orderItems) {
+        orderItemMap.set(item.id, {
+          unitPrice: item.unitPrice,
+          discountPaise: item.discountPaise || 0,
+          qty: item.qty,
+        });
       }
     }
 
-    for (const refItem of params.refundedItems) {
-      const line = invoice.lines.find(
+    for (const refItem of input.refundedItems) {
+      const line = input.invoiceLines.find(
         (l) => l.orderItemId === refItem.orderItemId
       );
       if (!line || line.qty <= 0) continue;
@@ -175,14 +192,14 @@ export async function createCreditNoteForRefund(
 
       const rate = Number(line.ratePercent);
       const tax = extractInclusiveTax(lineTotal, rate);
-      const split = splitTax(tax.taxPaise, invoice.isInterState);
+      const split = splitTax(tax.taxPaise, input.isInterState);
 
       draftLines.push({
         invoiceLineId: line.id,
         kind: line.kind,
         description: `Credit: ${line.description}`,
         qty: effectiveQty,
-        ratePercent: line.ratePercent,
+        ratePercent: rate,
         taxablePaise: tax.taxablePaise,
         cgstPaise: split.cgstPaise,
         sgstPaise: split.sgstPaise,
@@ -203,13 +220,12 @@ export async function createCreditNoteForRefund(
         const remainingLine = Math.max(0, line.netPaise - alreadyLine);
         if (remainingLine <= 0) continue;
 
-        // Check if line was already added to draftLines
         const existingDraft = draftLines.find((d) => d.invoiceLineId === line.id);
         if (existingDraft) {
           existingDraft.totalPaise += remainingLine;
           const rate = Number(existingDraft.ratePercent);
           const tax = extractInclusiveTax(existingDraft.totalPaise, rate);
-          const split = splitTax(tax.taxPaise, invoice.isInterState);
+          const split = splitTax(tax.taxPaise, input.isInterState);
           existingDraft.taxablePaise = tax.taxablePaise;
           existingDraft.cgstPaise = split.cgstPaise;
           existingDraft.sgstPaise = split.sgstPaise;
@@ -218,13 +234,13 @@ export async function createCreditNoteForRefund(
         } else {
           const rate = Number(line.ratePercent);
           const tax = extractInclusiveTax(remainingLine, rate);
-          const split = splitTax(tax.taxPaise, invoice.isInterState);
+          const split = splitTax(tax.taxPaise, input.isInterState);
           draftLines.push({
             invoiceLineId: line.id,
             kind: line.kind,
             description: `Credit: ${line.description}`,
             qty: 0,
-            ratePercent: line.ratePercent,
+            ratePercent: rate,
             taxablePaise: tax.taxablePaise,
             cgstPaise: split.cgstPaise,
             sgstPaise: split.sgstPaise,
@@ -236,7 +252,7 @@ export async function createCreditNoteForRefund(
       }
     }
 
-    if (params.includeFeeShare || isFullGoodsRefund) {
+    if (input.includeFeeShare || isFullGoodsRefund) {
       const goodsInvoiceNet = goodsLines.reduce((sum, l) => sum + l.netPaise, 0);
       const goodsRefundedNet = draftLines.reduce((sum, l) => sum + l.totalPaise, 0);
       const feeRatio = isFullGoodsRefund
@@ -246,8 +262,8 @@ export async function createCreditNoteForRefund(
         : 1;
 
       for (const feeLine of feeLines) {
-        if (feeLine.kind === "SHIPPING" && params.refundShippingFee === false) continue;
-        if (feeLine.kind === "COD" && params.refundCodFee === false) continue;
+        if (feeLine.kind === "SHIPPING" && input.refundShippingFee === false) continue;
+        if (feeLine.kind === "COD" && input.refundCodFee === false) continue;
 
         const alreadyFee = creditedPerLine.get(feeLine.id) || 0;
         const remainingFee = Math.max(0, feeLine.netPaise - alreadyFee);
@@ -259,14 +275,14 @@ export async function createCreditNoteForRefund(
 
         const rate = Number(feeLine.ratePercent);
         const tax = extractInclusiveTax(feeTotal, rate);
-        const split = splitTax(tax.taxPaise, invoice.isInterState);
+        const split = splitTax(tax.taxPaise, input.isInterState);
 
         draftLines.push({
           invoiceLineId: feeLine.id,
           kind: feeLine.kind,
           description: `Credit: ${feeLine.description}`,
           qty: 1,
-          ratePercent: feeLine.ratePercent,
+          ratePercent: rate,
           taxablePaise: tax.taxablePaise,
           cgstPaise: split.cgstPaise,
           sgstPaise: split.sgstPaise,
@@ -279,11 +295,11 @@ export async function createCreditNoteForRefund(
     }
   } else {
     // Proportional credit across all invoice lines
-    const targetAmount = params.refundAmountPaise
-      ? Math.min(params.refundAmountPaise, remainingCreditable)
+    const targetAmount = input.refundAmountPaise
+      ? Math.min(input.refundAmountPaise, remainingCreditable)
       : remainingCreditable;
 
-    const currentCreditableTotal = invoice.lines.reduce((sum, line) => {
+    const currentCreditableTotal = input.invoiceLines.reduce((sum, line) => {
       const already = creditedPerLine.get(line.id) || 0;
       return sum + Math.max(0, line.netPaise - already);
     }, 0);
@@ -292,7 +308,7 @@ export async function createCreditNoteForRefund(
 
     const scale = Math.min(1, targetAmount / currentCreditableTotal);
 
-    for (const line of invoice.lines) {
+    for (const line of input.invoiceLines) {
       const already = creditedPerLine.get(line.id) || 0;
       const remainingLine = Math.max(0, line.netPaise - already);
       if (remainingLine <= 0) continue;
@@ -303,14 +319,14 @@ export async function createCreditNoteForRefund(
 
       const rate = Number(line.ratePercent);
       const tax = extractInclusiveTax(lineTotal, rate);
-      const split = splitTax(tax.taxPaise, invoice.isInterState);
+      const split = splitTax(tax.taxPaise, input.isInterState);
 
       draftLines.push({
         invoiceLineId: line.id,
         kind: line.kind,
         description: `Credit: ${line.description}`,
         qty: line.qty,
-        ratePercent: line.ratePercent,
+        ratePercent: rate,
         taxablePaise: tax.taxablePaise,
         cgstPaise: split.cgstPaise,
         sgstPaise: split.sgstPaise,
@@ -331,7 +347,7 @@ export async function createCreditNoteForRefund(
       last.totalPaise -= diff;
       const rate = Number(last.ratePercent);
       const tax = extractInclusiveTax(last.totalPaise, rate);
-      const split = splitTax(tax.taxPaise, invoice.isInterState);
+      const split = splitTax(tax.taxPaise, input.isInterState);
       last.taxablePaise = tax.taxablePaise;
       last.cgstPaise = split.cgstPaise;
       last.sgstPaise = split.sgstPaise;
@@ -341,6 +357,89 @@ export async function createCreditNoteForRefund(
   }
 
   if (draftLines.length === 0 || currentSum <= 0) {
+    return null;
+  }
+
+  const totalPaise = draftLines.reduce((s, l) => s + l.totalPaise, 0);
+  const taxablePaise = draftLines.reduce((s, l) => s + l.taxablePaise, 0);
+  const cgstPaise = draftLines.reduce((s, l) => s + l.cgstPaise, 0);
+  const sgstPaise = draftLines.reduce((s, l) => s + l.sgstPaise, 0);
+  const igstPaise = draftLines.reduce((s, l) => s + l.igstPaise, 0);
+
+  return {
+    lines: draftLines,
+    totalPaise,
+    taxablePaise,
+    cgstPaise,
+    sgstPaise,
+    igstPaise,
+  };
+}
+
+/**
+ * Creates a Credit Note for an order's refund.
+ * If the order's invoice was issued in RECEIPT mode (or has no invoice), no Credit Note is issued (returns null).
+ * Idempotent: returns existing Credit Note if matching refundRef is found.
+ */
+export async function createCreditNoteForRefund(
+  tx: DbClient,
+  params: CreateCreditNoteInput
+): Promise<(CreditNote & { lines: CreditNoteLine[] }) | null> {
+  const invoice = await tx.invoice.findUnique({
+    where: { orderId: params.orderId },
+    include: {
+      lines: true,
+      creditNotes: {
+        include: { lines: true },
+      },
+    },
+  });
+
+  if (!invoice || invoice.mode === "RECEIPT") {
+    return null;
+  }
+
+  // Idempotency check
+  if (params.refundRef) {
+    const existing = invoice.creditNotes.find(
+      (cn) => cn.refundRef === params.refundRef
+    );
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const isComposite = invoice.lines.every((l) => l.kind === "GOODS");
+  let orderItems: CreditNoteOrderItemInput[] | undefined;
+  if (isComposite && params.refundedItems && params.refundedItems.length > 0) {
+    const order = await tx.order.findUnique({
+      where: { id: params.orderId },
+      include: { items: true },
+    });
+    if (order) {
+      orderItems = order.items.map((item) => ({
+        id: item.id,
+        unitPrice: item.unitPrice,
+        discountPaise: item.discountPaise || 0,
+        qty: item.qty,
+      }));
+    }
+  }
+
+  const computed = computeCreditNoteAmounts({
+    invoiceTotalPaise: invoice.totalPaise,
+    isInterState: invoice.isInterState,
+    invoiceLines: invoice.lines,
+    existingCreditNotes: invoice.creditNotes,
+    orderItems,
+    refundedItems: params.refundedItems,
+    refundAmountPaise: params.refundAmountPaise,
+    includeFeeShare: params.includeFeeShare,
+    refundShippingFee: params.refundShippingFee,
+    refundCodFee: params.refundCodFee,
+  });
+
+  if (!computed) {
     return null;
   }
 
@@ -369,12 +468,6 @@ export async function createCreditNoteForRefund(
   const prefix = siteSettings?.invoicePrefix || "HB";
   const cnNumber = formatCreditNoteNumber(prefix, fy, nextSeq);
 
-  const totalPaise = draftLines.reduce((s, l) => s + l.totalPaise, 0);
-  const taxablePaise = draftLines.reduce((s, l) => s + l.taxablePaise, 0);
-  const cgstPaise = draftLines.reduce((s, l) => s + l.cgstPaise, 0);
-  const sgstPaise = draftLines.reduce((s, l) => s + l.sgstPaise, 0);
-  const igstPaise = draftLines.reduce((s, l) => s + l.igstPaise, 0);
-
   return tx.creditNote.create({
     data: {
       invoiceId: invoice.id,
@@ -384,13 +477,13 @@ export async function createCreditNoteForRefund(
       sequence: nextSeq,
       reason: params.reason,
       refundRef: params.refundRef,
-      totalPaise,
-      taxablePaise,
-      cgstPaise,
-      sgstPaise,
-      igstPaise,
+      totalPaise: computed.totalPaise,
+      taxablePaise: computed.taxablePaise,
+      cgstPaise: computed.cgstPaise,
+      sgstPaise: computed.sgstPaise,
+      igstPaise: computed.igstPaise,
       lines: {
-        create: draftLines.map((l) => ({
+        create: computed.lines.map((l) => ({
           invoiceLineId: l.invoiceLineId,
           kind: l.kind,
           description: l.description,

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
 import { prisma } from "../helpers/prisma";
 import {
@@ -7,10 +7,31 @@ import {
   cleanupM1TestRows,
 } from "../helpers/fixtures";
 import { createSessionCookie } from "../helpers/session";
+import { SiteSettings } from "@prisma/client";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
 describe("T74: Variant Color & SKU Order Snapshots", () => {
+  let originalSettings: SiteSettings | null = null;
+
+  beforeAll(async () => {
+    originalSettings = await prisma.siteSettings.findUnique({ where: { id: "default" } });
+  });
+
+  afterAll(async () => {
+    try {
+      await cleanupM1TestRows();
+    } finally {
+      if (originalSettings) {
+        const { id, ...data } = originalSettings;
+        await prisma.siteSettings.update({
+          where: { id },
+          data,
+        });
+      }
+    }
+  });
+
   beforeEach(async () => {
     await cleanupM1TestRows();
   });
@@ -20,13 +41,6 @@ describe("T74: Variant Color & SKU Order Snapshots", () => {
   });
 
   it("orders snapshot variant color and sku; stock decrements only for ordered variant; no-color product snapshots color as ''", async () => {
-    const originalSettings = await prisma.siteSettings.findUnique({ where: { id: "default" } });
-    const saved = {
-      codEnabled: originalSettings?.codEnabled,
-      codRequiresDeliveredOrder: originalSettings?.codRequiresDeliveredOrder,
-      codOrderCap: originalSettings?.codOrderCap,
-    };
-
     // Enable COD without requiring prior delivered orders so test can place COD orders directly
     await prisma.siteSettings.upsert({
       where: { id: "default" },
@@ -43,8 +57,7 @@ describe("T74: Variant Color & SKU Order Snapshots", () => {
       },
     });
 
-    try {
-      const user = await createTestUser();
+    const user = await createTestUser();
       const session = await createSessionCookie(user.id);
 
       // 1. Create a product with two colored variants: Navy M and Olive M
@@ -167,17 +180,5 @@ describe("T74: Variant Color & SKU Order Snapshots", () => {
 
       const checkedNoColorVar = await prisma.productVariant.findUnique({ where: { id: noColorVariant.id } });
       expect(checkedNoColorVar?.stock).toBe(9);
-    } finally {
-      if (saved.codEnabled !== undefined) {
-        await prisma.siteSettings.update({
-          where: { id: "default" },
-          data: {
-            codEnabled: saved.codEnabled,
-            codRequiresDeliveredOrder: saved.codRequiresDeliveredOrder,
-            codOrderCap: saved.codOrderCap,
-          },
-        });
-      }
-    }
   });
 });
