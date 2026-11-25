@@ -9,6 +9,7 @@ import { normalizeIdentifier, generateAndSendOtp, verifyOtp } from "@/lib/otp";
 import { prisma } from "@/lib/prisma";
 import { revokeAllSessions } from "@/lib/sessions";
 import { writeAudit } from "@/lib/audit";
+import { maybeGrantRefereeCredit } from "@/lib/rewards/service";
 import { sendContactChangedAlertEmail } from "@/lib/email";
 import { getClientIp } from "@/lib/client-ip";
 import { Prisma } from "@prisma/client";
@@ -131,6 +132,8 @@ export async function confirmContactChangeAction({
     }
     throw err;
   }
+
+  await maybeGrantRefereeCredit(user.id);
 
   // Revoke other sessions except current sid
   if (user.sid) {

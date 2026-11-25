@@ -405,12 +405,20 @@ export default function AccountClient({
             <span className="font-mono text-2xl font-bold text-emerald-900 block">
               {formatINR(user.storeCreditBalance || 0)}
             </span>
-            <Link
-              href="/account/wallet"
-              className="text-xs underline text-emerald-900 hover:text-emerald-950"
-            >
-              View Wallet &amp; Expiry Details &rarr;
-            </Link>
+            <div className="flex flex-col items-end gap-1">
+              <Link
+                href="/account/wallet"
+                className="text-xs underline text-emerald-900 hover:text-emerald-950"
+              >
+                View Wallet &amp; Expiry Details &rarr;
+              </Link>
+              <Link
+                href="/account/referrals"
+                className="text-xs underline text-emerald-900 hover:text-emerald-950"
+              >
+                Refer &amp; Earn &rarr;
+              </Link>
+            </div>
           </div>
         </div>
 

@@ -4,8 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { ForbiddenError, requireRole, UnauthorizedError } from "@/lib/guards";
 import { formatINR } from "@/lib/money";
 import { getWalletSummary } from "@/lib/wallet/service";
+import { maskIdentifier } from "@/lib/mask";
 import WalletAdjustForm from "./WalletAdjustForm";
 import RewardSettingsForm from "./RewardSettingsForm";
+import LoyaltyReferralSettingsForm from "./LoyaltyReferralSettingsForm";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +16,9 @@ export default async function AdminRewardsPage({
 }: {
   searchParams: Promise<{ q?: string; userId?: string }>;
 }) {
+  let actor;
   try {
-    await requireRole("OWNER");
+    actor = await requireRole("OWNER");
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       redirect("/staff/login");
@@ -25,6 +28,7 @@ export default async function AdminRewardsPage({
     }
     throw err;
   }
+  const isOwner = actor.role === "OWNER";
 
   const sp = await searchParams;
   const q = sp.q?.trim() || "";
@@ -36,6 +40,15 @@ export default async function AdminRewardsPage({
       promoCreditExpiryDays: true,
       walletMaxPercentOfOrder: true,
       maxAdminAdjustPaise: true,
+      loyaltyEnabled: true,
+      loyaltyModel: true,
+      loyaltyPercentBps: true,
+      referralEnabled: true,
+      referrerRewardPaise: true,
+      refereeRewardPaise: true,
+      referralMonthlyCapPerReferrer: true,
+      referralMinOrderPaise: true,
+      referralValidityDays: true,
     },
   });
 
@@ -44,6 +57,71 @@ export default async function AdminRewardsPage({
     walletMaxPercentOfOrder: settings?.walletMaxPercentOfOrder ?? 100,
     maxAdminAdjustPaise: settings?.maxAdminAdjustPaise ?? 500000,
   };
+
+  const loyaltyReferralSettings = {
+    loyaltyEnabled: settings?.loyaltyEnabled ?? false,
+    loyaltyModel: "FLAT_PERCENT" as const,
+    loyaltyPercentBps: settings?.loyaltyPercentBps ?? 200,
+    referralEnabled: settings?.referralEnabled ?? false,
+    referrerRewardPaise: settings?.referrerRewardPaise ?? 0,
+    refereeRewardPaise: settings?.refereeRewardPaise ?? 0,
+    referralMonthlyCapPerReferrer: settings?.referralMonthlyCapPerReferrer ?? 10,
+    referralMinOrderPaise: settings?.referralMinOrderPaise ?? 0,
+    referralValidityDays: settings?.referralValidityDays ?? 90,
+  };
+
+  const now = new Date();
+  const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  const [
+    promoOutstandingAgg,
+    promoExpiring30Agg,
+    creditedBySource,
+    recentReferrals,
+  ] = await Promise.all([
+    prisma.walletLot.aggregate({
+      where: {
+        kind: "PROMO",
+        remainingPaise: { gt: 0 },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      _sum: { remainingPaise: true },
+    }),
+    prisma.walletLot.aggregate({
+      where: {
+        kind: "PROMO",
+        remainingPaise: { gt: 0 },
+        expiresAt: { gt: now, lte: in30Days },
+      },
+      _sum: { remainingPaise: true },
+    }),
+    prisma.walletLot.groupBy({
+      by: ["sourceType"],
+      where: {
+        sourceType: { in: ["LOYALTY", "REFERRAL_FRIEND", "REFERRAL_REFERRER"] },
+      },
+      _sum: { originalPaise: true },
+    }),
+    prisma.referral.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        referrer: { select: { name: true, email: true, phone: true } },
+        referee: { select: { name: true, email: true, phone: true } },
+      },
+    }),
+  ]);
+
+  const sourceTotals = {
+    LOYALTY: 0,
+    REFERRAL_FRIEND: 0,
+    REFERRAL_REFERRER: 0,
+  };
+  for (const row of creditedBySource) {
+    if (row.sourceType === "LOYALTY") sourceTotals.LOYALTY = row._sum.originalPaise ?? 0;
+    if (row.sourceType === "REFERRAL_FRIEND") sourceTotals.REFERRAL_FRIEND = row._sum.originalPaise ?? 0;
+    if (row.sourceType === "REFERRAL_REFERRER") sourceTotals.REFERRAL_REFERRER = row._sum.originalPaise ?? 0;
+  }
 
   const customers = await prisma.user.findMany({
     where: q
@@ -102,6 +180,81 @@ export default async function AdminRewardsPage({
       </div>
 
       <RewardSettingsForm initialSettings={rewardSettings} />
+      <LoyaltyReferralSettingsForm initialSettings={loyaltyReferralSettings} />
+
+      <div className="border border-stone bg-white p-5 space-y-3">
+        <h2 className="text-xs uppercase tracking-wider text-stone-dark font-semibold">
+          Liability &amp; Credited Totals
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
+          <div>
+            <span className="text-stone-dark block">Outstanding Promo</span>
+            <strong className="text-sm text-ink">
+              {formatINR(promoOutstandingAgg._sum.remainingPaise ?? 0)}
+            </strong>
+          </div>
+          <div>
+            <span className="text-stone-dark block">Expiring (&le;30d)</span>
+            <strong className="text-sm text-ink">
+              {formatINR(promoExpiring30Agg._sum.remainingPaise ?? 0)}
+            </strong>
+          </div>
+          <div>
+            <span className="text-stone-dark block">Credited: Loyalty</span>
+            <strong className="text-sm text-ink">{formatINR(sourceTotals.LOYALTY)}</strong>
+          </div>
+          <div>
+            <span className="text-stone-dark block">Credited: Friend</span>
+            <strong className="text-sm text-ink">{formatINR(sourceTotals.REFERRAL_FRIEND)}</strong>
+          </div>
+          <div>
+            <span className="text-stone-dark block">Credited: Referrer</span>
+            <strong className="text-sm text-ink">{formatINR(sourceTotals.REFERRAL_REFERRER)}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="border border-stone bg-white p-5 space-y-3">
+        <h2 className="text-xs uppercase tracking-wider text-stone-dark font-semibold">
+          Referrals (Recent {recentReferrals.length})
+        </h2>
+        {recentReferrals.length === 0 ? (
+          <p className="text-xs text-stone-dark">No referrals recorded yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="border-b border-stone text-stone-dark">
+                  <th className="py-1.5 pr-3">Date</th>
+                  <th className="py-1.5 pr-3">Referrer</th>
+                  <th className="py-1.5 pr-3">Friend</th>
+                  <th className="py-1.5 pr-3">Status</th>
+                  <th className="py-1.5">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentReferrals.map((ref) => {
+                  const refRaw = ref.referrer.email || ref.referrer.phone || ref.referrer.name;
+                  const friRaw = ref.referee.email || ref.referee.phone || ref.referee.name;
+                  const refLabel = isOwner ? refRaw : maskIdentifier(refRaw || "Customer");
+                  const friLabel = isOwner ? friRaw : maskIdentifier(friRaw || "Customer");
+                  return (
+                    <tr key={ref.id} className="border-b border-stone/40">
+                      <td className="py-1.5 pr-3 font-mono">
+                        {ref.createdAt.toISOString().slice(0, 10)}
+                      </td>
+                      <td className="py-1.5 pr-3">{refLabel}</td>
+                      <td className="py-1.5 pr-3">{friLabel}</td>
+                      <td className="py-1.5 pr-3 font-medium">{ref.status}</td>
+                      <td className="py-1.5 text-stone-dark">{ref.rejectionReason || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       <form method="GET" className="flex gap-2">
         <input

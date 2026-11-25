@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/sessions";
 import { formatINR } from "@/lib/money";
 import { getWalletSummary } from "@/lib/wallet/service";
+import { computeLoyaltyEarn } from "@/lib/rewards/loyalty";
 import type { WalletEntryType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +32,60 @@ export default async function AccountWalletPage() {
   const sessionUser = await getSessionUser();
   if (!sessionUser) redirect("/login?redirect=/account/wallet");
 
-  const summary = await getWalletSummary(sessionUser.id);
+  const [summary, settings] = await Promise.all([
+    getWalletSummary(sessionUser.id),
+    prisma.siteSettings.findUnique({
+      where: { id: "default" },
+      select: {
+        loyaltyEnabled: true,
+        loyaltyEnabledAt: true,
+        loyaltyPercentBps: true,
+        returnWindowDays: true,
+      },
+    }),
+  ]);
+
+  let pendingLoyaltyOrders: Array<{
+    id: string;
+    displayId: string;
+    deliveredAt: Date | null;
+    estimatedPaise: number;
+  }> = [];
+
+  if (settings?.loyaltyEnabled && settings.loyaltyEnabledAt) {
+    const now = new Date();
+    const cutoff = new Date(
+      now.getTime() - settings.returnWindowDays * 24 * 60 * 60 * 1000
+    );
+    const inWindowOrders = await prisma.order.findMany({
+      where: {
+        userId: sessionUser.id,
+        fulfilmentStatus: "DELIVERED",
+        deliveredAt: { gt: cutoff },
+        createdAt: { gte: settings.loyaltyEnabledAt },
+        loyaltyAccrual: { is: null },
+      },
+      orderBy: { deliveredAt: "desc" },
+      take: 20,
+    });
+    pendingLoyaltyOrders = inWindowOrders
+      .map((ord) => {
+        const goodsNetPaise = Math.max(0, ord.total - ord.shippingFee - ord.codFee);
+        const { earnedPaise } = computeLoyaltyEarn({
+          goodsNetPaise,
+          refundedGoodsPaise: 0,
+          storeCreditApplied: ord.storeCreditApplied,
+          bps: settings.loyaltyPercentBps,
+        });
+        return {
+          id: ord.id,
+          displayId: ord.displayId,
+          deliveredAt: ord.deliveredAt,
+          estimatedPaise: earnedPaise,
+        };
+      })
+      .filter((o) => o.estimatedPaise > 0);
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-10 space-y-6">
@@ -71,6 +126,29 @@ export default async function AccountWalletPage() {
           </div>
         </div>
       </div>
+
+      {pendingLoyaltyOrders.length > 0 && (
+        <div className="border border-stone bg-white p-6 space-y-3">
+          <h2 className="text-xs uppercase tracking-wider text-stone-dark font-semibold">
+            Pending Rewards (Subject to Returns)
+          </h2>
+          <div className="divide-y divide-stone/40">
+            {pendingLoyaltyOrders.map((po) => (
+              <div key={po.id} className="py-2 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-medium text-ink">Order #{po.displayId}</span>
+                  <span className="text-stone-dark ml-2">
+                    (credited after {settings?.returnWindowDays ?? 7}-day return window)
+                  </span>
+                </div>
+                <span className="font-mono font-semibold text-ink">
+                  ~{formatINR(po.estimatedPaise)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="border border-stone bg-white p-6 space-y-3">
         <h2 className="text-xs uppercase tracking-wider text-stone-dark font-semibold">

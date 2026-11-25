@@ -461,7 +461,9 @@ export async function restoreWalletDebit(
           remainingPaise: take,
           expiresAt: graceExpiresAt,
           sourceType: "RESTORE_GRACE",
-          sourceId: `${input.orderId}:${origLot.id}:${entryIdx}`,
+          sourceId: input.idempotencyKey
+            ? `${input.idempotencyKey}:${origLot.id}:${entryIdx}`
+            : `${input.orderId}:${origLot.id}:${orderEntries.length}:${entryIdx}`,
           note: `Grace lot restored from expired lot ${origLot.id}`,
         },
       });

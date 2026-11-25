@@ -614,36 +614,133 @@ export async function refundReturn(
   }
 
   // Execute refund via issueRefund
-  const idempotencyKey = `return-refund-${returnReq.id}`;
-  let refundResult;
-  try {
-    refundResult = await issueRefund({
-      orderId: order.id,
-      returnId: returnReq.id,
-      method: refundMethod,
-      amountPaise,
-      idempotencyKey,
-      actorId: staff.id,
-      reason: `Refund for return #${returnReq.id}`,
-    });
-  } catch (err) {
-    // Reset refundInitiatedAt to null so staff can retry with the same idempotency key
-    await prisma.returnRequest.update({
-      where: { id: returnId },
-      data: { refundInitiatedAt: null },
-    });
-    throw err;
-  }
+  // For prepaid (RAZORPAY / STORE_CREDIT) orders without STORE_CREDIT override, split gateway vs wallet:
+  // gatewayRefundable = max(0, (order.total - order.storeCreditApplied) - sum(non-failed RAZORPAY Refund amounts))
+  const isCodOrOverride =
+    order.paymentMethod === "COD" || options?.overrideMethod === "STORE_CREDIT";
 
-  if (!refundResult.success || refundResult.refund.status !== "PROCESSED") {
-    // Reset refundInitiatedAt to null so staff can retry with the same idempotency key
-    await prisma.returnRequest.update({
-      where: { id: returnId },
-      data: { refundInitiatedAt: null },
-    });
-    throw new Error(
-      `Refund failed: ${refundResult.error || refundResult.refund.failureReason || "Gateway failure"}`
-    );
+  let primaryRefund: Awaited<ReturnType<typeof issueRefund>>["refund"];
+  let emailGatewayAmount = 0;
+  let emailWalletAmount = 0;
+
+  if (isCodOrOverride) {
+    const idempotencyKey = `return-refund-${returnReq.id}`;
+    let refundResult;
+    try {
+      refundResult = await issueRefund({
+        orderId: order.id,
+        returnId: returnReq.id,
+        method: "STORE_CREDIT",
+        amountPaise,
+        idempotencyKey,
+        actorId: staff.id,
+        reason: `Refund for return #${returnReq.id}`,
+      });
+    } catch (err) {
+      await prisma.returnRequest.update({
+        where: { id: returnId },
+        data: { refundInitiatedAt: null },
+      });
+      throw err;
+    }
+
+    if (!refundResult.success || refundResult.refund.status !== "PROCESSED") {
+      await prisma.returnRequest.update({
+        where: { id: returnId },
+        data: { refundInitiatedAt: null },
+      });
+      throw new Error(
+        `Refund failed: ${refundResult.error || refundResult.refund.failureReason || "Gateway failure"}`
+      );
+    }
+    primaryRefund = refundResult.refund;
+  } else {
+    const gatewayKey = `return-refund-${returnReq.id}:gateway`;
+    const walletKey = `return-refund-${returnReq.id}:wallet`;
+    const nonFailedGatewayRefunded = order.refunds
+      .filter(
+        (r) =>
+          r.method === "RAZORPAY" &&
+          r.status !== "FAILED" &&
+          r.idempotencyKey !== gatewayKey
+      )
+      .reduce((s, r) => s + r.amountPaise, 0);
+
+    const gatewayCaptured = Math.max(0, order.total - (order.storeCreditApplied || 0));
+    const gatewayRefundable = Math.max(0, gatewayCaptured - nonFailedGatewayRefunded);
+    const gatewayAmount = Math.min(amountPaise, gatewayRefundable);
+    const walletAmount = amountPaise - gatewayAmount;
+
+    let gatewayRefund: Awaited<ReturnType<typeof issueRefund>>["refund"] | null = null;
+    let walletRefund: Awaited<ReturnType<typeof issueRefund>>["refund"] | null = null;
+
+    if (gatewayAmount > 0) {
+      let gwRes;
+      try {
+        gwRes = await issueRefund({
+          orderId: order.id,
+          returnId: returnReq.id,
+          method: "RAZORPAY",
+          amountPaise: gatewayAmount,
+          idempotencyKey: gatewayKey,
+          actorId: staff.id,
+          reason: `Gateway refund for return #${returnReq.id}`,
+        });
+      } catch (err) {
+        await prisma.returnRequest.update({
+          where: { id: returnId },
+          data: { refundInitiatedAt: null },
+        });
+        throw err;
+      }
+
+      if (!gwRes.success || gwRes.refund.status !== "PROCESSED") {
+        await prisma.returnRequest.update({
+          where: { id: returnId },
+          data: { refundInitiatedAt: null },
+        });
+        throw new Error(
+          `Refund failed: ${gwRes.error || gwRes.refund.failureReason || "Gateway failure"}`
+        );
+      }
+      gatewayRefund = gwRes.refund;
+    }
+
+    if (walletAmount > 0) {
+      let wlRes;
+      try {
+        wlRes = await issueRefund({
+          orderId: order.id,
+          returnId: returnReq.id,
+          method: "STORE_CREDIT",
+          amountPaise: walletAmount,
+          idempotencyKey: walletKey,
+          actorId: staff.id,
+          reason: `Wallet refund for return #${returnReq.id}`,
+        });
+      } catch (err) {
+        await prisma.returnRequest.update({
+          where: { id: returnId },
+          data: { refundInitiatedAt: null },
+        });
+        throw err;
+      }
+
+      if (!wlRes.success || wlRes.refund.status !== "PROCESSED") {
+        await prisma.returnRequest.update({
+          where: { id: returnId },
+          data: { refundInitiatedAt: null },
+        });
+        throw new Error(
+          `Refund failed: ${wlRes.error || wlRes.refund.failureReason || "Wallet refund failure"}`
+        );
+      }
+      walletRefund = wlRes.refund;
+    }
+
+      primaryRefund = (gatewayRefund || walletRefund)!;
+    emailGatewayAmount = gatewayAmount;
+    emailWalletAmount = walletAmount;
   }
 
   // Only mark REFUNDED when Refund is PROCESSED
@@ -664,7 +761,14 @@ export async function refundReturn(
   });
 
   // Async customer email ONLY after successful refund
-  sendReturnRefundedEmail(returnReq.id, amountPaise, refundMethod).catch((err) => {
+  sendReturnRefundedEmail(
+    returnReq.id,
+    amountPaise,
+    refundMethod,
+    !isCodOrOverride
+      ? { gatewayAmountPaise: emailGatewayAmount, walletAmountPaise: emailWalletAmount }
+      : undefined
+  ).catch((err) => {
     console.error("Failed to send return refunded email:", err);
   });
 
@@ -674,7 +778,7 @@ export async function refundReturn(
       await createCreditNoteForRefund(cnTx, {
         orderId: order.id,
         reason: `Return refunded: ${returnReq.reason}`,
-        refundRef: refundResult.refund.id,
+        refundRef: primaryRefund.id,
         refundedItems: returnReq.items.map((i) => ({ orderItemId: i.orderItemId, qty: i.qty })),
         includeFeeShare: refundCalc.isCompleteReturn,
         refundShippingFee: refundCalc.shippingFeeRefundPaise > 0,
@@ -686,7 +790,7 @@ export async function refundReturn(
     await prisma.orderStatusEvent.create({
       data: {
         orderId: order.id,
-        note: `CREDIT NOTE PENDING (refundRef=${refundResult.refund.id})`,
+        note: `CREDIT NOTE PENDING (refundRef=${primaryRefund.id})`,
       },
     });
   }
@@ -696,5 +800,5 @@ export async function refundReturn(
   revalidatePath(`/admin/orders/${order.id}`);
   revalidatePath("/account");
 
-  return { success: true, refund: refundResult.refund };
+  return { success: true, refund: primaryRefund };
 }

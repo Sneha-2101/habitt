@@ -1,0 +1,1 @@
+ALTER TABLE "SiteSettings" ADD COLUMN IF NOT EXISTS "loyaltyEnabledAt" TIMESTAMP(3);

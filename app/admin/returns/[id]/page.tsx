@@ -10,6 +10,7 @@ import {
   refundReturn,
 } from "@/lib/actions/returns";
 import { computeRefund } from "@/lib/returns/rules";
+import { getWalletBalance } from "@/lib/wallet/service";
 
 export default async function AdminReturnDetailPage({
   params,
@@ -64,7 +65,6 @@ export default async function AdminReturnDetailPage({
           name: true,
           email: true,
           phone: true,
-          storeCreditBalance: true,
         },
       },
       refunds: true,
@@ -72,6 +72,8 @@ export default async function AdminReturnDetailPage({
   });
 
   if (!returnReq) notFound();
+
+  const userWalletBalance = await getWalletBalance(prisma, returnReq.user.id);
 
   // Compute refund preview
   const existingReturnedQtys: Record<string, number> = {};
@@ -204,8 +206,8 @@ export default async function AdminReturnDetailPage({
               <strong className="text-stone-dark">Phone:</strong> {returnReq.user.phone || "N/A"}
             </p>
             <p>
-              <strong className="text-stone-dark">Store Credit Balance:</strong>{" "}
-              <span className="font-mono">{formatINR(returnReq.user.storeCreditBalance)}</span>
+              <strong className="text-stone-dark">Wallet Balance:</strong>{" "}
+              <span className="font-mono">{formatINR(userWalletBalance)}</span>
             </p>
           </div>
         </div>

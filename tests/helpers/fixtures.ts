@@ -545,6 +545,51 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
+  // 4a. Loyalty & Referrals (RESTRICT FKs require deleting before WalletLot / Order / User)
+  await prisma.referralClaim.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { refereeId: { in: m1UserIds } },
+        { refereeId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.referral.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { referrerId: { in: m1UserIds } },
+        { refereeId: { in: m1UserIds } },
+        { referrerId: { startsWith: "m1test" } },
+        { refereeId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.referralCode.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { userId: { in: m1UserIds } },
+        { userId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.loyaltyAccrual.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { userId: { in: m1UserIds } },
+        { orderId: { in: m1OrderIds } },
+        { userId: { startsWith: "m1test" } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
   // 4b. WalletEntry then WalletLot (RESTRICT FKs require deleting before User)
   await prisma.walletEntry.deleteMany({
     where: {

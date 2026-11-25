@@ -131,6 +131,7 @@ model Order {
   idempotencyKey       String?            @unique
   stockDeducted        Boolean            @default(false)
   abandonedEmailSentAt DateTime?
+  loyaltyAccrual       LoyaltyAccrual?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
@@ -196,10 +197,20 @@ model SiteSettings {
   dispatchHandlingNote      String?
   instagramUrl              String?
   facebookUrl               String?
-  promoCreditExpiryDays     Int        @default(180)
-  walletMaxPercentOfOrder   Int        @default(100)
-  maxAdminAdjustPaise       Int        @default(500000)
-  updatedAt                 DateTime   @updatedAt
+  promoCreditExpiryDays         Int        @default(180)
+  walletMaxPercentOfOrder       Int        @default(100)
+  maxAdminAdjustPaise           Int        @default(500000)
+  loyaltyEnabled                Boolean    @default(false)
+  loyaltyEnabledAt              DateTime?
+  loyaltyModel                  String     @default("FLAT_PERCENT")
+  loyaltyPercentBps             Int        @default(200)
+  referralEnabled               Boolean    @default(false)
+  referrerRewardPaise           Int        @default(0)
+  refereeRewardPaise            Int        @default(0)
+  referralMonthlyCapPerReferrer Int        @default(10)
+  referralMinOrderPaise         Int        @default(0)
+  referralValidityDays          Int        @default(90)
+  updatedAt                     DateTime   @updatedAt
 }
 
 model HomeBanner {
@@ -313,6 +324,11 @@ model User {
   siteContents            SiteContent[]
   walletLots              WalletLot[]
   walletEntries           WalletEntry[]
+  loyaltyAccruals         LoyaltyAccrual[]
+  referralCode            ReferralCode?
+  referralsGiven          Referral[]               @relation("ReferrerRelation")
+  referralReceived        Referral?                @relation("RefereeRelation")
+  referralClaims          ReferralClaim[]
   createdAt               DateTime                 @default(now())
 }
 
@@ -352,8 +368,11 @@ model WalletLot {
   sourceType     String?
   sourceId       String?
   note           String?
-  entries        WalletEntry[]
-  createdAt      DateTime      @default(now())
+  entries            WalletEntry[]
+  loyaltyAccruals    LoyaltyAccrual[]
+  refereeReferrals   Referral[]       @relation("RefereeLotRelation")
+  referrerReferrals  Referral[]       @relation("ReferrerLotRelation")
+  createdAt          DateTime         @default(now())
   updatedAt      DateTime      @updatedAt
 
   @@unique([userId, kind, sourceType, sourceId])
@@ -379,6 +398,74 @@ model WalletEntry {
   @@index([userId, createdAt])
   @@index([lotId])
   @@index([orderId])
+}
+
+enum LoyaltyAccrualStatus {
+  CREDITED
+  SKIPPED
+}
+
+enum ReferralStatus {
+  PENDING_VERIFICATION
+  PENDING_FIRST_ORDER
+  REWARDED
+  REJECTED
+  EXPIRED
+}
+
+model LoyaltyAccrual {
+  id          String               @id @default(cuid())
+  order       Order                @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  orderId     String               @unique
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId      String
+  basePaise   Int
+  earnedPaise Int
+  status      LoyaltyAccrualStatus
+  lot         WalletLot?           @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  lotId       String?
+  createdAt   DateTime             @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model ReferralCode {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId    String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Referral {
+  id              String         @id @default(cuid())
+  referrer        User           @relation("ReferrerRelation", fields: [referrerId], references: [id], onDelete: Restrict)
+  referrerId      String
+  referee         User           @relation("RefereeRelation", fields: [refereeId], references: [id], onDelete: Restrict)
+  refereeId       String         @unique
+  codeUsed        String
+  status          ReferralStatus
+  rejectionReason String?
+  refereeLot      WalletLot?     @relation("RefereeLotRelation", fields: [refereeLotId], references: [id], onDelete: Restrict)
+  refereeLotId    String?
+  referrerLot     WalletLot?     @relation("ReferrerLotRelation", fields: [referrerLotId], references: [id], onDelete: Restrict)
+  referrerLotId   String?
+  firstOrderId    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  expiresAt       DateTime
+
+  @@index([referrerId, status])
+  @@index([status, expiresAt])
+}
+
+model ReferralClaim {
+  id              String   @id @default(cuid())
+  referee         User     @relation(fields: [refereeId], references: [id], onDelete: Restrict)
+  refereeId       String
+  normalizedEmail String   @unique
+  normalizedPhone String?  @unique
+  createdAt       DateTime @default(now())
 }
 
 model OtpCode {

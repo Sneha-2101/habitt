@@ -955,10 +955,13 @@ export async function sendReturnReceivedEmail(returnId: string) {
   }
 }
 
+import { formatReturnRefundMethodDescription, type RefundEmailSplit } from "@/lib/returns/refund-email";
+
 export async function sendReturnRefundedEmail(
   returnId: string,
   amountPaise: number,
-  method: string
+  method: string,
+  split?: RefundEmailSplit
 ) {
   if (!resend) {
     console.log(`[Email] RESEND_API_KEY is not set. Skipping return refunded email for return ${returnId}.`);
@@ -977,10 +980,7 @@ export async function sendReturnRefundedEmail(
     if (!recipientEmail) return { success: false, reason: "No recipient email" };
 
     const emailInfo = await getEmailSenderInfo();
-    const methodDescription =
-      method === "STORE_CREDIT"
-        ? "credited to your Store Credit wallet"
-        : "initiated to your original payment method";
+    const methodDescription = formatReturnRefundMethodDescription(method, split);
 
     const htmlContent = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111; background-color: #faf9f6;">

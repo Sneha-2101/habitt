@@ -119,3 +119,95 @@ export async function updateRewardSettingsAction(input: {
     settings: updated,
   };
 }
+
+const loyaltyReferralSettingsSchema = z.object({
+  loyaltyEnabled: z.boolean(),
+  loyaltyModel: z.enum(["FLAT_PERCENT"]),
+  loyaltyPercentBps: z.number().int().min(0).max(5000),
+  referralEnabled: z.boolean(),
+  referrerRewardPaise: z.number().int().min(0).max(1000000),
+  refereeRewardPaise: z.number().int().min(0).max(1000000),
+  referralMonthlyCapPerReferrer: z.number().int().min(0).max(1000),
+  referralMinOrderPaise: z.number().int().min(0),
+  referralValidityDays: z.number().int().min(1).max(3650),
+});
+
+export async function updateLoyaltyReferralSettingsAction(input: {
+  loyaltyEnabled: boolean;
+  loyaltyModel: "FLAT_PERCENT";
+  loyaltyPercentBps: number;
+  referralEnabled: boolean;
+  referrerRewardPaise: number;
+  refereeRewardPaise: number;
+  referralMonthlyCapPerReferrer: number;
+  referralMinOrderPaise: number;
+  referralValidityDays: number;
+}) {
+  const actor = await requireRole("OWNER");
+  const parsed = loyaltyReferralSettingsSchema.parse(input);
+
+  const before = await prisma.siteSettings.findUnique({
+    where: { id: "default" },
+    select: {
+      loyaltyEnabled: true,
+      loyaltyEnabledAt: true,
+      loyaltyModel: true,
+      loyaltyPercentBps: true,
+      referralEnabled: true,
+      referrerRewardPaise: true,
+      refereeRewardPaise: true,
+      referralMonthlyCapPerReferrer: true,
+      referralMinOrderPaise: true,
+      referralValidityDays: true,
+    },
+  });
+
+  const nextLoyaltyEnabledAt =
+    !before?.loyaltyEnabled && parsed.loyaltyEnabled
+      ? new Date()
+      : (before?.loyaltyEnabledAt ?? null);
+
+  const updated = await prisma.siteSettings.upsert({
+    where: { id: "default" },
+    create: {
+      id: "default",
+      ...parsed,
+      loyaltyEnabledAt: nextLoyaltyEnabledAt,
+    },
+    update: {
+      ...parsed,
+      loyaltyEnabledAt: nextLoyaltyEnabledAt,
+    },
+    select: {
+      loyaltyEnabled: true,
+      loyaltyEnabledAt: true,
+      loyaltyModel: true,
+      loyaltyPercentBps: true,
+      referralEnabled: true,
+      referrerRewardPaise: true,
+      refereeRewardPaise: true,
+      referralMonthlyCapPerReferrer: true,
+      referralMinOrderPaise: true,
+      referralValidityDays: true,
+    },
+  });
+
+  await writeAudit({
+    actorId: actor.id,
+    action: "LOYALTY_REFERRAL_SETTINGS_UPDATED",
+    entity: "SiteSettings",
+    entityId: "default",
+    meta: {
+      before: before ?? null,
+      after: updated,
+    },
+  });
+
+  revalidatePath("/admin/rewards");
+  revalidatePath("/account/referrals");
+
+  return {
+    ok: true as const,
+    settings: updated,
+  };
+}

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { cookies } from "next/headers";
 import { verifyOtp } from "@/lib/otp";
 import { createSession, computeUaHash, computeIpPrefix } from "@/lib/sessions";
 import { Prisma } from "@prisma/client";
@@ -6,6 +7,7 @@ import { escapeHtml } from "@/lib/escape-html";
 import { sendStaffSignInAlertEmail } from "@/lib/email";
 import { writeAudit } from "@/lib/audit";
 import { isReviewerLoginActive, isReviewerIdentifier } from "@/lib/reviewer";
+import { attachReferral, maybeGrantRefereeCredit } from "@/lib/rewards/service";
 
 export interface AuthContext {
   ip?: string;
@@ -107,6 +109,19 @@ export async function authorizeCustomerOtp(
       ip,
     });
   }
+
+  try {
+    const cookieStore = await cookies();
+    const refCookie = cookieStore.get("habitt_ref")?.value;
+    if (refCookie) {
+      await attachReferral(user.id, refCookie);
+      cookieStore.delete("habitt_ref");
+    }
+  } catch {
+    // Ignore outside Next request scope or cookie read errors
+  }
+
+  await maybeGrantRefereeCredit(user.id);
 
   return {
     id: user.id,
