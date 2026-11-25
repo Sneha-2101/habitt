@@ -196,6 +196,9 @@ model SiteSettings {
   dispatchHandlingNote      String?
   instagramUrl              String?
   facebookUrl               String?
+  promoCreditExpiryDays     Int        @default(90)
+  walletMaxPercentOfOrder   Int        @default(100)
+  maxAdminAdjustPaise       Int        @default(500000)
   updatedAt                 DateTime   @updatedAt
 }
 
@@ -291,6 +294,7 @@ model User {
   emailVerifiedAt         DateTime?
   phoneVerifiedAt         DateTime?
   cart                    Cart?
+  /// LEGACY: live spendable store credit until M6a-2 cutover (dropped in M8).
   storeCreditBalance      Int                      @default(0) // paise
   role                    Role                     @default(CUSTOMER)
   status                  UserStatus               @default(ACTIVE)
@@ -307,9 +311,12 @@ model User {
   assignedTickets         Ticket[]                 @relation("AssignedTickets")
   ticketMessages          TicketMessage[]          @relation("UserTicketMessages")
   siteContents            SiteContent[]
+  walletLots              WalletLot[]
+  walletEntries           WalletEntry[]
   createdAt               DateTime                 @default(now())
 }
 
+/// LEGACY: live store credit ledger until M6a-2 cutover (dropped in M8).
 model StoreCreditTransaction {
   id             String   @id @default(cuid())
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -318,6 +325,59 @@ model StoreCreditTransaction {
   reason         String
   relatedOrderId String?
   createdAt      DateTime @default(now())
+}
+
+enum WalletLotKind {
+  REFUND
+  PROMO
+  ADJUST
+}
+
+enum WalletEntryType {
+  CREDIT
+  DEBIT
+  EXPIRE
+  ADJUST
+}
+
+model WalletLot {
+  id             String        @id @default(cuid())
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  kind           WalletLotKind
+  originalPaise  Int
+  remainingPaise Int
+  expiresAt      DateTime?
+  sourceType     String?
+  sourceId       String?
+  note           String?
+  entries        WalletEntry[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([userId, kind, sourceType, sourceId])
+  @@index([userId, remainingPaise, expiresAt])
+  @@index([expiresAt, remainingPaise])
+}
+
+model WalletEntry {
+  id                String          @id @default(cuid())
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  lot               WalletLot?      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  lotId             String?
+  type              WalletEntryType
+  amountPaise       Int
+  balanceAfterPaise Int
+  orderId           String?
+  actorId           String?
+  reason            String
+  idempotencyKey    String?         @unique
+  createdAt         DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@index([lotId])
+  @@index([orderId])
 }
 
 model OtpCode {

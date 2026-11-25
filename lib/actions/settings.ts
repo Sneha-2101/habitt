@@ -233,6 +233,9 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
   revalidatePath("/policies/returns");
   revalidatePath("/policies/shipping");
   revalidatePath("/policies/grievance");
+  revalidatePath("/policies/privacy");
+  revalidatePath("/policies/terms");
+  revalidatePath("/about");
   revalidatePath("/contact");
   revalidatePath("/support");
   return updated;

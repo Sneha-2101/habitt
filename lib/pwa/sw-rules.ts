@@ -10,6 +10,19 @@ export const SW_EXCLUDED_PREFIXES = [
   "/auth",
 ] as const;
 
+export const SW_EXCLUDED_BASES = [
+  "/admin",
+  "/checkout",
+  "/account",
+  "/staff",
+  "/auth",
+] as const;
+
 export function isExcludedSwPath(pathname: string): boolean {
-  return SW_EXCLUDED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  if (pathname.startsWith("/api/")) {
+    return true;
+  }
+  return SW_EXCLUDED_BASES.some(
+    (base) => pathname === base || pathname.startsWith(`${base}/`)
+  );
 }

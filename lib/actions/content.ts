@@ -7,9 +7,10 @@ import { requireStaff } from "@/lib/guards";
 import { writeAudit } from "@/lib/audit";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MAX_CONTENT_LENGTH } from "@/lib/content/render";
-import { ALLOWED_CONTENT_KEYS, saveContentRecord } from "@/lib/content/content";
+import { ALLOWED_CONTENT_KEYS, isValidCtaHref, saveContentRecord } from "@/lib/content/content";
+import { validateImageBuffer } from "@/lib/uploads/image-check";
 
-export const MAX_ACTIVE_BANNERS = 8;
+const MAX_ACTIVE_BANNERS = 8;
 
 const saveContentSchema = z.object({
   key: z.enum(ALLOWED_CONTENT_KEYS),
@@ -17,18 +18,6 @@ const saveContentSchema = z.object({
   body: z.string().max(MAX_CONTENT_LENGTH, `Body cannot exceed ${MAX_CONTENT_LENGTH} characters`),
   isPublished: z.boolean(),
 });
-
-function isValidCtaHref(val: string): boolean {
-  if (val.startsWith("/") && !val.startsWith("//")) {
-    return true;
-  }
-  try {
-    const parsed = new URL(val);
-    return parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 function isValidBucketImageUrl(val: string): boolean {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, "");
@@ -91,18 +80,18 @@ export async function uploadBannerImageAction(formData: FormData): Promise<{ url
     throw new Error("Please select an image file to upload.");
   }
 
-  const supabase = getSupabaseAdmin();
-  const fileExt = file.name.split(".").pop() || "jpg";
-  const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-  const filePath = `banners/${fileName}`;
-
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
+  const { mimeType, ext } = validateImageBuffer(buffer);
+
+  const supabase = getSupabaseAdmin();
+  const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${ext}`;
+  const filePath = `banners/${fileName}`;
 
   const { error } = await supabase.storage
     .from("product-images")
     .upload(filePath, buffer, {
-      contentType: file.type || "image/jpeg",
+      contentType: mimeType,
       upsert: true,
     });
 

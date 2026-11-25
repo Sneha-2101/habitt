@@ -9,6 +9,7 @@ import { requireStaff } from "@/lib/guards";
 import { sendBackInStockEmail } from "@/lib/email";
 import { writeAudit } from "@/lib/audit";
 import { productMerchandiseFields, toProductFieldData } from "@/lib/catalog/product-fields";
+import { validateImageBuffer } from "@/lib/uploads/image-check";
 import { z } from "zod";
 
 function slugify(name: string) {
@@ -88,18 +89,18 @@ const updateVariantStockSchema = z.object({
 });
 
 async function uploadFileToSupabase(file: File): Promise<string> {
-  const supabase = getSupabaseAdmin();
-  const fileExt = file.name.split(".").pop() || "jpg";
-  const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-  const filePath = `products/${fileName}`;
-
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
+  const { mimeType, ext } = validateImageBuffer(buffer);
+
+  const supabase = getSupabaseAdmin();
+  const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${ext}`;
+  const filePath = `products/${fileName}`;
 
   const { error } = await supabase.storage
     .from("product-images")
     .upload(filePath, buffer, {
-      contentType: file.type || "image/jpeg",
+      contentType: mimeType,
       upsert: true,
     });
 

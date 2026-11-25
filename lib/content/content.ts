@@ -18,6 +18,25 @@ export function isAllowedContentKey(key: string): key is AllowedContentKey {
   return (ALLOWED_CONTENT_KEYS as readonly string[]).includes(key);
 }
 
+export function isValidCtaHref(val: string): boolean {
+  if (!val || /[\s\\\x00-\x1f\x7f]/.test(val)) {
+    return false;
+  }
+  if (val === "/") {
+    return true;
+  }
+  if (val.startsWith("/")) {
+    const second = val[1];
+    return second !== "/" && second !== "\\";
+  }
+  try {
+    const parsed = new URL(val);
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export async function getContent(key: AllowedContentKey) {
   if (!isAllowedContentKey(key)) {
     throw new Error(`Invalid content key: ${key}`);

@@ -1,13 +1,21 @@
 const CACHE_NAME = "habitt-offline-v1";
 const OFFLINE_URL = "/offline";
-const EXCLUDED_PREFIXES = [
-  "/api/",
-  "/admin/",
+const EXCLUDED_BASES = [
+  "/admin",
   "/checkout",
   "/account",
   "/staff",
   "/auth",
 ];
+
+function isExcludedPath(pathname) {
+  if (pathname.startsWith("/api/")) {
+    return true;
+  }
+  return EXCLUDED_BASES.some(
+    (base) => pathname === base || pathname.startsWith(`${base}/`)
+  );
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -38,7 +46,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (EXCLUDED_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+  if (isExcludedPath(url.pathname)) {
     return;
   }
 
@@ -48,17 +56,10 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.headers.has("Set-Cookie")) {
-            return response;
-          }
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(OFFLINE_URL);
-          return cached || new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } });
-        })
+      fetch(request).catch(async () => {
+        const cached = await caches.match(OFFLINE_URL);
+        return cached || new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } });
+      })
     );
   }
 });
