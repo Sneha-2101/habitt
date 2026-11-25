@@ -1,16 +1,25 @@
 import Link from "next/link";
-import { getSettings } from "@/lib/settings";
+import { getBusinessProfile } from "@/lib/site/business";
+import { getSessionUser } from "@/lib/sessions";
+import { getContent } from "@/lib/content/content";
+import { ContentBlocks } from "@/components/ContentBlocks";
 
 export const dynamic = "force-dynamic";
 
 export default async function GrievanceOfficerPage() {
-  const settings = await getSettings();
+  const [profile, sessionUser, extraContent] = await Promise.all([
+    getBusinessProfile(),
+    getSessionUser().catch(() => null),
+    getContent("policy.grievance").catch(() => null),
+  ]);
+  const isStaff = sessionUser?.role === "STAFF" || sessionUser?.role === "OWNER";
 
-  const officerName = settings.grievanceOfficerName || "Designated Grievance Officer";
-  const officerEmail = settings.grievanceOfficerEmail || settings.supportEmail || "grievance@domain.local";
-  const officerPhone = settings.grievanceOfficerPhone || settings.businessPhone || null;
+  const officerName = profile.grievanceOfficer.name;
+  const officerEmail = profile.grievanceOfficer.email || profile.supportEmail;
+  const officerPhone = profile.grievanceOfficer.phone || profile.phone;
   const officerAddress =
-    settings.grievanceOfficerAddress || settings.businessAddress || null;
+    profile.grievanceOfficer.address || profile.formattedAddress;
+  const missingOfficerDetails = !officerName || !officerEmail;
 
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-7 py-12 space-y-6">
@@ -25,15 +34,20 @@ export default async function GrievanceOfficerPage() {
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-ink">1. Grievance Officer Details</h2>
           <p>
-            In accordance with the Information Technology Act, 2000 and the Consumer Protection (E-Commerce) Rules, 2020, the details of the designated Grievance Officer for {settings.businessName} are published below:
+            In accordance with the Information Technology Act, 2000 and the Consumer Protection (E-Commerce) Rules, 2020, the details of the designated Grievance Officer{profile.displayName ? ` for ${profile.displayName}` : ""} are published below:
           </p>
           <div className="bg-paper p-4 border border-stone space-y-1.5 text-xs text-ink font-sans">
-            <div><strong>Name:</strong> {officerName}</div>
+            {officerName && <div><strong>Name:</strong> {officerName}</div>}
             <div><strong>Designation:</strong> Grievance Redressal Officer</div>
-            <div><strong>Email:</strong> <a href={`mailto:${officerEmail}`} className="underline">{officerEmail}</a></div>
+            {officerEmail && <div><strong>Email:</strong> <a href={`mailto:${officerEmail}`} className="underline">{officerEmail}</a></div>}
             {officerPhone && <div><strong>Contact Line:</strong> {officerPhone}</div>}
             {officerAddress && <div><strong>Official Address:</strong> {officerAddress}</div>}
           </div>
+          {missingOfficerDetails && isStaff && (
+            <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-[11.5px] rounded-xs">
+              Set grievance officer name and email in <Link href="/admin/settings" className="underline font-medium">/admin/settings</Link>
+            </div>
+          )}
         </section>
 
         <section className="space-y-2">
@@ -68,6 +82,12 @@ export default async function GrievanceOfficerPage() {
             </li>
           </ul>
         </section>
+
+        {extraContent?.isPublished && extraContent.body.trim().length > 0 && (
+          <section className="space-y-2 pt-4 border-t border-stone/40">
+            <ContentBlocks body={extraContent.body} />
+          </section>
+        )}
       </div>
     </main>
   );

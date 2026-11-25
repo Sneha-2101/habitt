@@ -56,7 +56,7 @@ export async function createTicket(input: CreateCustomerTicketInput) {
   }
 
   const settings = await getSettings();
-  const supportEmail = settings.supportEmail || "support@local.test";
+  const supportEmail = settings.supportEmail?.trim() || process.env.SUPPORT_EMAIL?.trim() || null;
   const now = new Date();
   const { ackDueAt, resolveDueAt } = computeSlaDates(now);
 
@@ -118,26 +118,31 @@ export async function createTicket(input: CreateCustomerTicketInput) {
   }
 
   // Outbox: Support Team Notification Email
-  await enqueueOutbox({
-    type: "TICKET_SUPPORT_ALERT",
-    channel: "EMAIL",
-    orderId: verifiedOrderId,
-    payload: {
-      ticketId: ticket.id,
-      ticketNumber: ticket.number,
-      subject: ticket.subject,
-      category: ticket.category,
-      customerName: user.name || "Customer",
-      customerEmail: user.email || "No email",
-      body: message.body,
-      isGrievance: ticket.category === "GRIEVANCE",
-      recipientEmail:
-        ticket.category === "GRIEVANCE" && settings.grievanceOfficerEmail
-          ? settings.grievanceOfficerEmail
-          : supportEmail,
-    },
-    dedupeKey: `ticket_support_alert_${ticket.id}`,
-  });
+  const alertRecipient =
+    ticket.category === "GRIEVANCE" && settings.grievanceOfficerEmail?.trim()
+      ? settings.grievanceOfficerEmail.trim()
+      : supportEmail;
+  if (alertRecipient) {
+    await enqueueOutbox({
+      type: "TICKET_SUPPORT_ALERT",
+      channel: "EMAIL",
+      orderId: verifiedOrderId,
+      payload: {
+        ticketId: ticket.id,
+        ticketNumber: ticket.number,
+        subject: ticket.subject,
+        category: ticket.category,
+        customerName: user.name || "Customer",
+        customerEmail: user.email || "No email",
+        body: message.body,
+        isGrievance: ticket.category === "GRIEVANCE",
+        recipientEmail: alertRecipient,
+      },
+      dedupeKey: `ticket_support_alert_${ticket.id}`,
+    });
+  } else {
+    console.warn("[Tickets] Skipping TICKET_SUPPORT_ALERT: no supportEmail configured.");
+  }
 
   revalidatePath("/account");
   return {
@@ -224,28 +229,33 @@ export async function replyToTicket(ticketId: string, bodyText: string) {
   });
 
   const settings = await getSettings();
-  const supportEmail = settings.supportEmail || "support@local.test";
+  const supportEmail = settings.supportEmail?.trim() || process.env.SUPPORT_EMAIL?.trim() || null;
 
   // Notify support of customer reply
-  await enqueueOutbox({
-    type: "TICKET_SUPPORT_ALERT",
-    channel: "EMAIL",
-    payload: {
-      ticketId: ticket.id,
-      ticketNumber: ticket.number,
-      subject: `Reply on ${ticket.number}: ${ticket.subject}`,
-      category: ticket.category,
-      customerName: user.name || "Customer",
-      customerEmail: user.email || "No email",
-      body: message.body,
-      isGrievance: ticket.category === "GRIEVANCE",
-      recipientEmail:
-        ticket.category === "GRIEVANCE" && settings.grievanceOfficerEmail
-          ? settings.grievanceOfficerEmail
-          : supportEmail,
-    },
-    dedupeKey: `ticket_reply_alert_${message.id}`,
-  });
+  const alertRecipient =
+    ticket.category === "GRIEVANCE" && settings.grievanceOfficerEmail?.trim()
+      ? settings.grievanceOfficerEmail.trim()
+      : supportEmail;
+  if (alertRecipient) {
+    await enqueueOutbox({
+      type: "TICKET_SUPPORT_ALERT",
+      channel: "EMAIL",
+      payload: {
+        ticketId: ticket.id,
+        ticketNumber: ticket.number,
+        subject: `Reply on ${ticket.number}: ${ticket.subject}`,
+        category: ticket.category,
+        customerName: user.name || "Customer",
+        customerEmail: user.email || "No email",
+        body: message.body,
+        isGrievance: ticket.category === "GRIEVANCE",
+        recipientEmail: alertRecipient,
+      },
+      dedupeKey: `ticket_reply_alert_${message.id}`,
+    });
+  } else {
+    console.warn("[Tickets] Skipping TICKET_SUPPORT_ALERT reply: no supportEmail configured.");
+  }
 
   revalidatePath("/account");
   return { success: true, messageId: message.id };

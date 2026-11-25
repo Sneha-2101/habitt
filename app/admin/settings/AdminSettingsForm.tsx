@@ -40,6 +40,19 @@ interface SettingsFormProps {
     grievanceOfficerEmail?: string | null;
     grievanceOfficerPhone?: string | null;
     grievanceOfficerAddress?: string | null;
+    businessAddressLine1?: string | null;
+    businessAddressLine2?: string | null;
+    businessCity?: string | null;
+    pickupAddressLine1?: string | null;
+    pickupAddressLine2?: string | null;
+    pickupCity?: string | null;
+    pickupPincode?: string | null;
+    pickupPhone?: string | null;
+    ordersEmail?: string | null;
+    replyToEmail?: string | null;
+    dispatchHandlingNote?: string | null;
+    instagramUrl?: string | null;
+    facebookUrl?: string | null;
   };
 }
 
@@ -80,6 +93,19 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
     grievanceOfficerEmail: initialSettings.grievanceOfficerEmail || "",
     grievanceOfficerPhone: initialSettings.grievanceOfficerPhone || "",
     grievanceOfficerAddress: initialSettings.grievanceOfficerAddress || "",
+    businessAddressLine1: initialSettings.businessAddressLine1 || "",
+    businessAddressLine2: initialSettings.businessAddressLine2 || "",
+    businessCity: initialSettings.businessCity || "",
+    pickupAddressLine1: initialSettings.pickupAddressLine1 || "",
+    pickupAddressLine2: initialSettings.pickupAddressLine2 || "",
+    pickupCity: initialSettings.pickupCity || "",
+    pickupPincode: initialSettings.pickupPincode || "",
+    pickupPhone: initialSettings.pickupPhone || "",
+    ordersEmail: initialSettings.ordersEmail || "",
+    replyToEmail: initialSettings.replyToEmail || "",
+    dispatchHandlingNote: initialSettings.dispatchHandlingNote || "",
+    instagramUrl: initialSettings.instagramUrl || "",
+    facebookUrl: initialSettings.facebookUrl || "",
   });
 
   const [activeTab, setActiveTab] = useState<
@@ -131,6 +157,19 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
           grievanceOfficerEmail: form.grievanceOfficerEmail.trim() || null,
           grievanceOfficerPhone: form.grievanceOfficerPhone.trim() || null,
           grievanceOfficerAddress: form.grievanceOfficerAddress.trim() || null,
+          businessAddressLine1: form.businessAddressLine1.trim() || null,
+          businessAddressLine2: form.businessAddressLine2.trim() || null,
+          businessCity: form.businessCity.trim() || null,
+          pickupAddressLine1: form.pickupAddressLine1.trim() || null,
+          pickupAddressLine2: form.pickupAddressLine2.trim() || null,
+          pickupCity: form.pickupCity.trim() || null,
+          pickupPincode: form.pickupPincode.trim() || null,
+          pickupPhone: form.pickupPhone.trim() || null,
+          ordersEmail: form.ordersEmail.trim() || null,
+          replyToEmail: form.replyToEmail.trim() || null,
+          dispatchHandlingNote: form.dispatchHandlingNote.trim() || null,
+          instagramUrl: form.instagramUrl.trim() || null,
+          facebookUrl: form.facebookUrl.trim() || null,
         });
         setMessage({ type: "success", text: "Store settings saved successfully." });
       } catch (err: unknown) {
@@ -373,6 +412,82 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                 required
               />
             </div>
+
+            <div>
+              <label htmlFor="dispatchHandlingNote" className="block text-xs font-medium text-ink mb-1">
+                Dispatch Handling Note (Optional)
+              </label>
+              <p className="text-[11px] text-stone-dark mb-2">Optional note shown on shipping policy & support pages only when set.</p>
+              <input
+                type="text"
+                id="dispatchHandlingNote"
+                placeholder="e.g. Orders placed before 2 PM IST ship the next working day"
+                value={form.dispatchHandlingNote}
+                onChange={(e) => setForm({ ...form, dispatchHandlingNote: e.target.value })}
+                className="w-full max-w-lg px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+              />
+            </div>
+
+            <div className="pt-4 border-t border-stone/50 space-y-4">
+              <div>
+                <h3 className="text-xs font-semibold text-ink uppercase tracking-wider">Warehouse Pickup Address</h3>
+                <p className="text-[11px] text-stone-dark">Physical pickup origin used for courier manifests and return pickups.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="pickupAddressLine1" className="block text-xs font-medium text-ink mb-1">Pickup Address Line 1</label>
+                  <input
+                    type="text"
+                    id="pickupAddressLine1"
+                    value={form.pickupAddressLine1}
+                    onChange={(e) => setForm({ ...form, pickupAddressLine1: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pickupAddressLine2" className="block text-xs font-medium text-ink mb-1">Pickup Address Line 2</label>
+                  <input
+                    type="text"
+                    id="pickupAddressLine2"
+                    value={form.pickupAddressLine2}
+                    onChange={(e) => setForm({ ...form, pickupAddressLine2: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pickupCity" className="block text-xs font-medium text-ink mb-1">Pickup City</label>
+                  <input
+                    type="text"
+                    id="pickupCity"
+                    value={form.pickupCity}
+                    onChange={(e) => setForm({ ...form, pickupCity: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pickupPincode" className="block text-xs font-medium text-ink mb-1">Pickup Pincode</label>
+                  <input
+                    type="text"
+                    id="pickupPincode"
+                    placeholder="6-digit pincode"
+                    value={form.pickupPincode}
+                    onChange={(e) => setForm({ ...form, pickupPincode: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pickupPhone" className="block text-xs font-medium text-ink mb-1">Pickup Contact Phone</label>
+                  <input
+                    type="tel"
+                    id="pickupPhone"
+                    placeholder="10-digit mobile number"
+                    value={form.pickupPhone}
+                    onChange={(e) => setForm({ ...form, pickupPhone: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -581,6 +696,99 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                   placeholder="e.g. 400001"
                   value={form.businessPincode}
                   onChange={(e) => setForm({ ...form, businessPincode: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="businessAddressLine1" className="block text-xs font-medium text-ink mb-1">
+                  Business Address Line 1
+                </label>
+                <input
+                  type="text"
+                  id="businessAddressLine1"
+                  value={form.businessAddressLine1}
+                  onChange={(e) => setForm({ ...form, businessAddressLine1: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="businessAddressLine2" className="block text-xs font-medium text-ink mb-1">
+                  Business Address Line 2
+                </label>
+                <input
+                  type="text"
+                  id="businessAddressLine2"
+                  value={form.businessAddressLine2}
+                  onChange={(e) => setForm({ ...form, businessAddressLine2: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="businessCity" className="block text-xs font-medium text-ink mb-1">
+                  Business City
+                </label>
+                <input
+                  type="text"
+                  id="businessCity"
+                  value={form.businessCity}
+                  onChange={(e) => setForm({ ...form, businessCity: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="ordersEmail" className="block text-xs font-medium text-ink mb-1">
+                  Orders Display Email
+                </label>
+                <input
+                  type="email"
+                  id="ordersEmail"
+                  value={form.ordersEmail}
+                  onChange={(e) => setForm({ ...form, ordersEmail: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="replyToEmail" className="block text-xs font-medium text-ink mb-1">
+                  Reply-To Email
+                </label>
+                <input
+                  type="email"
+                  id="replyToEmail"
+                  value={form.replyToEmail}
+                  onChange={(e) => setForm({ ...form, replyToEmail: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="instagramUrl" className="block text-xs font-medium text-ink mb-1">
+                  Instagram URL (https://)
+                </label>
+                <input
+                  type="url"
+                  id="instagramUrl"
+                  placeholder="https://instagram.com/..."
+                  value={form.instagramUrl}
+                  onChange={(e) => setForm({ ...form, instagramUrl: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="facebookUrl" className="block text-xs font-medium text-ink mb-1">
+                  Facebook URL (https://)
+                </label>
+                <input
+                  type="url"
+                  id="facebookUrl"
+                  placeholder="https://facebook.com/..."
+                  value={form.facebookUrl}
+                  onChange={(e) => setForm({ ...form, facebookUrl: e.target.value })}
                   className="w-full px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
                 />
               </div>

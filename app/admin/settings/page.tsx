@@ -59,6 +59,19 @@ export default async function AdminSettingsPage() {
           grievanceOfficerEmail: settings.grievanceOfficerEmail,
           grievanceOfficerPhone: settings.grievanceOfficerPhone,
           grievanceOfficerAddress: settings.grievanceOfficerAddress,
+          businessAddressLine1: settings.businessAddressLine1,
+          businessAddressLine2: settings.businessAddressLine2,
+          businessCity: settings.businessCity,
+          pickupAddressLine1: settings.pickupAddressLine1,
+          pickupAddressLine2: settings.pickupAddressLine2,
+          pickupCity: settings.pickupCity,
+          pickupPincode: settings.pickupPincode,
+          pickupPhone: settings.pickupPhone,
+          ordersEmail: settings.ordersEmail,
+          replyToEmail: settings.replyToEmail,
+          dispatchHandlingNote: settings.dispatchHandlingNote,
+          instagramUrl: settings.instagramUrl,
+          facebookUrl: settings.facebookUrl,
         }}
       />
     </main>

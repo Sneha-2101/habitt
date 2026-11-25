@@ -2,13 +2,16 @@ import Link from "next/link";
 import { getSettings } from "@/lib/settings";
 import { formatINR } from "@/lib/money";
 import { getSessionUser } from "@/lib/sessions";
+import { getContent } from "@/lib/content/content";
+import { ContentBlocks } from "@/components/ContentBlocks";
 
 export const dynamic = "force-dynamic";
 
 export default async function ShippingPolicyPage() {
-  const [settings, sessionUser] = await Promise.all([
+  const [settings, sessionUser, extraContent] = await Promise.all([
     getSettings(),
     getSessionUser().catch(() => null),
+    getContent("policy.shipping").catch(() => null),
   ]);
   const isStaff = sessionUser?.role === "STAFF" || sessionUser?.role === "OWNER";
   const freeThresholdStr = formatINR(settings.freeShippingThreshold);
@@ -44,6 +47,9 @@ export default async function ShippingPolicyPage() {
               Set business state in <Link href="/admin/gst" className="underline font-medium">/admin/gst</Link>
             </div>
           )}
+          {settings.dispatchHandlingNote && (
+            <p>{settings.dispatchHandlingNote}</p>
+          )}
           <ul className="list-disc pl-5 space-y-1">
             <li><strong>Standard Delivery:</strong> Up to {settings.maxDeliveryDays} days post-dispatch.</li>
           </ul>
@@ -55,6 +61,12 @@ export default async function ShippingPolicyPage() {
             As soon as your package is dispatched, you will receive notification containing your courier partner details and tracking AWB number.
           </p>
         </section>
+
+        {extraContent?.isPublished && extraContent.body.trim().length > 0 && (
+          <section className="space-y-2 pt-4 border-t border-stone/40">
+            <ContentBlocks body={extraContent.body} />
+          </section>
+        )}
       </div>
     </main>
   );

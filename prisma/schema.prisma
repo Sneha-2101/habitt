@@ -183,7 +183,48 @@ model SiteSettings {
   grievanceOfficerEmail     String?
   grievanceOfficerPhone     String?
   grievanceOfficerAddress   String?
+  businessAddressLine1      String?
+  businessAddressLine2      String?
+  businessCity              String?
+  pickupAddressLine1        String?
+  pickupAddressLine2        String?
+  pickupCity                String?
+  pickupPincode             String?
+  pickupPhone               String?
+  ordersEmail               String?
+  replyToEmail              String?
+  dispatchHandlingNote      String?
+  instagramUrl              String?
+  facebookUrl               String?
   updatedAt                 DateTime   @updatedAt
+}
+
+model HomeBanner {
+  id         String    @id @default(cuid())
+  imageUrl   String
+  imageAlt   String
+  heading    String
+  subheading String?
+  ctaLabel   String?
+  ctaHref    String?
+  sortOrder  Int       @default(0)
+  isActive   Boolean   @default(true)
+  startsAt   DateTime?
+  endsAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model SiteContent {
+  key         String   @id
+  title       String?
+  body        String   @default("")
+  isPublished Boolean  @default(true)
+  updatedById String?
+  updatedBy   User?    @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime @updatedAt
 }
 
 model OrderItem {
@@ -265,6 +306,7 @@ model User {
   tickets                 Ticket[]                 @relation("UserTickets")
   assignedTickets         Ticket[]                 @relation("AssignedTickets")
   ticketMessages          TicketMessage[]          @relation("UserTicketMessages")
+  siteContents            SiteContent[]
   createdAt               DateTime                 @default(now())
 }
 

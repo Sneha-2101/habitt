@@ -65,6 +65,9 @@ export default async function AdminLayout({
               <Link href="/admin/reports" className="hover:text-ink transition-colors">
                 Reports
               </Link>
+              <Link href="/admin/content" className="hover:text-ink transition-colors">
+                Content
+              </Link>
               {isOwner && (
                 <Link href="/admin/team" className="hover:text-ink transition-colors">
                   Team

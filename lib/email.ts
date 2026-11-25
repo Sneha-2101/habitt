@@ -13,19 +13,24 @@ async function getEmailSenderInfo() {
   } catch {
     settings = {
       id: "default",
-      businessName: "Habitt",
-      businessTagline: "Minimalist Essentials",
+      businessName: "",
+      businessTagline: "",
       orderSenderEmail: "",
+      ordersEmail: null,
+      replyToEmail: null,
       supportEmail: "",
       refundProcessingHours: 48,
     } as unknown as Awaited<ReturnType<typeof getSettings>>;
   }
 
-  const businessName = settings.businessName || "Habitt";
-  const from = process.env.RESEND_FROM_EMAIL || (settings.orderSenderEmail ? `${businessName} <${settings.orderSenderEmail}>` : `${businessName} <onboarding@resend.dev>`);
-  const replyTo = settings.supportEmail || undefined;
+  const businessName = settings.businessName || "";
+  const senderEmail = settings.ordersEmail?.trim() || settings.orderSenderEmail?.trim();
+  const from =
+    process.env.RESEND_FROM_EMAIL ||
+    (senderEmail ? (businessName ? `${businessName} <${senderEmail}>` : senderEmail) : "onboarding@resend.dev");
+  const replyTo = settings.replyToEmail?.trim() || settings.supportEmail?.trim() || undefined;
 
-  return { from, replyTo, settings, businessName, tagline: settings.businessTagline || "Minimalist Essentials" };
+  return { from, replyTo, settings, businessName, tagline: settings.businessTagline || "" };
 }
 
 export async function sendOrderConfirmationEmail(orderId: string) {

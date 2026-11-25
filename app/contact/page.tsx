@@ -1,12 +1,12 @@
 import Script from "next/script";
 import Link from "next/link";
-import { getSettings } from "@/lib/settings";
+import { getBusinessProfile } from "@/lib/site/business";
 import ContactClient from "./ContactClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContactPage() {
-  const settings = await getSettings();
+  const profile = await getBusinessProfile();
 
   return (
     <main className="max-w-4xl mx-auto px-4 sm:px-7 py-12 space-y-10">
@@ -19,32 +19,34 @@ export default async function ContactPage() {
 
       {/* Official Communication Channels */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
-        <div className="bg-white border border-stone p-5 space-y-2">
-          <h3 className="font-semibold text-ink uppercase tracking-wider text-[11px]">
-            Customer Support
-          </h3>
-          <p className="text-stone-dark">
-            Direct email assistance for orders and sizing inquiries:
-          </p>
-          <p className="text-ink font-medium">
-            <a href={`mailto:${settings.supportEmail}`} className="underline">
-              {settings.supportEmail}
-            </a>
-          </p>
-        </div>
+        {profile.supportEmail && (
+          <div className="bg-white border border-stone p-5 space-y-2">
+            <h3 className="font-semibold text-ink uppercase tracking-wider text-[11px]">
+              Customer Support
+            </h3>
+            <p className="text-stone-dark">
+              Direct email assistance for orders and sizing inquiries:
+            </p>
+            <p className="text-ink font-medium">
+              <a href={`mailto:${profile.supportEmail}`} className="underline">
+                {profile.supportEmail}
+              </a>
+            </p>
+          </div>
+        )}
 
         <div className="bg-white border border-stone p-5 space-y-2">
           <h3 className="font-semibold text-ink uppercase tracking-wider text-[11px]">
             Direct Lines
           </h3>
-          <p className="text-stone-dark">Phone and messaging support during operating hours:</p>
-          {settings.businessPhone && (
-            <p className="text-ink font-medium">Phone: {settings.businessPhone}</p>
+          <p className="text-stone-dark">Phone and messaging support:</p>
+          {profile.phone && (
+            <p className="text-ink font-medium">Phone: {profile.phone}</p>
           )}
-          {settings.whatsappSupportNumber && (
-            <p className="text-ink font-medium">WhatsApp: {settings.whatsappSupportNumber}</p>
+          {profile.whatsapp && (
+            <p className="text-ink font-medium">WhatsApp: {profile.whatsapp}</p>
           )}
-          {!settings.businessPhone && !settings.whatsappSupportNumber && (
+          {!profile.phone && !profile.whatsapp && (
             <p className="text-stone-dark italic">Phone support available via online ticketing.</p>
           )}
         </div>

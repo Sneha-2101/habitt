@@ -1,9 +1,14 @@
 import { getSettings } from "@/lib/settings";
+import { getContent } from "@/lib/content/content";
+import { ContentBlocks } from "@/components/ContentBlocks";
 
 export const dynamic = "force-dynamic";
 
 export default async function TermsOfServicePage() {
-  const settings = await getSettings();
+  const [settings, extraContent] = await Promise.all([
+    getSettings(),
+    getContent("policy.terms").catch(() => null),
+  ]);
   const companyName = settings.legalName || settings.businessName;
 
   return (
@@ -41,6 +46,12 @@ export default async function TermsOfServicePage() {
               Questions about the Terms of Service should be sent to us at {settings.supportEmail}.
             </p>
           </>
+        )}
+
+        {extraContent?.isPublished && extraContent.body.trim().length > 0 && (
+          <div className="pt-4 border-t border-stone/40">
+            <ContentBlocks body={extraContent.body} />
+          </div>
         )}
       </section>
     </main>

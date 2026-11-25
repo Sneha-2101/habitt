@@ -36,6 +36,19 @@ export interface UpdateSiteSettingsInput {
   grievanceOfficerEmail?: string | null;
   grievanceOfficerPhone?: string | null;
   grievanceOfficerAddress?: string | null;
+  businessAddressLine1?: string | null;
+  businessAddressLine2?: string | null;
+  businessCity?: string | null;
+  pickupAddressLine1?: string | null;
+  pickupAddressLine2?: string | null;
+  pickupCity?: string | null;
+  pickupPincode?: string | null;
+  pickupPhone?: string | null;
+  ordersEmail?: string | null;
+  replyToEmail?: string | null;
+  dispatchHandlingNote?: string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
 }
 
 export async function getSettings() {

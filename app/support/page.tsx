@@ -28,7 +28,6 @@ export default async function SupportPage() {
                 {settings.supportEmail}
               </a>
             </p>
-            <p className="text-xs text-stone-dark">Mon–Sat • 10:00 AM – 7:00 PM IST</p>
           </div>
         )}
 
@@ -45,7 +44,6 @@ export default async function SupportPage() {
                 {settings.whatsappSupportNumber}
               </a>
             </p>
-            <p className="text-xs text-stone-dark">Instant quick replies during business hours</p>
           </div>
         )}
 
@@ -57,7 +55,6 @@ export default async function SupportPage() {
                 {settings.businessPhone}
               </a>
             </p>
-            <p className="text-xs text-stone-dark">Mon–Fri • 10:00 AM – 6:00 PM IST</p>
           </div>
         )}
       </div>
@@ -70,7 +67,8 @@ export default async function SupportPage() {
           <div className="p-4 border border-stone/60 bg-white rounded-sm space-y-1">
             <h4 className="text-sm font-semibold text-ink">How long does shipping take?</h4>
             <p className="text-xs text-stone-dark leading-relaxed">
-              Standard orders are dispatched within 24–48 hours. Delivery takes up to {settings.maxDeliveryDays} business days depending on your location.
+              Delivery takes up to {settings.maxDeliveryDays} days of dispatch depending on your location.
+              {settings.dispatchHandlingNote ? ` ${settings.dispatchHandlingNote}` : ""}
             </p>
           </div>
 

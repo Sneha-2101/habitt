@@ -20,11 +20,11 @@ export interface SlaJobResult {
 export async function runTicketSlaJob(): Promise<SlaJobResult> {
   const settings = await getSettings();
   const defaultRecipient =
-    settings.supportEmail ||
-    process.env.SUPPORT_EMAIL ||
-    "support@local.test";
+    settings.supportEmail?.trim() ||
+    process.env.SUPPORT_EMAIL?.trim() ||
+    null;
   const grievanceRecipient =
-    settings.grievanceOfficerEmail ||
+    settings.grievanceOfficerEmail?.trim() ||
     defaultRecipient;
 
   const now = new Date();
@@ -41,10 +41,18 @@ export async function runTicketSlaJob(): Promise<SlaJobResult> {
 
   let ackBreaches = 0;
   let resolveBreaches = 0;
+  let warnedMissingEmail = false;
 
   for (const ticket of tickets) {
     const isGrievance = ticket.category === "GRIEVANCE";
     const alertRecipient = isGrievance ? grievanceRecipient : defaultRecipient;
+    if (!alertRecipient) {
+      if (!warnedMissingEmail) {
+        console.warn("[TicketSLA] Skipping SLA alert: no supportEmail or grievanceOfficerEmail configured in SiteSettings.");
+        warnedMissingEmail = true;
+      }
+      continue;
+    }
 
     const updateData: { ackAlertedAt?: Date; resolveAlertedAt?: Date; slaAlertedAt?: Date } = {};
 

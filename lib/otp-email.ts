@@ -16,15 +16,20 @@ async function getSenderInfo() {
     settings = await getSettings();
   } catch {
     settings = {
-      businessName: "Habitt",
+      businessName: "",
       orderSenderEmail: "",
+      ordersEmail: null,
+      replyToEmail: null,
       supportEmail: "",
     };
   }
 
-  const businessName = settings.businessName || "Habitt";
-  const from = process.env.RESEND_FROM_EMAIL || (settings.orderSenderEmail ? `${businessName} <${settings.orderSenderEmail}>` : `${businessName} <onboarding@resend.dev>`);
-  const replyTo = settings.supportEmail || undefined;
+  const businessName = settings.businessName || "";
+  const senderEmail = settings.ordersEmail?.trim() || settings.orderSenderEmail?.trim();
+  const from =
+    process.env.RESEND_FROM_EMAIL ||
+    (senderEmail ? (businessName ? `${businessName} <${senderEmail}>` : senderEmail) : "onboarding@resend.dev");
+  const replyTo = settings.replyToEmail?.trim() || settings.supportEmail?.trim() || undefined;
 
   return { from, replyTo, businessName };
 }

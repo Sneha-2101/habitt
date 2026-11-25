@@ -483,16 +483,21 @@ export async function generateMissingSkusAction(
 ): Promise<GenerateSkusResult> {
   const staff = await requireStaff();
   const scope = params?.scope || "all";
+  const scopeId = params?.scopeId?.trim();
   const preview = !!params?.preview;
+
+  if ((scope === "product" || scope === "category") && !scopeId) {
+    throw new Error(`scopeId required for scope ${scope}`);
+  }
 
   const whereClause: Prisma.ProductVariantWhereInput = {
     OR: [{ sku: null }, { sku: "" }],
   };
 
-  if (scope === "product" && params?.scopeId) {
-    whereClause.productId = params.scopeId;
-  } else if (scope === "category" && params?.scopeId) {
-    whereClause.product = { categoryId: params.scopeId };
+  if (scope === "product" && scopeId) {
+    whereClause.productId = scopeId;
+  } else if (scope === "category" && scopeId) {
+    whereClause.product = { categoryId: scopeId };
   }
 
   const missingVariants = await prisma.productVariant.findMany({
@@ -564,14 +569,17 @@ export async function generateMissingSkusAction(
   }
 
   if (!preview && candidates.length > 0) {
-    await prisma.$transaction(async (tx) => {
-      for (const cand of candidates) {
-        await tx.productVariant.update({
-          where: { id: cand.variantId },
-          data: { sku: cand.proposedSku },
-        });
-      }
-    });
+    await prisma.$transaction(
+      async (tx) => {
+        for (const cand of candidates) {
+          await tx.productVariant.update({
+            where: { id: cand.variantId },
+            data: { sku: cand.proposedSku },
+          });
+        }
+      },
+      { timeout: 60000, maxWait: 10000 }
+    );
 
     await writeAudit({
       actorId: staff.id,

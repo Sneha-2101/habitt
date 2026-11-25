@@ -245,7 +245,7 @@ export async function createGuestTicket(input: GuestTicketInput) {
   });
 
   const settings = await getSettings();
-  const supportEmail = settings.supportEmail || "support@local.test";
+  const supportEmail = settings.supportEmail?.trim() || process.env.SUPPORT_EMAIL?.trim() || null;
 
   // Outbox: Private View Link Email to Customer (token sent ONLY in outbox email payload)
   await enqueueOutbox({
@@ -279,25 +279,30 @@ export async function createGuestTicket(input: GuestTicketInput) {
   });
 
   // Outbox: Support Team Notification
-  await enqueueOutbox({
-    type: "TICKET_SUPPORT_ALERT",
-    channel: "EMAIL",
-    payload: {
-      ticketId: ticket.id,
-      ticketNumber: ticket.number,
-      subject: ticket.subject,
-      category: ticket.category,
-      customerName: parsed.name,
-      customerEmail: normalizedEmail,
-      body: message.body,
-      isGrievance: ticket.category === "GRIEVANCE",
-      recipientEmail:
-        ticket.category === "GRIEVANCE" && settings.grievanceOfficerEmail
-          ? settings.grievanceOfficerEmail
-          : supportEmail,
-    },
-    dedupeKey: `ticket_support_alert_${ticket.id}`,
-  });
+  const alertRecipient =
+    ticket.category === "GRIEVANCE" && settings.grievanceOfficerEmail?.trim()
+      ? settings.grievanceOfficerEmail.trim()
+      : supportEmail;
+  if (alertRecipient) {
+    await enqueueOutbox({
+      type: "TICKET_SUPPORT_ALERT",
+      channel: "EMAIL",
+      payload: {
+        ticketId: ticket.id,
+        ticketNumber: ticket.number,
+        subject: ticket.subject,
+        category: ticket.category,
+        customerName: parsed.name,
+        customerEmail: normalizedEmail,
+        body: message.body,
+        isGrievance: ticket.category === "GRIEVANCE",
+        recipientEmail: alertRecipient,
+      },
+      dedupeKey: `ticket_support_alert_${ticket.id}`,
+    });
+  } else {
+    console.warn("[GuestTickets] Skipping TICKET_SUPPORT_ALERT: no supportEmail configured.");
+  }
 
   return {
     success: true,
@@ -441,27 +446,32 @@ export async function guestReply(ticketNumber: string, token: string, bodyText: 
   });
 
   const settings = await getSettings();
-  const supportEmail = settings.supportEmail || "support@local.test";
+  const supportEmail = settings.supportEmail?.trim() || process.env.SUPPORT_EMAIL?.trim() || null;
 
-  await enqueueOutbox({
-    type: "TICKET_SUPPORT_ALERT",
-    channel: "EMAIL",
-    payload: {
-      ticketId: ticket.id,
-      ticketNumber: ticket.number,
-      subject: `Reply on ${ticket.number}: ${ticket.subject}`,
-      category: ticket.category,
-      customerName: ticket.guestName || "Guest",
-      customerEmail: ticket.guestEmail || "No email",
-      body: message.body,
-      isGrievance: ticket.category === "GRIEVANCE",
-      recipientEmail:
-        ticket.category === "GRIEVANCE" && settings.grievanceOfficerEmail
-          ? settings.grievanceOfficerEmail
-          : supportEmail,
-    },
-    dedupeKey: `ticket_reply_alert_${message.id}`,
-  });
+  const alertRecipient =
+    ticket.category === "GRIEVANCE" && settings.grievanceOfficerEmail?.trim()
+      ? settings.grievanceOfficerEmail.trim()
+      : supportEmail;
+  if (alertRecipient) {
+    await enqueueOutbox({
+      type: "TICKET_SUPPORT_ALERT",
+      channel: "EMAIL",
+      payload: {
+        ticketId: ticket.id,
+        ticketNumber: ticket.number,
+        subject: `Reply on ${ticket.number}: ${ticket.subject}`,
+        category: ticket.category,
+        customerName: ticket.guestName || "Guest",
+        customerEmail: ticket.guestEmail || "No email",
+        body: message.body,
+        isGrievance: ticket.category === "GRIEVANCE",
+        recipientEmail: alertRecipient,
+      },
+      dedupeKey: `ticket_reply_alert_${message.id}`,
+    });
+  } else {
+    console.warn("[GuestTickets] Skipping TICKET_SUPPORT_ALERT reply: no supportEmail configured.");
+  }
 
   return { success: true, messageId: message.id };
 }

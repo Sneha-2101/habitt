@@ -33,6 +33,31 @@ const optionalPincodeSchema = z
     message: "Business pincode must be a 6-digit number",
   });
 
+const optionalHttpsUrlSchema = z
+  .string()
+  .nullish()
+  .transform((val) => (val?.trim() ? val.trim() : null))
+  .refine(
+    (val) => {
+      if (val === null) return true;
+      try {
+        const parsed = new URL(val);
+        return parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    { message: "Social URL must be a valid https:// URL" }
+  );
+
+const optionalEmailSchema = z
+  .string()
+  .nullish()
+  .transform((val) => (val?.trim() ? val.trim() : null))
+  .refine((val) => val === null || z.string().email().safeParse(val).success, {
+    message: "Invalid email address",
+  });
+
 const settingsSchema = z.object({
   codEnabled: z.boolean().optional(),
   codOrderCap: z.number().int().min(0).optional(),
@@ -82,6 +107,19 @@ const settingsSchema = z.object({
   grievanceOfficerEmail: z.string().trim().email("Invalid grievance officer email address").nullish().or(z.literal("")),
   grievanceOfficerPhone: optionalPhoneSchema,
   grievanceOfficerAddress: z.string().nullish(),
+  businessAddressLine1: z.string().nullish(),
+  businessAddressLine2: z.string().nullish(),
+  businessCity: z.string().nullish(),
+  pickupAddressLine1: z.string().nullish(),
+  pickupAddressLine2: z.string().nullish(),
+  pickupCity: z.string().nullish(),
+  pickupPincode: optionalPincodeSchema,
+  pickupPhone: optionalPhoneSchema,
+  ordersEmail: optionalEmailSchema,
+  replyToEmail: optionalEmailSchema,
+  dispatchHandlingNote: z.string().nullish(),
+  instagramUrl: optionalHttpsUrlSchema,
+  facebookUrl: optionalHttpsUrlSchema,
 });
 
 function formatAuditValue(key: string, val: unknown): unknown {
@@ -145,6 +183,19 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
       grievanceOfficerEmail: validated.grievanceOfficerEmail !== undefined ? (validated.grievanceOfficerEmail?.trim() || null) : current.grievanceOfficerEmail,
       grievanceOfficerPhone: validated.grievanceOfficerPhone !== undefined ? validated.grievanceOfficerPhone : current.grievanceOfficerPhone,
       grievanceOfficerAddress: validated.grievanceOfficerAddress !== undefined ? (validated.grievanceOfficerAddress?.trim() || null) : current.grievanceOfficerAddress,
+      businessAddressLine1: validated.businessAddressLine1 !== undefined ? (validated.businessAddressLine1?.trim() || null) : current.businessAddressLine1,
+      businessAddressLine2: validated.businessAddressLine2 !== undefined ? (validated.businessAddressLine2?.trim() || null) : current.businessAddressLine2,
+      businessCity: validated.businessCity !== undefined ? (validated.businessCity?.trim() || null) : current.businessCity,
+      pickupAddressLine1: validated.pickupAddressLine1 !== undefined ? (validated.pickupAddressLine1?.trim() || null) : current.pickupAddressLine1,
+      pickupAddressLine2: validated.pickupAddressLine2 !== undefined ? (validated.pickupAddressLine2?.trim() || null) : current.pickupAddressLine2,
+      pickupCity: validated.pickupCity !== undefined ? (validated.pickupCity?.trim() || null) : current.pickupCity,
+      pickupPincode: validated.pickupPincode !== undefined ? validated.pickupPincode : current.pickupPincode,
+      pickupPhone: validated.pickupPhone !== undefined ? validated.pickupPhone : current.pickupPhone,
+      ordersEmail: validated.ordersEmail !== undefined ? validated.ordersEmail : current.ordersEmail,
+      replyToEmail: validated.replyToEmail !== undefined ? validated.replyToEmail : current.replyToEmail,
+      dispatchHandlingNote: validated.dispatchHandlingNote !== undefined ? (validated.dispatchHandlingNote?.trim() || null) : current.dispatchHandlingNote,
+      instagramUrl: validated.instagramUrl !== undefined ? validated.instagramUrl : current.instagramUrl,
+      facebookUrl: validated.facebookUrl !== undefined ? validated.facebookUrl : current.facebookUrl,
     },
   });
 

@@ -5,17 +5,23 @@ import Link from "next/link";
 import { subscribeNewsletter } from "@/lib/actions/newsletter";
 
 interface FooterProps {
-  businessName?: string;
-  businessTagline?: string;
+  businessName?: string | null;
+  businessTagline?: string | null;
   legalName?: string | null;
   businessAddress?: string | null;
+  supportEmail?: string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
 }
 
 export default function Footer({
-  businessName = "habitt",
-  businessTagline = "Considered minimalist basics — heavier fabrics, honest fits, made to wear in over years.",
+  businessName,
+  businessTagline,
   legalName,
   businessAddress,
+  supportEmail,
+  instagramUrl,
+  facebookUrl,
 }: FooterProps = {}) {
   const [email, setEmail] = useState("");
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -42,14 +48,16 @@ export default function Footer({
     });
   }
 
-  const displayName = legalName || businessName || "habitt";
+  const displayName = legalName || businessName || "";
 
   return (
     <footer className="mt-20 border-t border-stone bg-paper text-ink">
       <div className="max-w-6xl mx-auto px-4 sm:px-7 py-12 grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* Column 1: Brand & Tagline */}
         <div className="space-y-3">
-          <h4 className="font-display font-medium text-lg tracking-[0.02em]">{businessName}</h4>
+          {businessName && (
+            <h4 className="font-display font-medium text-lg tracking-[0.02em]">{businessName}</h4>
+          )}
           {businessTagline && (
             <p className="text-xs text-stone-dark leading-relaxed max-w-xs">
               {businessTagline}
@@ -60,9 +68,32 @@ export default function Footer({
               {businessAddress}
             </p>
           )}
-          <p className="text-[11px] text-stone-dark font-mono pt-2">
-            © {new Date().getFullYear()} {displayName}. All rights reserved.
-          </p>
+          {supportEmail && (
+            <p className="text-xs text-stone-dark">
+              <a href={`mailto:${supportEmail}`} className="hover:underline">
+                {supportEmail}
+              </a>
+            </p>
+          )}
+          {(instagramUrl || facebookUrl) && (
+            <div className="flex items-center gap-3 pt-1 text-xs">
+              {instagramUrl && (
+                <a href={instagramUrl} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80">
+                  Instagram
+                </a>
+              )}
+              {facebookUrl && (
+                <a href={facebookUrl} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80">
+                  Facebook
+                </a>
+              )}
+            </div>
+          )}
+          {displayName && (
+            <p className="text-[11px] text-stone-dark font-mono pt-2">
+              © {new Date().getFullYear()} {displayName}. All rights reserved.
+            </p>
+          )}
         </div>
 
         {/* Column 2: Support & Trust Links */}

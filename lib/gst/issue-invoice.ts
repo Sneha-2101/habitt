@@ -124,10 +124,20 @@ export async function issueInvoiceForOrder(
   });
   const productMap = new Map(products.map((p) => [p.id, p]));
 
-  const sellerName = siteSettings?.businessName || "habitt";
+  const sellerName = siteSettings?.legalName?.trim() || siteSettings?.businessName?.trim() || "";
   const sellerGstin = siteSettings?.gstin || null;
+  const structuredAddress = [
+    siteSettings?.businessAddressLine1,
+    siteSettings?.businessAddressLine2,
+    siteSettings?.businessCity,
+    siteSettings?.businessState,
+    siteSettings?.businessPincode,
+  ]
+    .map((v) => v?.trim())
+    .filter((v): v is string => Boolean(v))
+    .join(", ");
   const sellerAddress = {
-    address: siteSettings?.businessAddress || "",
+    address: structuredAddress || siteSettings?.businessAddress || "",
     phone: siteSettings?.businessPhone || "",
     email: siteSettings?.supportEmail || "",
   };

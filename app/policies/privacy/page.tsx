@@ -1,9 +1,14 @@
 import { getSettings } from "@/lib/settings";
+import { getContent } from "@/lib/content/content";
+import { ContentBlocks } from "@/components/ContentBlocks";
 
 export const dynamic = "force-dynamic";
 
 export default async function PrivacyPolicyPage() {
-  const settings = await getSettings();
+  const [settings, extraContent] = await Promise.all([
+    getSettings(),
+    getContent("policy.privacy").catch(() => null),
+  ]);
 
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-7 py-12 space-y-8 text-ink">
@@ -40,6 +45,12 @@ export default async function PrivacyPolicyPage() {
               For questions regarding your personal data or privacy rights, please email {settings.supportEmail}.
             </p>
           </>
+        )}
+
+        {extraContent?.isPublished && extraContent.body.trim().length > 0 && (
+          <div className="pt-4 border-t border-stone/40">
+            <ContentBlocks body={extraContent.body} />
+          </div>
         )}
       </section>
     </main>

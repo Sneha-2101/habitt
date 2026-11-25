@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { getSettings } from "@/lib/settings";
+import { getContent } from "@/lib/content/content";
+import { ContentBlocks } from "@/components/ContentBlocks";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReturnsPolicyPage() {
-  const settings = await getSettings();
+  const [settings, extraContent] = await Promise.all([
+    getSettings(),
+    getContent("policy.returns").catch(() => null),
+  ]);
   const days = settings.returnWindowDays || 7;
   const refundHours = settings.refundProcessingHours || 48;
 
@@ -54,6 +59,12 @@ export default async function ReturnsPolicyPage() {
             Sign in to your account, visit <Link href="/account" className="underline text-ink font-medium">My Orders</Link>, expand your delivered order, and click &quot;Request Return / Refund&quot;.
           </p>
         </section>
+
+        {extraContent?.isPublished && extraContent.body.trim().length > 0 && (
+          <section className="space-y-2 pt-4 border-t border-stone/40">
+            <ContentBlocks body={extraContent.body} />
+          </section>
+        )}
       </div>
     </main>
   );
