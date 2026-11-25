@@ -51,12 +51,6 @@ export default function WalletAdjustForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 border border-stone bg-white p-5">
-      <div className="border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-        <strong>Notice:</strong> Wallet is not live for customers yet. Balances here are not
-        spendable at checkout until the cutover. Spendable store credit today is the legacy
-        balance.
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs uppercase tracking-wider text-stone-dark mb-1">

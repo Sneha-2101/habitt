@@ -1,3 +1,5 @@
+export const WALLET_RESTORE_GRACE_DAYS = 7;
+
 export interface AllocatableLot {
   id: string;
   remainingPaise: number;
@@ -15,6 +17,22 @@ export interface AllocateResult {
   allocations: LotAllocation[];
   totalAllocatedPaise: number;
   shortfallPaise: number;
+}
+
+/**
+ * Compute expiration date for a newly issued wallet lot.
+ * PROMO lots expire after promoDays; REFUND and ADJUST lots never expire (null).
+ */
+export function computeExpiresAt(
+  _sourceType: string | null | undefined,
+  kind: "REFUND" | "PROMO" | "ADJUST",
+  now: Date,
+  promoDays: number
+): Date | null {
+  if (kind === "PROMO") {
+    return new Date(now.getTime() + promoDays * 24 * 60 * 60 * 1000);
+  }
+  return null;
 }
 
 /**

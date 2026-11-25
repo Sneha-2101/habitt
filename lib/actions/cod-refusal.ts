@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { releaseOfferUsage } from "@/lib/offers/release";
 import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
 import { issueRefund } from "@/lib/refunds/issue-refund";
+import { restoreWalletDebit } from "@/lib/wallet/service";
 
 export async function markCodRefused(orderId: string, note?: string) {
   await requireStaff();
@@ -61,18 +62,12 @@ export async function markCodRefused(orderId: string, note?: string) {
 
     // 3. Restore any storeCreditApplied
     if (order.storeCreditApplied > 0 && order.userId) {
-      await tx.user.update({
-        where: { id: order.userId },
-        data: { storeCreditBalance: { increment: order.storeCreditApplied } },
-      });
-
-      await tx.storeCreditTransaction.create({
-        data: {
-          userId: order.userId,
-          amount: order.storeCreditApplied,
-          reason: `Restored store credit for refused COD Order #${order.displayId}`,
-          relatedOrderId: order.id,
-        },
+      await restoreWalletDebit(tx, {
+        userId: order.userId,
+        orderId: order.id,
+        amountPaise: order.storeCreditApplied,
+        reason: `Restored store credit for refused COD Order #${order.displayId}`,
+        idempotencyKey: `cod-refusal-restore:${order.id}`,
       });
     }
 

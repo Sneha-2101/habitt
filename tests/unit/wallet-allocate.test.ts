@@ -64,4 +64,20 @@ describe("wallet/allocate", () => {
     expect(() => allocateWalletDebit(lots, -100, now)).toThrow();
     expect(() => allocateWalletDebit(lots, 12.5, now)).toThrow();
   });
+
+  it("tie-breaks equal expiresAt by createdAt ascending then id ascending", () => {
+    const sameExpiry = new Date("2026-06-15T00:00:00.000Z");
+    const lots: AllocatableLot[] = [
+      makeLot({ id: "lot-b", remainingPaise: 2000, expiresAt: sameExpiry, createdAt: new Date("2026-05-01T00:00:00.000Z") }),
+      makeLot({ id: "lot-a", remainingPaise: 2000, expiresAt: sameExpiry, createdAt: new Date("2026-05-01T00:00:00.000Z") }),
+      makeLot({ id: "lot-c", remainingPaise: 2000, expiresAt: sameExpiry, createdAt: new Date("2026-05-02T00:00:00.000Z") }),
+    ];
+
+    const res = allocateWalletDebit(lots, 4500, now);
+    expect(res.allocations).toEqual([
+      { lotId: "lot-a", amountPaise: 2000, newRemainingPaise: 0 },
+      { lotId: "lot-b", amountPaise: 2000, newRemainingPaise: 0 },
+      { lotId: "lot-c", amountPaise: 500, newRemainingPaise: 1500 },
+    ]);
+  });
 });

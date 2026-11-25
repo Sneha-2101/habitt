@@ -10,6 +10,7 @@ import {
   CouponEvaluationResult,
 } from "@/lib/offers/evaluate";
 import { loadOfferEvaluationData, enrichCartLines } from "@/lib/offers/load";
+import { getWalletBalance } from "@/lib/wallet/service";
 
 export interface QuoteItemInput {
   productId: string;
@@ -371,15 +372,17 @@ export async function calculateQuote({
   // (7) COD fee and COD eligibility
   let availableStoreCredit = 0;
   if (useStoreCredit && userId) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { storeCreditBalance: true },
-    });
-    availableStoreCredit = user?.storeCreditBalance || 0;
+    availableStoreCredit = await getWalletBalance(prisma, userId);
   }
 
+  const maxWalletPct = settings.walletMaxPercentOfOrder ?? 100;
   let effectiveMethod = paymentMethod;
-  if (useStoreCredit && availableStoreCredit > 0 && availableStoreCredit >= postDiscountSubtotal) {
+  if (
+    maxWalletPct === 100 &&
+    useStoreCredit &&
+    availableStoreCredit > 0 &&
+    availableStoreCredit >= postDiscountSubtotal
+  ) {
     effectiveMethod = "STORE_CREDIT";
   }
 
@@ -395,11 +398,12 @@ export async function calculateQuote({
     reason: codCheck.message || codCheck.reason,
   };
 
-  // (8) Store credit as last tender
+  // (8) Store credit as last tender (capped by walletMaxPercentOfOrder)
   const orderTotalWithFees = Math.max(0, postDiscountSubtotal + shippingFee + codFee);
+  const walletCap = Math.floor((orderTotalWithFees * maxWalletPct) / 100);
   let storeCreditApplied = 0;
   if (useStoreCredit && availableStoreCredit > 0) {
-    storeCreditApplied = Math.min(availableStoreCredit, orderTotalWithFees);
+    storeCreditApplied = Math.min(availableStoreCredit, walletCap, orderTotalWithFees);
   }
 
   // (9) Final total

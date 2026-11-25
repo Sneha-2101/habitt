@@ -1,6 +1,7 @@
 import { Prisma, Order } from "@prisma/client";
 import { releaseStock } from "@/lib/stock";
 import { releaseOfferUsage } from "@/lib/offers/release";
+import { restoreWalletDebit } from "@/lib/wallet/service";
 
 export type OrderWithItems = Order & {
   items: Array<{ variantId: string; qty: number }>;
@@ -29,17 +30,12 @@ export async function failOrder(
 
   // 2. Restore storeCreditApplied if any
   if (order.storeCreditApplied > 0) {
-    await tx.user.update({
-      where: { id: order.userId },
-      data: { storeCreditBalance: { increment: order.storeCreditApplied } },
-    });
-    await tx.storeCreditTransaction.create({
-      data: {
-        userId: order.userId,
-        amount: order.storeCreditApplied,
-        reason: `Store credit refunded from failed order ${order.displayId}`,
-        relatedOrderId: order.id,
-      },
+    await restoreWalletDebit(tx, {
+      userId: order.userId,
+      orderId: order.id,
+      amountPaise: order.storeCreditApplied,
+      reason: `Store credit refunded from failed order ${order.displayId}`,
+      idempotencyKey: `fail-order-restore:${order.id}`,
     });
   }
 

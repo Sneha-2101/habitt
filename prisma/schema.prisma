@@ -196,7 +196,7 @@ model SiteSettings {
   dispatchHandlingNote      String?
   instagramUrl              String?
   facebookUrl               String?
-  promoCreditExpiryDays     Int        @default(90)
+  promoCreditExpiryDays     Int        @default(180)
   walletMaxPercentOfOrder   Int        @default(100)
   maxAdminAdjustPaise       Int        @default(500000)
   updatedAt                 DateTime   @updatedAt
@@ -294,7 +294,7 @@ model User {
   emailVerifiedAt         DateTime?
   phoneVerifiedAt         DateTime?
   cart                    Cart?
-  /// LEGACY: live spendable store credit until M6a-2 cutover (dropped in M8).
+  /// FROZEN: legacy store credit balance (replaced by WalletLot/WalletEntry in M6a-2, dropped in M8).
   storeCreditBalance      Int                      @default(0) // paise
   role                    Role                     @default(CUSTOMER)
   status                  UserStatus               @default(ACTIVE)
@@ -316,7 +316,7 @@ model User {
   createdAt               DateTime                 @default(now())
 }
 
-/// LEGACY: live store credit ledger until M6a-2 cutover (dropped in M8).
+/// FROZEN: legacy store credit ledger (replaced by WalletLot/WalletEntry in M6a-2, dropped in M8).
 model StoreCreditTransaction {
   id             String   @id @default(cuid())
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -338,11 +338,12 @@ enum WalletEntryType {
   DEBIT
   EXPIRE
   ADJUST
+  RESTORE
 }
 
 model WalletLot {
   id             String        @id @default(cuid())
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
   userId         String
   kind           WalletLotKind
   originalPaise  Int
@@ -362,9 +363,9 @@ model WalletLot {
 
 model WalletEntry {
   id                String          @id @default(cuid())
-  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Restrict)
   userId            String
-  lot               WalletLot?      @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  lot               WalletLot?      @relation(fields: [lotId], references: [id], onDelete: Restrict)
   lotId             String?
   type              WalletEntryType
   amountPaise       Int

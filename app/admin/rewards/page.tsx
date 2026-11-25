@@ -5,6 +5,7 @@ import { ForbiddenError, requireRole, UnauthorizedError } from "@/lib/guards";
 import { formatINR } from "@/lib/money";
 import { getWalletSummary } from "@/lib/wallet/service";
 import WalletAdjustForm from "./WalletAdjustForm";
+import RewardSettingsForm from "./RewardSettingsForm";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,12 @@ export default async function AdminRewardsPage({
     },
   });
 
+  const rewardSettings = {
+    promoCreditExpiryDays: settings?.promoCreditExpiryDays ?? 180,
+    walletMaxPercentOfOrder: settings?.walletMaxPercentOfOrder ?? 100,
+    maxAdminAdjustPaise: settings?.maxAdminAdjustPaise ?? 500000,
+  };
+
   const customers = await prisma.user.findMany({
     where: q
       ? {
@@ -55,7 +62,6 @@ export default async function AdminRewardsPage({
       email: true,
       phone: true,
       role: true,
-      storeCreditBalance: true,
       createdAt: true,
     },
     orderBy: { createdAt: "desc" },
@@ -71,7 +77,6 @@ export default async function AdminRewardsPage({
           email: true,
           phone: true,
           role: true,
-          storeCreditBalance: true,
         },
       })
     : customers[0] || null;
@@ -84,23 +89,19 @@ export default async function AdminRewardsPage({
     <div className="max-w-6xl mx-auto px-7 py-8 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl text-ink">Rewards &amp; Wallet (Foundation)</h1>
+          <h1 className="font-display text-2xl text-ink">Rewards &amp; Wallet</h1>
           <p className="text-xs text-stone-dark mt-1">
-            OWNER-only wallet ledger preview and manual adjustments.
+            Customer spendable store credit is now the wallet balance.
           </p>
         </div>
         <div className="text-xs text-stone-dark">
-          Promo expiry: <strong>{settings?.promoCreditExpiryDays ?? 90}d</strong> | Max order
-          cap: <strong>{settings?.walletMaxPercentOfOrder ?? 100}%</strong> | Max adjust:{" "}
-          <strong>{formatINR(settings?.maxAdminAdjustPaise ?? 500000)}</strong>
+          Promo expiry: <strong>{rewardSettings.promoCreditExpiryDays}d</strong> | Max order
+          cap: <strong>{rewardSettings.walletMaxPercentOfOrder}%</strong> | Max adjust:{" "}
+          <strong>{formatINR(rewardSettings.maxAdminAdjustPaise)}</strong>
         </div>
       </div>
 
-      <div className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        <strong>Not Live Yet:</strong> Wallet is not live for customers yet. Balances here are not
-        spendable at checkout until the cutover. Spendable store credit today is the legacy
-        balance.
-      </div>
+      <RewardSettingsForm initialSettings={rewardSettings} />
 
       <form method="GET" className="flex gap-2">
         <input
@@ -138,10 +139,7 @@ export default async function AdminRewardsPage({
                   }`}
                 >
                   <div className="text-ink">{c.name || c.email || c.phone || c.id}</div>
-                  <div className="text-stone-dark">
-                    {c.email || c.phone || "No contact"} &middot; Legacy:{" "}
-                    {formatINR(c.storeCreditBalance)}
-                  </div>
+                  <div className="text-stone-dark">{c.email || c.phone || "No contact"}</div>
                 </Link>
               );
             })}
@@ -164,16 +162,10 @@ export default async function AdminRewardsPage({
                   </div>
                   <div className="text-right space-y-1">
                     <div className="text-xs uppercase tracking-wider text-stone-dark">
-                      Wallet Balance (Not Spendable Yet)
+                      Wallet Balance
                     </div>
                     <div className="text-2xl font-display text-ink">
                       {formatINR(summary.balancePaise)}
-                    </div>
-                    <div className="text-xs text-stone-dark">
-                      Legacy Store Credit (spendable today, read-only):{" "}
-                      <strong className="text-ink">
-                        {formatINR(activeCustomer.storeCreditBalance)}
-                      </strong>
                     </div>
                   </div>
                 </div>
@@ -196,7 +188,7 @@ export default async function AdminRewardsPage({
 
               <WalletAdjustForm
                 userId={activeCustomer.id}
-                maxAdminAdjustPaise={settings?.maxAdminAdjustPaise ?? 500000}
+                maxAdminAdjustPaise={rewardSettings.maxAdminAdjustPaise}
               />
 
               <div className="border border-stone bg-white p-5 space-y-3">

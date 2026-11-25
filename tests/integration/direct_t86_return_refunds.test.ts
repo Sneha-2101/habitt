@@ -7,6 +7,7 @@ import {
   cleanupM1TestRows,
 } from "../helpers/fixtures";
 import { SiteSettings } from "@prisma/client";
+import { getWalletBalance } from "@/lib/wallet/service";
 
 let mockCurrentUser: { id: string; role: string } = { id: "default_user", role: "STAFF" };
 const mockRefund = vi.fn();
@@ -294,9 +295,8 @@ describe("T86: Return Refunds & Restock Invariants", () => {
     expect(failed).toHaveLength(1);
     expect((failed[0] as PromiseRejectedResult).reason?.message).toMatch(/already being refunded/i);
 
-    // User store credit incremented exactly once (150000 paise)
-    const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(updatedUser?.storeCreditBalance).toBe(150000);
+    // User wallet balance incremented exactly once (150000 paise)
+    expect(await getWalletBalance(prisma, user.id)).toBe(150000);
 
     const refunds = await prisma.refund.findMany({ where: { returnId: returnReq.id } });
     expect(refunds).toHaveLength(1);
@@ -431,8 +431,7 @@ describe("T86: Return Refunds & Restock Invariants", () => {
     expect(res1.success).toBe(true);
     expect(res1.refund.amountPaise).toBe(100000); // Only item price, no fees!
 
-    const userAfterPart = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(userAfterPart?.storeCreditBalance).toBe(100000);
+    expect(await getWalletBalance(prisma, user.id)).toBe(100000);
 
     const orderAfterPart = await prisma.order.findUnique({ where: { id: order.id } });
     expect(orderAfterPart?.feesRefunded).toBe(false);
@@ -452,8 +451,7 @@ describe("T86: Return Refunds & Restock Invariants", () => {
     // 120000 item + 5000 shipping + 5000 codFee = 130000
     expect(res2.refund.amountPaise).toBe(130000);
 
-    const userAfterComplete = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(userAfterComplete?.storeCreditBalance).toBe(230000);
+    expect(await getWalletBalance(prisma, user.id)).toBe(230000);
 
     const orderAfterComplete = await prisma.order.findUnique({
       where: { id: order.id },

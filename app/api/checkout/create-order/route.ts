@@ -8,6 +8,8 @@ import { reserveStock, InsufficientStockError } from "@/lib/stock";
 import { failOrder } from "@/lib/orders/fail-order";
 import { limit } from "@/lib/ratelimit";
 import { calculateQuote } from "@/lib/pricing/quote";
+import { debitWallet, getWalletBalance } from "@/lib/wallet/service";
+import { getSettings } from "@/lib/settings";
 import { z } from "zod";
 
 class StoreCreditConflictError extends Error {
@@ -289,30 +291,17 @@ export async function POST(req: Request) {
           }
         }
 
-        // 4b. Store credit debit inside transaction (never read outside)
+        // 4b. Compute store credit cap inside transaction (debit happens after order row creation so orderId is linked)
         if (data.useStoreCredit) {
-          const userRecord = await tx.user.findUnique({
-            where: { id: userId },
-            select: { storeCreditBalance: true },
-          });
-          const available = userRecord?.storeCreditBalance || 0;
+          const [available, siteSettings] = await Promise.all([
+            getWalletBalance(tx, userId),
+            getSettings(),
+          ]);
           if (available > 0) {
-            storeCreditApplied = Math.min(available, total);
+            const maxPct = siteSettings.walletMaxPercentOfOrder ?? 100;
+            const walletCap = Math.floor((total * maxPct) / 100);
+            storeCreditApplied = Math.min(available, walletCap, total);
             payable = total - storeCreditApplied;
-
-            const debit = await tx.user.updateMany({
-              where: {
-                id: userId,
-                storeCreditBalance: { gte: storeCreditApplied },
-              },
-              data: {
-                storeCreditBalance: { decrement: storeCreditApplied },
-              },
-            });
-
-            if (debit.count === 0) {
-              throw new StoreCreditConflictError("Store credit changed, please retry");
-            }
           }
         }
 
@@ -480,18 +469,27 @@ export async function POST(req: Request) {
           });
         }
 
-        // Record store credit transaction if applied
+        // Debit wallet inside the same transaction
         if (storeCreditApplied > 0) {
-          await tx.storeCreditTransaction.create({
-            data: {
-              userId,
-              amount: -storeCreditApplied,
-              reason: isZeroTotal
-                ? `Full payment for Order #${displayId}`
-                : `Partial store credit applied to Order #${displayId}`,
-              relatedOrderId: newOrder.id,
-            },
-          });
+          try {
+            await debitWallet(
+              {
+                userId,
+                amountPaise: storeCreditApplied,
+                orderId: newOrder.id,
+                reason: isZeroTotal
+                  ? `Full payment for Order #${displayId}`
+                  : `Partial store credit applied to Order #${displayId}`,
+                idempotencyKey: `order:${newOrder.id}:wallet`,
+              },
+              tx
+            );
+          } catch (err) {
+            if (err instanceof Error && err.message.includes("Insufficient wallet balance")) {
+              throw new StoreCreditConflictError("Store credit changed, please retry");
+            }
+            throw err;
+          }
         }
 
         // 4c. COD and zero-total store-credit orders: reserveStock strictly inside same transaction

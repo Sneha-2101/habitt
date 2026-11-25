@@ -18,6 +18,7 @@ vi.mock("@/lib/email", () => ({
 import { GET as closeStaleOrdersHandler } from "@/app/api/cron/close-stale-orders/route";
 import { GET as abandonedCartHandler } from "@/app/api/cron/abandoned-cart/route";
 import { GET as birthdayDiscountHandler } from "@/app/api/cron/birthday-discount/route";
+import { creditWalletLot, debitWallet, getWalletBalance } from "@/lib/wallet/service";
 
 describe("T12: Cron Handlers Auth & Execution", () => {
   const originalCronSecret = process.env.CRON_SECRET;
@@ -89,6 +90,8 @@ describe("T12: Cron Handlers Auth & Execution", () => {
       couponCode: coupon.code ?? undefined,
       createdAt: threeHoursAgo,
     });
+    await creditWalletLot({ userId: user.id, kind: "REFUND", amountPaise: 20000, reason: "T12 seed" });
+    await debitWallet({ userId: user.id, amountPaise: 20000, orderId: staleOrder.id, reason: "T12 order debit" });
 
     // 2. Order 1 hour old (RAZORPAY, PENDING)
     const oneHourAgo = new Date(Date.now() - 1 * 60 * 60 * 1000);
@@ -118,14 +121,13 @@ describe("T12: Cron Handlers Auth & Execution", () => {
     const updatedFresh = await prisma.order.findUnique({ where: { id: freshOrder.id } });
     expect(updatedFresh?.paymentStatus).toBe("PENDING");
 
-    // Store credit restored to user
-    const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(updatedUser?.storeCreditBalance).toBe(20000);
+    // Store credit restored to user's wallet
+    expect(await getWalletBalance(prisma, user.id)).toBe(20000);
 
-    // StoreCreditTransaction created
-    const creditTxs = await prisma.storeCreditTransaction.findMany({ where: { userId: user.id } });
-    expect(creditTxs).toHaveLength(1);
-    expect(creditTxs[0].amount).toBe(20000);
+    // WalletEntry RESTORE created
+    const restoreEntries = await prisma.walletEntry.findMany({ where: { userId: user.id, type: "RESTORE" } });
+    expect(restoreEntries).toHaveLength(1);
+    expect(restoreEntries[0].amountPaise).toBe(20000);
 
     // Coupon timesUsed decremented back to 0
     const updatedCoupon = await prisma.offer.findUnique({ where: { id: coupon.id } });

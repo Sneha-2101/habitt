@@ -10,6 +10,7 @@ import {
 } from "../helpers/fixtures";
 import { createSessionCookie } from "../helpers/session";
 import { failOrder } from "@/lib/orders/fail-order";
+import { getWalletBalance } from "@/lib/wallet/service";
 import { SiteSettings } from "@prisma/client";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
@@ -92,12 +93,12 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
     }
 
     // Final balance >= 0
-    const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(updatedUser?.storeCreditBalance).toBeGreaterThanOrEqual(0);
+    const balanceAfter = await getWalletBalance(prisma, user.id);
+    expect(balanceAfter).toBeGreaterThanOrEqual(0);
 
-    // Sum of -amount over user's StoreCreditTransaction rows <= 50000
-    const txs = await prisma.storeCreditTransaction.findMany({ where: { userId: user.id } });
-    const totalDebited = txs.reduce((sum, tx) => sum + -tx.amount, 0);
+    // Sum of -amount over user's DEBIT WalletEntry rows <= 50000
+    const txs = await prisma.walletEntry.findMany({ where: { userId: user.id, type: "DEBIT" } });
+    const totalDebited = txs.reduce((sum, tx) => sum + -tx.amountPaise, 0);
     expect(totalDebited).toBeLessThanOrEqual(50000);
 
     // At most one order for this user has storeCreditApplied > 0
@@ -109,8 +110,8 @@ describe("T8, T9 & T10: Store Credit, Coupons & COD Integrity", () => {
     // Transaction count is 0 or 1; if 1, amount is -50000 and final balance is 0
     expect([0, 1]).toContain(txs.length);
     if (txs.length === 1) {
-      expect(txs[0].amount).toBe(-50000);
-      expect(updatedUser?.storeCreditBalance).toBe(0);
+      expect(txs[0].amountPaise).toBe(-50000);
+      expect(balanceAfter).toBe(0);
     }
   });
 

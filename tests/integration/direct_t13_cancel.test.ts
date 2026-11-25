@@ -8,6 +8,7 @@ import {
   createTestOrder,
   cleanupM1TestRows,
 } from "../helpers/fixtures";
+import { creditWalletLot, debitWallet, getWalletBalance } from "@/lib/wallet/service";
 
 // Setup mocks
 let mockCurrentUser: { id: string; role: string } = { id: "default_user", role: "CUSTOMER" };
@@ -66,6 +67,8 @@ describe("T13: Cancellation Logic & Stock Integrity", () => {
       storeCreditApplied: 10000,
       couponCode: coupon.code ?? undefined,
     });
+    await creditWalletLot({ userId: user.id, kind: "REFUND", amountPaise: 10000, reason: "T13 seed" });
+    await debitWallet({ userId: user.id, amountPaise: 10000, orderId: order.id, reason: "T13 order debit" });
 
     await cancelOrderAsCustomer(order.id, "Customer changed mind");
 
@@ -81,9 +84,8 @@ describe("T13: Cancellation Logic & Stock Integrity", () => {
     const movements = await prisma.stockMovement.findMany({ where: { variantId: variant.id } });
     expect(movements).toHaveLength(0);
 
-    // Store credit restored
-    const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(updatedUser?.storeCreditBalance).toBe(10000);
+    // Store credit restored to wallet
+    expect(await getWalletBalance(prisma, user.id)).toBe(10000);
 
     // Coupon usage released
     const updatedCoupon = await prisma.offer.findUnique({ where: { id: coupon.id } });

@@ -102,6 +102,7 @@ export default function CheckoutPage() {
   // Payment Method & Store Credit selection
   const [paymentMethod, setPaymentMethod] = useState<"RAZORPAY" | "COD">("RAZORPAY");
   const [userStoreCreditBalance, setUserStoreCreditBalance] = useState<number>(0);
+  const [walletMaxPercentOfOrder, setWalletMaxPercentOfOrder] = useState<number>(100);
   const [useStoreCredit, setUseStoreCredit] = useState<boolean>(true);
 
   // Server Quote State (No price maths in the browser)
@@ -121,8 +122,12 @@ export default function CheckoutPage() {
       fetch("/api/account/profile")
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
-          if (data?.user?.storeCreditBalance) {
-            setUserStoreCreditBalance(data.user.storeCreditBalance);
+          const bal = data?.walletBalancePaise ?? data?.user?.storeCreditBalance ?? 0;
+          if (bal > 0) {
+            setUserStoreCreditBalance(bal);
+          }
+          if (typeof data?.walletMaxPercentOfOrder === "number") {
+            setWalletMaxPercentOfOrder(data.walletMaxPercentOfOrder);
           }
         })
         .catch(() => {});
@@ -430,9 +435,14 @@ export default function CheckoutPage() {
               />
               <label htmlFor="useStoreCredit" className="cursor-pointer">
                 <span className="text-xs font-semibold text-emerald-950 block">Apply Store Credit</span>
-                <span className="text-[11px] text-emerald-800">
+                <span className="text-[11px] text-emerald-800 block">
                   Available Balance: <strong>{formatINR(userStoreCreditBalance)}</strong>
                 </span>
+                {walletMaxPercentOfOrder < 100 && (
+                  <span className="text-[11px] text-emerald-800 block">
+                    Up to {walletMaxPercentOfOrder}% of the order can be paid from your wallet
+                  </span>
+                )}
               </label>
             </div>
             {quote && quote.storeCreditApplied > 0 && (

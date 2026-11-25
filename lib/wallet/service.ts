@@ -3,6 +3,7 @@ import { writeAudit } from "@/lib/audit";
 import {
   allocateWalletDebit,
   computeActiveWalletBalance,
+  WALLET_RESTORE_GRACE_DAYS,
 } from "@/lib/wallet/allocate";
 import type { Prisma, WalletEntryType, WalletLotKind } from "@prisma/client";
 
@@ -18,6 +19,13 @@ async function runInTx<T>(
   return prisma.$transaction(fn);
 }
 
+async function lockUserWallet(
+  db: Prisma.TransactionClient,
+  userId: string
+): Promise<void> {
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+}
+
 async function getActiveLotsForUser(
   db: DbClient,
   userId: string,
@@ -31,6 +39,18 @@ async function getActiveLotsForUser(
     },
     orderBy: [{ expiresAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
+}
+
+/**
+ * Read-only active wallet balance (no advisory lock), used by quote & UI.
+ */
+export async function getWalletBalance(
+  db: DbClient,
+  userId: string,
+  now: Date = new Date()
+): Promise<number> {
+  const activeLots = await getActiveLotsForUser(db, userId, now);
+  return computeActiveWalletBalance(activeLots, now);
 }
 
 export interface WalletSummary {
@@ -119,6 +139,8 @@ export async function creditWalletLot(
   const now = input.now ?? new Date();
 
   return runInTx(tx, async (db) => {
+    await lockUserWallet(db, input.userId);
+
     if (input.idempotencyKey) {
       const existing = await db.walletEntry.findUnique({
         where: { idempotencyKey: input.idempotencyKey },
@@ -205,15 +227,23 @@ export async function debitWallet(
   const entryType: WalletEntryType = input.type ?? "DEBIT";
 
   return runInTx(tx, async (db) => {
+    await lockUserWallet(db, input.userId);
+
     if (input.idempotencyKey) {
-      const existing = await db.walletEntry.findUnique({
-        where: { idempotencyKey: input.idempotencyKey },
+      const existing = await db.walletEntry.findMany({
+        where: {
+          OR: [
+            { idempotencyKey: input.idempotencyKey },
+            { idempotencyKey: { startsWith: `${input.idempotencyKey}:lot:` } },
+          ],
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
-      if (existing) {
+      if (existing.length > 0) {
         const lots = await getActiveLotsForUser(db, input.userId, now);
         return {
           idempotent: true,
-          entries: [existing],
+          entries: existing,
           balancePaise: computeActiveWalletBalance(lots, now),
         };
       }
@@ -240,7 +270,7 @@ export async function debitWallet(
         },
       });
       if (updated.count === 0) {
-        throw new Error("Wallet balance changed concurrently, please retry.");
+        throw new Error("Insufficient wallet balance.");
       }
 
       runningBalance -= alloc.amountPaise;
@@ -273,6 +303,271 @@ export async function debitWallet(
       balancePaise: runningBalance,
     };
   });
+}
+
+export interface RestoreWalletDebitInput {
+  userId: string;
+  orderId: string;
+  amountPaise?: number;
+  reason: string;
+  actorId?: string | null;
+  idempotencyKey?: string | null;
+  now?: Date;
+}
+
+/**
+ * Restore debited wallet funds for an order in LIFO order back into original lots.
+ * If an original lot is expired, creates a new lot of the same kind with
+ * expiresAt = now + WALLET_RESTORE_GRACE_DAYS.
+ */
+export async function restoreWalletDebit(
+  tx: Prisma.TransactionClient,
+  input: RestoreWalletDebitInput
+) {
+  const reason = input.reason.trim();
+  if (!reason) {
+    throw new Error("Restore reason is required.");
+  }
+  const now = input.now ?? new Date();
+
+  await lockUserWallet(tx, input.userId);
+
+  if (input.idempotencyKey) {
+    const existing = await tx.walletEntry.findMany({
+      where: {
+        OR: [
+          { idempotencyKey: input.idempotencyKey },
+          { idempotencyKey: { startsWith: `${input.idempotencyKey}:lot:` } },
+        ],
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    if (existing.length > 0) {
+      const lots = await getActiveLotsForUser(tx, input.userId, now);
+      return {
+        idempotent: true,
+        restoredPaise: existing.reduce((s, e) => s + e.amountPaise, 0),
+        entries: existing,
+        balancePaise: computeActiveWalletBalance(lots, now),
+      };
+    }
+  }
+
+  const orderEntries = await tx.walletEntry.findMany({
+    where: {
+      userId: input.userId,
+      orderId: input.orderId,
+      type: { in: ["DEBIT", "RESTORE"] },
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+
+  const totalDebited = orderEntries
+    .filter((e) => e.type === "DEBIT")
+    .reduce((s, e) => s + Math.abs(e.amountPaise), 0);
+  const totalRestored = orderEntries
+    .filter((e) => e.type === "RESTORE")
+    .reduce((s, e) => s + e.amountPaise, 0);
+
+  const restorable = Math.max(0, totalDebited - totalRestored);
+  if (restorable === 0) {
+    const lots = await getActiveLotsForUser(tx, input.userId, now);
+    return {
+      idempotent: false,
+      restoredPaise: 0,
+      entries: [],
+      balancePaise: computeActiveWalletBalance(lots, now),
+    };
+  }
+
+  const targetRestore =
+    input.amountPaise !== undefined
+      ? Math.min(input.amountPaise, restorable)
+      : restorable;
+
+  if (!Number.isInteger(targetRestore) || targetRestore <= 0) {
+    const lots = await getActiveLotsForUser(tx, input.userId, now);
+    return {
+      idempotent: false,
+      restoredPaise: 0,
+      entries: [],
+      balancePaise: computeActiveWalletBalance(lots, now),
+    };
+  }
+
+  // Track how much was already restored per lot (if any)
+  const restoredByLot = new Map<string, number>();
+  for (const e of orderEntries) {
+    if (e.type === "RESTORE" && e.lotId) {
+      restoredByLot.set(e.lotId, (restoredByLot.get(e.lotId) ?? 0) + e.amountPaise);
+    }
+  }
+
+  // Walk DEBIT entries in LIFO order
+  const debitEntriesLifo = orderEntries
+    .filter((e) => e.type === "DEBIT" && e.lotId !== null)
+    .slice()
+    .reverse();
+
+  let remainingToRestore = targetRestore;
+  let runningBalance = computeActiveWalletBalance(
+    await getActiveLotsForUser(tx, input.userId, now),
+    now
+  );
+  const createdEntries = [];
+  let entryIdx = 0;
+
+  for (const deb of debitEntriesLifo) {
+    if (remainingToRestore <= 0) break;
+    const lotId = deb.lotId!;
+    const debitedFromLot = Math.abs(deb.amountPaise);
+    const alreadyRestoredFromLot = restoredByLot.get(lotId) ?? 0;
+    const lotRestorable = Math.max(0, debitedFromLot - alreadyRestoredFromLot);
+    if (lotRestorable === 0) continue;
+
+    const take = Math.min(lotRestorable, remainingToRestore);
+    restoredByLot.set(lotId, alreadyRestoredFromLot + take);
+
+    const origLot = await tx.walletLot.findUnique({ where: { id: lotId } });
+    if (!origLot) continue;
+
+    const isExpired =
+      origLot.expiresAt !== null && origLot.expiresAt.getTime() <= now.getTime();
+
+    let targetLotId = origLot.id;
+
+    if (!isExpired && origLot.remainingPaise + take <= origLot.originalPaise) {
+      const upd = await tx.walletLot.updateMany({
+        where: {
+          id: origLot.id,
+          remainingPaise: { lte: origLot.originalPaise - take },
+        },
+        data: {
+          remainingPaise: { increment: take },
+        },
+      });
+      if (upd.count === 0) {
+        throw new Error("Failed to restore wallet lot within original cap.");
+      }
+    } else {
+      const graceExpiresAt = new Date(
+        now.getTime() + WALLET_RESTORE_GRACE_DAYS * 24 * 60 * 60 * 1000
+      );
+      const graceLot = await tx.walletLot.create({
+        data: {
+          userId: input.userId,
+          kind: origLot.kind,
+          originalPaise: take,
+          remainingPaise: take,
+          expiresAt: graceExpiresAt,
+          sourceType: "RESTORE_GRACE",
+          sourceId: `${input.orderId}:${origLot.id}:${entryIdx}`,
+          note: `Grace lot restored from expired lot ${origLot.id}`,
+        },
+      });
+      targetLotId = graceLot.id;
+    }
+
+    runningBalance += take;
+    const key =
+      input.idempotencyKey == null
+        ? null
+        : entryIdx === 0
+        ? input.idempotencyKey
+        : `${input.idempotencyKey}:lot:${targetLotId}:${entryIdx}`;
+
+    const entry = await tx.walletEntry.create({
+      data: {
+        userId: input.userId,
+        lotId: targetLotId,
+        type: "RESTORE",
+        amountPaise: take,
+        balanceAfterPaise: runningBalance,
+        orderId: input.orderId,
+        actorId: input.actorId ?? null,
+        reason,
+        idempotencyKey: key,
+      },
+    });
+
+    createdEntries.push(entry);
+    remainingToRestore -= take;
+    entryIdx += 1;
+  }
+
+  return {
+    idempotent: false,
+    restoredPaise: targetRestore - remainingToRestore,
+    entries: createdEntries,
+    balancePaise: runningBalance,
+  };
+}
+
+export interface RefundToWalletInput {
+  userId: string;
+  orderId: string;
+  amountPaise: number;
+  refundId: string;
+  reason: string;
+  actorId?: string | null;
+  now?: Date;
+}
+
+/**
+ * Refunds an amount to the user's wallet inside the caller's transaction:
+ * restores any restorable order debit first, then credits a non-expiring REFUND lot
+ * for any remainder. Idempotent per refundId.
+ */
+export async function refundToWallet(
+  tx: Prisma.TransactionClient,
+  input: RefundToWalletInput
+) {
+  if (!Number.isInteger(input.amountPaise) || input.amountPaise <= 0) {
+    throw new Error("Refund amount must be a positive integer (paise).");
+  }
+  const now = input.now ?? new Date();
+  await lockUserWallet(tx, input.userId);
+
+  const restoreRes = await restoreWalletDebit(tx, {
+    userId: input.userId,
+    orderId: input.orderId,
+    amountPaise: input.amountPaise,
+    reason: input.reason,
+    actorId: input.actorId ?? null,
+    idempotencyKey: `refund-restore:${input.refundId}`,
+    now,
+  });
+
+  const remainder = input.amountPaise - restoreRes.restoredPaise;
+  let creditedPaise = 0;
+  let finalBalance = restoreRes.balancePaise;
+
+  if (remainder > 0) {
+    const creditRes = await creditWalletLot(
+      {
+        userId: input.userId,
+        kind: "REFUND",
+        amountPaise: remainder,
+        expiresAt: null,
+        sourceType: "REFUND",
+        sourceId: input.refundId,
+        reason: input.reason,
+        actorId: input.actorId ?? null,
+        orderId: input.orderId,
+        idempotencyKey: `refund-credit:${input.refundId}`,
+        now,
+      },
+      tx
+    );
+    creditedPaise = remainder;
+    finalBalance = creditRes.balancePaise;
+  }
+
+  return {
+    restoredPaise: restoreRes.restoredPaise,
+    creditedPaise,
+    balancePaise: finalBalance,
+  };
 }
 
 export interface AdminAdjustWalletInput {
@@ -355,6 +650,8 @@ export async function expireWalletLots(now: Date = new Date()) {
   for (const lot of candidates) {
     const idempotencyKey = `expire:${lot.id}`;
     await prisma.$transaction(async (db) => {
+      await lockUserWallet(db, lot.userId);
+
       const existing = await db.walletEntry.findUnique({
         where: { idempotencyKey },
       });

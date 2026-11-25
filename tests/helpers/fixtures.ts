@@ -9,7 +9,8 @@ export function genId(prefix: string = "m1test"): string {
 
 export async function createTestUser(overrides: Partial<Parameters<typeof prisma.user.create>[0]["data"]> = {}) {
   const id = genId("m1test_usr");
-  return prisma.user.create({
+  const initialCredit = typeof overrides.storeCreditBalance === "number" ? overrides.storeCreditBalance : 0;
+  const user = await prisma.user.create({
     data: {
       id,
       name: `M1 Test User ${id}`,
@@ -19,6 +20,32 @@ export async function createTestUser(overrides: Partial<Parameters<typeof prisma
       ...overrides,
     },
   });
+  if (initialCredit > 0) {
+    const lot = await prisma.walletLot.create({
+      data: {
+        id: genId("m1test_wlot"),
+        userId: user.id,
+        kind: "REFUND",
+        originalPaise: initialCredit,
+        remainingPaise: initialCredit,
+        sourceType: "TEST_FIXTURE",
+        sourceId: user.id,
+        note: "Test fixture initial wallet balance",
+      },
+    });
+    await prisma.walletEntry.create({
+      data: {
+        id: genId("m1test_went"),
+        userId: user.id,
+        lotId: lot.id,
+        type: "CREDIT",
+        amountPaise: initialCredit,
+        balanceAfterPaise: initialCredit,
+        reason: "Test fixture initial wallet balance",
+      },
+    });
+  }
+  return user;
 }
 
 export async function createTestProduct(opts?: {
@@ -514,6 +541,29 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
         { userId: { startsWith: "m1test" } },
         { relatedOrderId: { in: m1OrderIds } },
         { relatedOrderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  // 4b. WalletEntry then WalletLot (RESTRICT FKs require deleting before User)
+  await prisma.walletEntry.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { userId: { in: m1UserIds } },
+        { userId: { startsWith: "m1test" } },
+        { orderId: { in: m1OrderIds } },
+        { orderId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
+  await prisma.walletLot.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { userId: { in: m1UserIds } },
+        { userId: { startsWith: "m1test" } },
       ],
     },
   });

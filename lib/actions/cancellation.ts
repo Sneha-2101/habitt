@@ -11,6 +11,7 @@ import { sendCancellationEmail } from "@/lib/email";
 import { releaseOfferUsage } from "@/lib/offers/release";
 import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
 import { issueRefund } from "@/lib/refunds/issue-refund";
+import { restoreWalletDebit } from "@/lib/wallet/service";
 
 export async function cancelOrderAsCustomer(orderId: string, reason: string) {
   const user = await requireUser();
@@ -62,18 +63,12 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
 
     // Restore store credit
     if (order.storeCreditApplied > 0 && order.userId) {
-      await tx.user.update({
-        where: { id: order.userId },
-        data: { storeCreditBalance: { increment: order.storeCreditApplied } },
-      });
-
-      await tx.storeCreditTransaction.create({
-        data: {
-          userId: order.userId,
-          amount: order.storeCreditApplied,
-          reason: `Refund store credit for cancelled Order #${order.displayId}`,
-          relatedOrderId: order.id,
-        },
+      await restoreWalletDebit(tx, {
+        userId: order.userId,
+        orderId: order.id,
+        amountPaise: order.storeCreditApplied,
+        reason: `Refund store credit for cancelled Order #${order.displayId}`,
+        idempotencyKey: `cancel-customer-restore:${order.id}`,
       });
     }
 
@@ -210,18 +205,12 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
 
     // Restore store credit
     if (order.storeCreditApplied > 0 && order.userId) {
-      await tx.user.update({
-        where: { id: order.userId },
-        data: { storeCreditBalance: { increment: order.storeCreditApplied } },
-      });
-
-      await tx.storeCreditTransaction.create({
-        data: {
-          userId: order.userId,
-          amount: storeCreditToRestore,
-          reason: `Refund store credit for cancelled Order #${order.displayId}`,
-          relatedOrderId: order.id,
-        },
+      await restoreWalletDebit(tx, {
+        userId: order.userId,
+        orderId: order.id,
+        amountPaise: order.storeCreditApplied,
+        reason: `Refund store credit for cancelled Order #${order.displayId}`,
+        idempotencyKey: `cancel-admin-restore:${order.id}`,
       });
     }
 

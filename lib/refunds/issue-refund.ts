@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
+import { refundToWallet } from "@/lib/wallet/service";
 import type { Refund, RefundMethod } from "@prisma/client";
 
 export interface IssueRefundInput {
@@ -165,18 +166,13 @@ export async function issueRefund(input: IssueRefundInput): Promise<IssueRefundR
           throw new Error("Order has no user account to receive store credit");
         }
 
-        await tx.user.update({
-          where: { id: order.userId },
-          data: { storeCreditBalance: { increment: amountPaise } },
-        });
-
-        await tx.storeCreditTransaction.create({
-          data: {
-            userId: order.userId,
-            amount: amountPaise,
-            reason: reason || `Refund voucher for Order #${order.displayId}`,
-            relatedOrderId: order.id,
-          },
+        await refundToWallet(tx, {
+          userId: order.userId,
+          orderId: order.id,
+          amountPaise,
+          refundId: refund.id,
+          reason: reason || `Refund voucher for Order #${order.displayId}`,
+          actorId: actorId || null,
         });
       }
 

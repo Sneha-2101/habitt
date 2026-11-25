@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   updateProfile,
@@ -404,6 +405,12 @@ export default function AccountClient({
             <span className="font-mono text-2xl font-bold text-emerald-900 block">
               {formatINR(user.storeCreditBalance || 0)}
             </span>
+            <Link
+              href="/account/wallet"
+              className="text-xs underline text-emerald-900 hover:text-emerald-950"
+            >
+              View Wallet &amp; Expiry Details &rarr;
+            </Link>
           </div>
         </div>
 

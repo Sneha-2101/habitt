@@ -7,6 +7,7 @@ import AccountSignOutButton from "@/components/AccountSignOutButton";
 import { legacyStage, getOrderStatusLabel } from "@/lib/orders/status-label";
 import { getSettings } from "@/lib/settings";
 import { isReturnWindowOpen, remainingReturnableQty } from "@/lib/returns/rules";
+import { getWalletSummary } from "@/lib/wallet/service";
 
 export default async function AccountPage() {
   const sessionUser = await getSessionUser();
@@ -14,7 +15,7 @@ export default async function AccountPage() {
 
   const userId = sessionUser.id;
 
-  const [user, addresses, orders, settings, rawTickets] = await Promise.all([
+  const [user, walletSummary, addresses, orders, settings, rawTickets] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -23,13 +24,9 @@ export default async function AccountPage() {
         email: true,
         phone: true,
         dateOfBirth: true,
-        storeCreditBalance: true,
-        storeCreditTransactions: {
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        },
       },
     }),
+    getWalletSummary(userId),
     prisma.address.findMany({
       where: { userId },
       orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
@@ -189,7 +186,16 @@ export default async function AccountPage() {
       </div>
 
       <AccountClient
-        user={user}
+        user={{
+          ...user,
+          storeCreditBalance: walletSummary.balancePaise,
+          storeCreditTransactions: walletSummary.recentEntries.slice(0, 20).map((e) => ({
+            id: e.id,
+            amount: e.amountPaise,
+            reason: e.reason,
+            createdAt: e.createdAt,
+          })),
+        }}
         addresses={addresses}
         orders={ordersWithStock}
         tickets={formattedTickets}

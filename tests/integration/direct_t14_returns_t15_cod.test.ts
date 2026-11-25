@@ -7,6 +7,7 @@ import {
   createTestOrder,
   cleanupM1TestRows,
 } from "../helpers/fixtures";
+import { creditWalletLot, debitWallet, getWalletBalance } from "@/lib/wallet/service";
 
 // Setup mocks
 let mockCurrentUser: { id: string; role: string } = { id: "default_user", role: "CUSTOMER" };
@@ -119,12 +120,11 @@ describe("T14 & T15: Returns and COD Refusal", () => {
     // 6. Initiate refund -> Store credit voucher issued exactly once for COD return (100000 paise)
     await refundReturn(returnReq.id);
 
-    const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(updatedUser?.storeCreditBalance).toBe(100000);
+    expect(await getWalletBalance(prisma, user.id)).toBe(100000);
 
-    const creditTxs = await prisma.storeCreditTransaction.findMany({ where: { userId: user.id } });
-    expect(creditTxs).toHaveLength(1);
-    expect(creditTxs[0].amount).toBe(100000);
+    const creditEntries = await prisma.walletEntry.findMany({ where: { userId: user.id, type: "CREDIT" } });
+    expect(creditEntries).toHaveLength(1);
+    expect(creditEntries[0].amountPaise).toBe(100000);
   });
 
   it("T15 COD refusal: SHIPPED COD order cancelled, stock restored only if deducted, credit & coupon released, non-COD throws", async () => {
@@ -158,6 +158,8 @@ describe("T14 & T15: Returns and COD Refusal", () => {
       storeCreditApplied: 15000,
       couponCode: coupon.code ?? undefined,
     });
+    await creditWalletLot({ userId: user.id, kind: "REFUND", amountPaise: 15000, reason: "T15 seed" });
+    await debitWallet({ userId: user.id, amountPaise: 15000, orderId: codOrder.id, reason: "T15 order debit" });
 
     await markCodRefused(codOrder.id, "Customer rejected delivery at door");
 
@@ -177,8 +179,7 @@ describe("T14 & T15: Returns and COD Refusal", () => {
     expect(movements[0].reason).toBe("RTO");
 
     // Store credit restored (15000)
-    const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(updatedUser?.storeCreditBalance).toBe(15000);
+    expect(await getWalletBalance(prisma, user.id)).toBe(15000);
 
     // Coupon released back to 0
     const updatedCoupon = await prisma.offer.findUnique({ where: { id: coupon.id } });
