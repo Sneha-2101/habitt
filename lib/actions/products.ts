@@ -10,6 +10,7 @@ import { sendBackInStockEmail } from "@/lib/email";
 import { writeAudit } from "@/lib/audit";
 import { productMerchandiseFields, toProductFieldData } from "@/lib/catalog/product-fields";
 import { validateImageBuffer } from "@/lib/uploads/image-check";
+import { validateImageColor } from "@/lib/catalog/image-color";
 import { planSlugChange } from "@/lib/seo/slug-redirects";
 import { z } from "zod";
 
@@ -529,6 +530,16 @@ export async function addProductImage(productId: string, formData: FormData) {
       ? rawAlt.trim().slice(0, 200)
       : null;
 
+  const rawColor = formData.get("color");
+  const variantRows = await prisma.productVariant.findMany({
+    where: { productId },
+    select: { color: true },
+  });
+  const color = validateImageColor(
+    typeof rawColor === "string" ? rawColor : null,
+    variantRows.map((v) => v.color)
+  );
+
   try {
     const publicUrl = await uploadFileToSupabase(file);
     const existingCount = await prisma.productImage.count({ where: { productId } });
@@ -538,6 +549,7 @@ export async function addProductImage(productId: string, formData: FormData) {
         productId,
         url: publicUrl,
         altText,
+        color,
         position: existingCount,
       },
     });
@@ -552,6 +564,7 @@ export async function addProductImage(productId: string, formData: FormData) {
   });
   if (product) revalidatePath(`/product/${product.slug}`);
   revalidatePath("/shop");
+  revalidatePath("/");
   revalidatePath(`/admin/products/${productId}/edit`);
   revalidatePath("/admin/products");
 }
@@ -580,11 +593,53 @@ export async function updateProductImageAlt(
 
   revalidatePath(`/product/${updated.product.slug}`);
   revalidatePath("/shop");
+  revalidatePath("/");
+  revalidatePath(`/admin/products/${productId}/edit`);
+}
+
+export async function updateProductImageColor(
+  imageId: string,
+  productId: string,
+  color: string | null
+) {
+  const staff = await requireStaff();
+  const variantRows = await prisma.productVariant.findMany({
+    where: { productId },
+    select: { color: true },
+  });
+  const canonicalColor = validateImageColor(
+    color,
+    variantRows.map((v) => v.color)
+  );
+
+  const updated = await prisma.productImage.update({
+    where: { id: imageId },
+    data: { color: canonicalColor },
+    include: { product: { select: { slug: true } } },
+  });
+
+  await writeAudit({
+    actorId: staff.id,
+    action: "product_image.color_update",
+    entity: "ProductImage",
+    entityId: imageId,
+    meta: { productId, color: canonicalColor },
+  });
+
+  revalidatePath(`/product/${updated.product.slug}`);
+  revalidatePath("/shop");
+  revalidatePath("/");
+  revalidatePath("/feed/google");
   revalidatePath(`/admin/products/${productId}/edit`);
 }
 
 export async function deleteProductImage(imageId: string, productId: string) {
   await requireStaff();
+
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { slug: true },
+  });
 
   const image = await prisma.productImage.findUnique({ where: { id: imageId } });
   if (image) {
@@ -600,6 +655,11 @@ export async function deleteProductImage(imageId: string, productId: string) {
     await prisma.productImage.delete({ where: { id: imageId } });
   }
 
+  if (product) {
+    revalidatePath(`/product/${product.slug}`);
+    revalidatePath("/shop");
+    revalidatePath("/");
+  }
   revalidatePath(`/admin/products/${productId}/edit`);
   revalidatePath("/admin/products");
 }

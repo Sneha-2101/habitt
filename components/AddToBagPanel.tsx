@@ -7,6 +7,7 @@ import SizeGuideModal from "@/components/SizeGuideModal";
 import { requestStockNotification } from "@/lib/actions/notifications";
 import { sortSizes } from "@/lib/catalog/categories";
 import { groupVariants, pickDefaultVariant } from "@/lib/catalog/variants";
+import { useProductColor } from "@/components/ProductColorContext";
 
 interface Variant {
   id: string;
@@ -69,6 +70,7 @@ export default function AddToBagPanel({
   const [notifyMsg, setNotifyMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [isSubmittingNotify, setIsSubmittingNotify] = useState(false);
 
+  const colorCtx = useProductColor();
   const add = useCartStore((s) => s.add);
   const open = useCartStore((s) => s.open);
 
@@ -87,6 +89,7 @@ export default function AddToBagPanel({
 
   const handleSelectColor = (colorName: string) => {
     setSelectedColor(colorName);
+    colorCtx?.setSelectedColor(colorName);
     setNotifyMsg(null);
     const colorGroup = grouped.colors.find((c) => c.color === colorName);
     if (colorGroup) {
@@ -109,6 +112,15 @@ export default function AddToBagPanel({
       color: activeVariant.color || undefined,
       unitPrice: price,
       qty: 1,
+    });
+
+    import("@/components/MetaPixel").then(({ trackPixelEvent }) => {
+      trackPixelEvent("AddToCart", {
+        content_ids: [activeVariant.id],
+        content_type: "product",
+        value: price / 100,
+        currency: "INR",
+      });
     });
 
     open();

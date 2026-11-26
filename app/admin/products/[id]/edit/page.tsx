@@ -9,6 +9,7 @@ import {
   addProductImage,
   deleteProductImage,
   updateProductImageAlt,
+  updateProductImageColor,
 } from "@/lib/actions/products";
 import { SeoFieldsWithCounter } from "@/components/admin/SeoFieldsWithCounter";
 import {
@@ -343,6 +344,32 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
                   </button>
                 </form>
                 <form
+                  action={async (fd: FormData) => {
+                    "use server";
+                    await updateProductImageColor(img.id, product.id, String(fd.get("color") ?? ""));
+                  }}
+                  className="flex gap-1"
+                >
+                  <select
+                    name="color"
+                    defaultValue={img.color ?? ""}
+                    className="flex-1 min-w-0 px-2 py-1 border border-stone bg-paper text-[11px]"
+                  >
+                    <option value="">All colors (untagged)</option>
+                    {colorGroups
+                      .map((cg) => cg.color)
+                      .filter(Boolean)
+                      .map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                  </select>
+                  <button type="submit" className="px-2 py-1 bg-ink text-paper text-[10.5px]">
+                    Save
+                  </button>
+                </form>
+                <form
                   action={async () => {
                     "use server";
                     await deleteProductImage(img.id, product.id);
@@ -374,6 +401,21 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             placeholder="Image alt text (optional)"
             className="sm:w-52 px-3 py-2 border border-stone bg-card text-[12px]"
           />
+          <select
+            name="color"
+            defaultValue=""
+            className="sm:w-44 px-3 py-2 border border-stone bg-card text-[12px]"
+          >
+            <option value="">All colors (untagged)</option>
+            {colorGroups
+              .map((cg) => cg.color)
+              .filter(Boolean)
+              .map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+          </select>
           <button type="submit" className="px-4 py-2.5 bg-ink text-paper text-[12px]">
             Upload image
           </button>

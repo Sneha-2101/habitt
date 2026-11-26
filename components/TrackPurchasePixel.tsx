@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { trackPixelEvent } from "@/components/MetaPixel";
+import { trackPurchaseOnce } from "@/components/MetaPixel";
 
 export default function TrackPurchasePixel({
   orderId,
@@ -11,11 +11,7 @@ export default function TrackPurchasePixel({
   totalRupees: number;
 }) {
   useEffect(() => {
-    trackPixelEvent("Purchase", {
-      value: totalRupees,
-      currency: "INR",
-      order_id: orderId,
-    });
+    trackPurchaseOnce(orderId, totalRupees);
   }, [orderId, totalRupees]);
 
   return null;

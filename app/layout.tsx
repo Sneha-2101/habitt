@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import WhatsAppWidget from "@/components/WhatsAppWidget";
 import Providers from "@/components/Providers";
 import MetaPixel from "@/components/MetaPixel";
+import ConsentNotice from "@/components/ConsentNotice";
 import RegisterSW from "@/components/pwa/RegisterSW";
 import { getSettings } from "@/lib/settings";
 import { buildBusinessProfile } from "@/lib/site/business";
@@ -75,6 +76,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             facebookUrl={profile.social.facebookUrl}
           />
           <WhatsAppWidget phoneNumber={settings.whatsappSupportNumber} />
+          <ConsentNotice />
         </Providers>
       </body>
     </html>

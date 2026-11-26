@@ -5,7 +5,11 @@ import { buildBusinessProfile } from "@/lib/site/business";
 import { getSiteUrl } from "@/lib/seo/site-url";
 import { isIndexingAllowed } from "@/lib/seo/indexing";
 import { storefrontProductWhere } from "@/lib/catalog/visibility";
-import { buildGoogleFeedXml, type GoogleFeedVariantItem } from "@/lib/seo/feed";
+import {
+  buildGoogleFeedXml,
+  resolveFeedVariantImageUrl,
+  type GoogleFeedVariantItem,
+} from "@/lib/seo/feed";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +39,7 @@ export async function GET() {
       slug: true,
       description: true,
       price: true,
-      images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+      images: { orderBy: { position: "asc" }, select: { url: true, color: true, position: true } },
       variants: {
         select: { id: true, sku: true, stock: true, color: true, size: true },
       },
@@ -45,9 +49,13 @@ export async function GET() {
 
   const items: GoogleFeedVariantItem[] = [];
   for (const p of products) {
-    const imgUrl = p.images[0]?.url || settings.ogDefaultImageUrl;
-    if (!imgUrl) continue;
     for (const v of p.variants) {
+      const imgUrl = resolveFeedVariantImageUrl(
+        p.images,
+        v.color,
+        settings.ogDefaultImageUrl
+      );
+      if (!imgUrl) continue;
       items.push({
         productId: p.id,
         variantId: v.id,

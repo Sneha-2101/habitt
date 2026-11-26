@@ -3,11 +3,11 @@
 import crypto from "crypto";
 import { headers } from "next/headers";
 import { z } from "zod";
-import { sendNewsletterWelcomeEmail } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { getClientIp } from "@/lib/client-ip";
 import { limit } from "@/lib/ratelimit";
+import { enqueueOutbox } from "@/lib/outbox/enqueue";
 
 const emailSchema = z.string().email("Please enter a valid email address.");
 
@@ -38,47 +38,62 @@ export async function subscribeNewsletter(email: string): Promise<{ success: boo
     throw new Error("Too many requests for this email address. Please try again later.");
   }
 
-  const existing = await prisma.newsletterSubscriber.findUnique({
-    where: { email: normalizedEmail },
-  });
-
-  await prisma.newsletterSubscriber.upsert({
-    where: { email: normalizedEmail },
-    update: { consentedAt: new Date() },
-    create: {
-      email: normalizedEmail,
-      consentedAt: new Date(),
-      source: "website",
-    },
-  });
-
-  if (existing) {
-    return { success: true };
-  }
-
   const settings = await getSettings();
   const welcomePercent = settings.welcomeCouponPercent ?? 10;
   const randomSuffix = crypto.randomBytes(3).toString("hex").toUpperCase();
   const code = `WELCOME-${randomSuffix}`;
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-  const offer = await prisma.offer.create({
-    data: {
-      name: `Welcome ${welcomePercent}% Off`,
-      kind: "PERCENT_OFF",
-      code,
-      active: true,
-      startsAt: new Date(),
-      endsAt: expiresAt,
-      audience: "FIRST_ORDER",
-      maxUsesTotal: 1,
-      maxUsesPerCustomer: 1,
-      priority: 100,
-      config: { percent: welcomePercent },
-    },
-  });
+  await prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const created = await tx.newsletterSubscriber.createMany({
+      data: [
+        {
+          email: normalizedEmail,
+          consentedAt: now,
+          source: "website",
+        },
+      ],
+      skipDuplicates: true,
+    });
 
-  await sendNewsletterWelcomeEmail(normalizedEmail, offer.code!);
+    if (created.count === 0) {
+      await tx.newsletterSubscriber.update({
+        where: { email: normalizedEmail },
+        data: { consentedAt: now },
+      });
+      return;
+    }
+
+    const offer = await tx.offer.create({
+      data: {
+        name: `Welcome ${welcomePercent}% Off`,
+        kind: "PERCENT_OFF",
+        code,
+        active: true,
+        startsAt: new Date(),
+        endsAt: expiresAt,
+        audience: "FIRST_ORDER",
+        maxUsesTotal: 1,
+        maxUsesPerCustomer: 1,
+        priority: 100,
+        config: { percent: welcomePercent },
+      },
+    });
+
+    await enqueueOutbox(
+      {
+        type: "WELCOME_COUPON",
+        channel: "EMAIL",
+        payload: {
+          email: normalizedEmail,
+          couponCode: offer.code!,
+        },
+        dedupeKey: `welcome-coupon:${offer.id}`,
+      },
+      tx
+    );
+  });
 
   return { success: true };
 }

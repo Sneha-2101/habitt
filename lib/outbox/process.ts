@@ -5,6 +5,7 @@ import {
   sendOutForDeliveryEmail,
   sendDeliveredEmail,
   sendTicketEventEmail,
+  sendNewsletterWelcomeEmail,
 } from "@/lib/email";
 import { isWhatsappMessagesLive } from "@/lib/whatsapp-flag";
 
@@ -24,6 +25,10 @@ function redactOutboxPayload(payload: unknown): Prisma.InputJsonValue | undefine
   }
   if ("accessToken" in copy) {
     copy.accessToken = "[redacted]";
+    modified = true;
+  }
+  if ("couponCode" in copy) {
+    copy.couponCode = "[redacted]";
     modified = true;
   }
   return modified ? (copy as Prisma.InputJsonObject) : undefined;
@@ -143,6 +148,13 @@ export async function processOutboxBatch(batchSize = 25): Promise<ProcessOutboxR
         } else if (item.type === "ORDER_DELIVERED" || item.type === "DELIVERED") {
           if (!orderId) throw new Error("Missing orderId in outbox payload");
           res = await sendDeliveredEmail(orderId);
+        } else if (item.type === "WELCOME_COUPON") {
+          const toEmail = typeof payloadObj?.email === "string" ? payloadObj.email : null;
+          const couponCode = typeof payloadObj?.couponCode === "string" ? payloadObj.couponCode : null;
+          if (!toEmail || !couponCode) {
+            throw new Error("Missing email or couponCode in WELCOME_COUPON outbox payload");
+          }
+          res = await sendNewsletterWelcomeEmail(toEmail, couponCode);
         } else {
           // Unknown email type, treat as sent
           res = { success: true };

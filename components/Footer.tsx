@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { subscribeNewsletter } from "@/lib/actions/newsletter";
+import CookieSettingsLink from "@/components/CookieSettingsLink";
 
 interface FooterProps {
   businessName?: string | null;
@@ -134,6 +135,9 @@ export default function Footer({
               <Link href="/policies/grievance" className="hover:underline text-ink">
                 Grievance Officer
               </Link>
+            </li>
+            <li>
+              <CookieSettingsLink />
             </li>
           </ul>
         </div>

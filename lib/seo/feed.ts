@@ -1,5 +1,20 @@
 import { stripMarkupAndCollapse } from "@/lib/seo/metadata";
 import { formatInrPrice } from "@/lib/seo/jsonld";
+import { normalizeColor } from "@/lib/catalog/image-color";
+
+export function resolveFeedVariantImageUrl(
+  images: ReadonlyArray<{ url: string; color?: string | null; position?: number }>,
+  variantColor: string | null | undefined,
+  ogDefaultImageUrl: string | null | undefined
+): string | null {
+  const sorted = [...images].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const normColor = normalizeColor(variantColor);
+  if (normColor) {
+    const tagged = sorted.find((img) => normalizeColor(img.color) === normColor);
+    if (tagged) return tagged.url;
+  }
+  return sorted[0]?.url || ogDefaultImageUrl || null;
+}
 
 export function escapeXml(str: string): string {
   return str

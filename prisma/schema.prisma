@@ -75,7 +75,10 @@ model ProductImage {
   productId String
   url       String
   altText   String?
+  color     String?
   position  Int     @default(0)
+
+  @@index([productId, color])
 }
 
 model ProductVariant {

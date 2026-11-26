@@ -5,17 +5,20 @@ import { formatINR } from "@/lib/money";
 import { savingsPaise } from "@/lib/catalog/pricing-display";
 import { CareTag } from "@/components/CareTag";
 import ProductImageGallery from "@/components/ProductImageGallery";
+import { ProductColorProvider } from "@/components/ProductColorContext";
 import AddToBagPanel from "@/components/AddToBagPanel";
 import WishlistButton from "@/components/WishlistButton";
 import StarRating from "@/components/StarRating";
 import ProductReviews from "@/components/ProductReviews";
 import RecordRecentlyViewed from "@/components/RecordRecentlyViewed";
+import TrackViewContentPixel from "@/components/TrackViewContentPixel";
 import JsonLd from "@/components/seo/JsonLd";
 import { getReviewsForProduct, getAverageRating } from "@/lib/actions/reviews";
 import { getSettings } from "@/lib/settings";
 import { buildBusinessProfile } from "@/lib/site/business";
 import { getActiveAutomaticOfferBadges, resolveOfferBadge } from "@/lib/offers/load";
 import { isProductVisible } from "@/lib/catalog/visibility";
+import { groupVariants, pickDefaultVariant } from "@/lib/catalog/variants";
 import { getSiteUrl } from "@/lib/seo/site-url";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { breadcrumbJsonLd, productJsonLd } from "@/lib/seo/jsonld";
@@ -114,6 +117,19 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   ]);
 
   const savings = savingsPaise(product.price, product.compareAtPrice);
+  const grouped = groupVariants(
+    product.variants.map((v) => ({
+      id: v.id,
+      size: v.size,
+      color: v.color || "",
+      colorHex: v.colorHex || null,
+      stock: v.stock,
+    })),
+    product.category?.sizes ?? []
+  );
+  const defaultColor = grouped.hasColors
+    ? pickDefaultVariant(grouped)?.color || grouped.colors[0]?.color || ""
+    : "";
 
   const profile = buildBusinessProfile(settings);
   const brandName = profile.displayName || profile.legalName || settings.businessName;
@@ -158,16 +174,23 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           imageUrl: product.images[0]?.url,
         }}
       />
-      <div className="grid md:grid-cols-2 gap-8 md:gap-10 items-start">
-        <div>
-          <ProductImageGallery
-            url={product.images[0]?.url}
-            category={product.category?.name?.toUpperCase() ?? ""}
-            productName={product.name}
-            altText={product.images[0]?.altText}
-            priority
-          />
-        </div>
+      <TrackViewContentPixel
+        productId={product.id}
+        productName={product.name}
+        priceRupees={product.price / 100}
+      />
+      <ProductColorProvider initialColor={defaultColor}>
+        <div className="grid md:grid-cols-2 gap-8 md:gap-10 items-start">
+          <div>
+            <ProductImageGallery
+              url={product.images[0]?.url}
+              images={product.images}
+              category={product.category?.name?.toUpperCase() ?? ""}
+              productName={product.name}
+              altText={product.images[0]?.altText}
+              priority
+            />
+          </div>
         <div>
           <div className="flex justify-between items-start gap-4">
             <h1 className="font-display text-2xl md:text-3xl font-medium leading-tight">
@@ -257,7 +280,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             freeShippingOnPrepaid={settings.freeShippingOnPrepaid}
           />
         </div>
-      </div>
+        </div>
+      </ProductColorProvider>
 
       {/* Product Reviews & Ratings Section */}
       <ProductReviews productId={product.id} reviews={reviews} />

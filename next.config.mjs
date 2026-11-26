@@ -1,12 +1,16 @@
 /** @type {import('next').NextConfig} */
+// Report-Only until manual testing of Razorpay, Pixel, Turnstile and Supabase images is complete; then switch to enforcing.
 const cspDirectives = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://connect.facebook.net https://challenges.cloudflare.com",
-  "frame-src https://api.razorpay.com https://checkout.razorpay.com https://challenges.cloudflare.com",
-  "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://www.facebook.com https://*.supabase.co",
-  "img-src 'self' data: blob: https://*.supabase.co https://www.facebook.com",
-  "font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com",
+  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""} https://checkout.razorpay.com https://connect.facebook.net https://challenges.cloudflare.com`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https://*.supabase.co https://www.facebook.com https://checkout.razorpay.com",
+  "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://www.facebook.com https://connect.facebook.net https://*.supabase.co",
+  "frame-src https://api.razorpay.com https://checkout.razorpay.com https://challenges.cloudflare.com",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
 ];
 
 const nextConfig = {
@@ -53,6 +57,11 @@ const nextConfig = {
             key: "X-Frame-Options",
             value: "SAMEORIGIN",
           },
+        ],
+      },
+      {
+        source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
+        headers: [
           {
             key: "Content-Security-Policy-Report-Only",
             value: cspDirectives.join("; "),
