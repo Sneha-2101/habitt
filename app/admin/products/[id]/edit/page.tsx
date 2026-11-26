@@ -8,7 +8,9 @@ import {
   archiveProduct,
   addProductImage,
   deleteProductImage,
+  updateProductImageAlt,
 } from "@/lib/actions/products";
+import { SeoFieldsWithCounter } from "@/components/admin/SeoFieldsWithCounter";
 import {
   nameDefaultColorAction,
   addColorAction,
@@ -118,6 +120,16 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             required
             className="w-full h-[44px] px-3.5 py-3 border border-stone bg-card text-[13.5px] rounded-none"
           />
+        </div>
+        <div>
+          <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">SLUG</label>
+          <input
+            name="slug"
+            defaultValue={product.slug}
+            required
+            className="w-full h-[44px] px-3.5 py-3 border border-stone bg-card font-mono text-[13px] rounded-none"
+          />
+          <p className="text-[10.5px] text-stone-dark mt-1">Changing the slug automatically creates a 308 redirect from the old URL.</p>
         </div>
         <div>
           <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">CATEGORY</label>
@@ -255,27 +267,10 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             className="w-full h-[44px] px-3.5 py-3 border border-stone bg-card text-[13.5px] rounded-none"
           />
         </div>
-        <div>
-          <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">SEO TITLE</label>
-          <input
-            name="seoTitle"
-            maxLength={70}
-            defaultValue={product.seoTitle ?? ""}
-            placeholder="SEO title (max 70 chars)"
-            className="w-full h-[44px] px-3.5 py-3 border border-stone bg-card text-[13.5px] rounded-none"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">SEO DESCRIPTION</label>
-          <textarea
-            name="seoDescription"
-            maxLength={160}
-            defaultValue={product.seoDescription ?? ""}
-            placeholder="SEO description (max 160 chars)"
-            rows={3}
-            className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px] rounded-none"
-          />
-        </div>
+        <SeoFieldsWithCounter
+          defaultTitle={product.seoTitle ?? ""}
+          defaultDescription={product.seoDescription ?? ""}
+        />
         <div>
           <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">DESCRIPTION</label>
           <textarea
@@ -326,9 +321,27 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         {product.images.length > 0 ? (
           <div className="grid grid-cols-3 gap-3 mb-4">
             {product.images.map((img) => (
-              <div key={img.id} className="relative group border border-stone p-2 bg-card">
+              <div key={img.id} className="relative group border border-stone p-2 bg-card space-y-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img.url} alt="Product image" className="w-full h-24 object-cover mb-2" />
+                <img src={img.url} alt={img.altText || product.name} className="w-full h-24 object-cover" />
+                <form
+                  action={async (fd: FormData) => {
+                    "use server";
+                    await updateProductImageAlt(img.id, product.id, String(fd.get("altText") ?? ""));
+                  }}
+                  className="flex gap-1"
+                >
+                  <input
+                    name="altText"
+                    defaultValue={img.altText ?? ""}
+                    maxLength={200}
+                    placeholder="Alt text"
+                    className="flex-1 min-w-0 px-2 py-1 border border-stone bg-paper text-[11px]"
+                  />
+                  <button type="submit" className="px-2 py-1 bg-ink text-paper text-[10.5px]">
+                    Save
+                  </button>
+                </form>
                 <form
                   action={async () => {
                     "use server";
@@ -346,13 +359,20 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
           <p className="text-[12.5px] text-stone-dark mb-4">No images uploaded yet.</p>
         )}
 
-        <form action={addImageWithId} className="flex gap-2 items-center">
+        <form action={addImageWithId} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
           <input
             name="image"
             type="file"
             accept="image/*"
             required
             className="flex-1 px-3 py-2 border border-stone text-[12px] file:mr-2 file:py-1 file:px-2 file:border-0 file:text-[11px] file:bg-stone"
+          />
+          <input
+            name="altText"
+            type="text"
+            maxLength={200}
+            placeholder="Image alt text (optional)"
+            className="sm:w-52 px-3 py-2 border border-stone bg-card text-[12px]"
           />
           <button type="submit" className="px-4 py-2.5 bg-ink text-paper text-[12px]">
             Upload image

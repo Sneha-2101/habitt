@@ -27,6 +27,9 @@ function parseCategoryInput(input: unknown): Record<string, unknown> {
       sizes,
       position: rawPos !== null && rawPos !== "" ? Number(rawPos) : 0,
       active: rawActive !== null ? rawActive === "true" || rawActive === "on" : true,
+      seoTitle: input.has("seoTitle") ? (input.get("seoTitle") as string) : undefined,
+      seoDescription: input.has("seoDescription") ? (input.get("seoDescription") as string) : undefined,
+      introText: input.has("introText") ? (input.get("introText") as string) : undefined,
     };
   }
   if (typeof input === "object" && input !== null) {
@@ -65,6 +68,9 @@ export async function createCategoryAction(input: unknown) {
         position: parsed.position,
         sizes: parsed.sizes,
         active: parsed.active,
+        seoTitle: parsed.seoTitle ?? null,
+        seoDescription: parsed.seoDescription ?? null,
+        introText: parsed.introText ?? null,
       },
     });
   });
@@ -74,10 +80,26 @@ export async function createCategoryAction(input: unknown) {
     action: "category.create",
     entity: "Category",
     entityId: category.id,
-    meta: { before: null, after: category },
+    meta: {
+      before: null,
+      after: {
+        id: category.id,
+        slug: category.slug,
+        name: category.name,
+        position: category.position,
+        sizes: category.sizes,
+        active: category.active,
+        seoTitleLength: category.seoTitle?.length ?? 0,
+        seoDescriptionLength: category.seoDescription?.length ?? 0,
+        introTextLength: category.introText?.length ?? 0,
+      },
+    },
   });
 
+  revalidatePath("/");
   revalidatePath("/shop");
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/feed/google");
   revalidatePath("/admin/categories");
 
   return { success: true, category };
@@ -123,6 +145,9 @@ export async function updateCategoryAction(id: string, input: unknown) {
         position: validated.position,
         sizes: validated.sizes,
         active: validated.active,
+        ...(validated.seoTitle !== undefined ? { seoTitle: validated.seoTitle } : {}),
+        ...(validated.seoDescription !== undefined ? { seoDescription: validated.seoDescription } : {}),
+        ...(validated.introText !== undefined ? { introText: validated.introText } : {}),
       },
     });
 
@@ -134,10 +159,32 @@ export async function updateCategoryAction(id: string, input: unknown) {
     action: "category.update",
     entity: "Category",
     entityId: id,
-    meta: { before, after },
+    meta: {
+      before: {
+        name: before.name,
+        position: before.position,
+        sizes: before.sizes,
+        active: before.active,
+        seoTitleLength: before.seoTitle?.length ?? 0,
+        seoDescriptionLength: before.seoDescription?.length ?? 0,
+        introTextLength: before.introText?.length ?? 0,
+      },
+      after: {
+        name: after.name,
+        position: after.position,
+        sizes: after.sizes,
+        active: after.active,
+        seoTitleLength: after.seoTitle?.length ?? 0,
+        seoDescriptionLength: after.seoDescription?.length ?? 0,
+        introTextLength: after.introText?.length ?? 0,
+      },
+    },
   });
 
+  revalidatePath("/");
   revalidatePath("/shop");
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/feed/google");
   revalidatePath("/admin/categories");
 
   return { success: true, category: after };
@@ -177,7 +224,10 @@ export async function deleteCategoryAction(id: string) {
     meta: { before: current, after: null },
   });
 
+  revalidatePath("/");
   revalidatePath("/shop");
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/feed/google");
   revalidatePath("/admin/categories");
 
   return { success: true };
@@ -312,6 +362,7 @@ export async function renameCategorySizeAction(
   revalidatePath("/admin/categories");
   revalidatePath("/admin/products");
   revalidatePath("/shop");
+  revalidatePath("/");
 
   return { success: true, ...result };
 }
@@ -398,6 +449,7 @@ export async function addMissingVariantsForCategoryAction(
 
   revalidatePath("/admin/categories");
   revalidatePath("/admin/products");
+  revalidatePath("/");
 
   return { success: true, ...result };
 }

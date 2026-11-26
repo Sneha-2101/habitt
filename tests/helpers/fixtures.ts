@@ -729,6 +729,17 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
+  // 10b. ProductSlugRedirect
+  await prisma.productSlugRedirect.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { oldSlug: { startsWith: "m1test" } },
+        { productId: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
   // 11. Product
   await prisma.product.deleteMany({
     where: {
@@ -887,6 +898,7 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     gstRules: await prisma.gstRule.count({ where: { id: { startsWith: "m1test" } } }),
     orders: await prisma.order.count({ where: { id: { startsWith: "m1test" } } }),
     productVariants: await prisma.productVariant.count({ where: { id: { startsWith: "m1test" } } }),
+    productSlugRedirects: await prisma.productSlugRedirect.count({ where: { OR: [{ oldSlug: { startsWith: "m1test" } }, { productId: { startsWith: "m1test" } }] } }),
     products: await prisma.product.count({ where: { id: { startsWith: "m1test" } } }),
     reviews: await prisma.review.count({ where: { id: { startsWith: "m1test" } } }),
     stockNotifications: await prisma.stockNotification.count({ where: { id: { startsWith: "m1test" } } }),

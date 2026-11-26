@@ -8,6 +8,9 @@ import MetaPixel from "@/components/MetaPixel";
 import RegisterSW from "@/components/pwa/RegisterSW";
 import { getSettings } from "@/lib/settings";
 import { buildBusinessProfile } from "@/lib/site/business";
+import { getSiteUrl } from "@/lib/seo/site-url";
+import { isIndexingAllowed } from "@/lib/seo/indexing";
+import { truncateSeoDescription } from "@/lib/seo/metadata";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -19,13 +22,32 @@ const fraunces = Fraunces({
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", weight: ["400", "500", "600"] });
 const jbMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jbmono", weight: ["400", "500"] });
 
-// temporary until the header stops reading the session on the server
-export const dynamic = "force-dynamic";
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettings();
+  const profile = buildBusinessProfile(settings);
+  const siteUrl = getSiteUrl();
+  const allowed = isIndexingAllowed({
+    seoIndexingEnabled: settings.seoIndexingEnabled ?? false,
+    nodeEnv: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV,
+    siteUrl,
+  });
 
-export const metadata: Metadata = {
-  title: "Habitt — considered basics",
-  description: "Heavier fabrics, honest fits. Habitt makes clothes with a quiet weight to them.",
-};
+  const brandName = profile.displayName || profile.legalName || settings.businessName;
+
+  return {
+    ...(siteUrl ? { metadataBase: new URL(siteUrl) } : {}),
+    title: {
+      default: brandName,
+      template: `%s | ${brandName}`,
+    },
+    description: truncateSeoDescription(profile.tagline || brandName, 155),
+    robots: allowed ? { index: true, follow: true } : { index: false, follow: false },
+    ...(settings.googleSiteVerification
+      ? { verification: { google: settings.googleSiteVerification } }
+      : {}),
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#111111",
@@ -36,7 +58,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const profile = buildBusinessProfile(settings);
 
   return (
-    <html lang="en" className={`${fraunces.variable} ${inter.variable} ${jbMono.variable}`}>
+    <html lang="en-IN" className={`${fraunces.variable} ${inter.variable} ${jbMono.variable}`}>
       <body suppressHydrationWarning className="flex flex-col min-h-screen">
         <Providers>
           <RegisterSW />

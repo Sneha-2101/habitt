@@ -16,6 +16,9 @@ interface CategoryWithCount {
   position: number;
   sizes: string[];
   active: boolean;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  introText?: string | null;
   _count: {
     products: number;
   };
@@ -44,14 +47,28 @@ export default function CategoryManagerClient({
     position: number;
     sizes: string;
     active: boolean;
+    seoTitle: string;
+    seoDescription: string;
+    introText: string;
   }>>(() => {
-    const map: Record<string, { name: string; position: number; sizes: string; active: boolean }> = {};
+    const map: Record<string, {
+      name: string;
+      position: number;
+      sizes: string;
+      active: boolean;
+      seoTitle: string;
+      seoDescription: string;
+      introText: string;
+    }> = {};
     for (const c of initialCategories) {
       map[c.id] = {
         name: c.name,
         position: c.position,
         sizes: c.sizes.join(", "),
         active: c.active,
+        seoTitle: c.seoTitle ?? "",
+        seoDescription: c.seoDescription ?? "",
+        introText: c.introText ?? "",
       };
     }
     return map;
@@ -95,6 +112,9 @@ export default function CategoryManagerClient({
         position: edit.position,
         sizes: edit.sizes.split(",").map((s) => s.trim()).filter(Boolean),
         active: edit.active,
+        seoTitle: edit.seoTitle.trim() || null,
+        seoDescription: edit.seoDescription.trim() || null,
+        introText: edit.introText.trim() || null,
       });
       if (res?.category) {
         setCategories((prev) =>
@@ -305,6 +325,73 @@ export default function CategoryManagerClient({
                     >
                       Delete
                     </button>
+                  </div>
+                </div>
+
+                {/* Category SEO & Intro */}
+                <div className="pt-2 border-t border-stone/60 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10.5px] uppercase tracking-wider font-mono text-stone-dark">
+                        SEO Title
+                      </label>
+                      <span className="text-[10px] font-mono text-stone-dark">{edit.seoTitle.length}/70</span>
+                    </div>
+                    <input
+                      type="text"
+                      maxLength={70}
+                      value={edit.seoTitle}
+                      onChange={(e) =>
+                        setEditStates((prev) => ({
+                          ...prev,
+                          [cat.id]: { ...edit, seoTitle: e.target.value },
+                        }))
+                      }
+                      placeholder="Optional SEO title (max 70)"
+                      className="w-full px-2.5 py-1.5 border border-stone bg-paper text-xs"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10.5px] uppercase tracking-wider font-mono text-stone-dark">
+                        SEO Description
+                      </label>
+                      <span className="text-[10px] font-mono text-stone-dark">{edit.seoDescription.length}/160</span>
+                    </div>
+                    <input
+                      type="text"
+                      maxLength={160}
+                      value={edit.seoDescription}
+                      onChange={(e) =>
+                        setEditStates((prev) => ({
+                          ...prev,
+                          [cat.id]: { ...edit, seoDescription: e.target.value },
+                        }))
+                      }
+                      placeholder="Optional SEO description (max 160)"
+                      className="w-full px-2.5 py-1.5 border border-stone bg-paper text-xs"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10.5px] uppercase tracking-wider font-mono text-stone-dark">
+                        Category Intro Text (Plain Text)
+                      </label>
+                      <span className="text-[10px] font-mono text-stone-dark">{edit.introText.length}/2000</span>
+                    </div>
+                    <textarea
+                      rows={2}
+                      maxLength={2000}
+                      value={edit.introText}
+                      onChange={(e) =>
+                        setEditStates((prev) => ({
+                          ...prev,
+                          [cat.id]: { ...edit, introText: e.target.value },
+                        }))
+                      }
+                      placeholder="Optional category intro copy shown on filtered listing pages (max 2000 chars)"
+                      className="w-full px-2.5 py-1.5 border border-stone bg-paper text-xs"
+                    />
                   </div>
                 </div>
 

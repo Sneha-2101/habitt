@@ -4,8 +4,27 @@ import { CareTag } from "@/components/CareTag";
 import { ContentBlocks } from "@/components/ContentBlocks";
 import { getBusinessProfile } from "@/lib/site/business";
 import { getContent } from "@/lib/content/content";
+import { getSettings } from "@/lib/settings";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { getSiteUrl } from "@/lib/seo/site-url";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+
+export async function generateMetadata() {
+  const [settings, profile, siteUrl] = await Promise.all([
+    getSettings(),
+    getBusinessProfile(),
+    Promise.resolve(getSiteUrl()),
+  ]);
+  const brand = profile.displayName || profile.legalName || "About";
+  return buildPageMetadata({
+    title: `About ${brand}`,
+    description: `Learn more about ${brand}, our materials, craftsmanship, and brand story.`,
+    path: "/about",
+    settings,
+    siteUrl,
+  });
+}
 
 export default async function AboutPage() {
   const [profile, content] = await Promise.all([

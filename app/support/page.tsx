@@ -1,7 +1,20 @@
 import Link from "next/link";
 import { getSettings } from "@/lib/settings";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { getSiteUrl } from "@/lib/seo/site-url";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+
+export async function generateMetadata() {
+  const settings = await getSettings();
+  return buildPageMetadata({
+    title: "Customer Support & FAQ",
+    description: `Get help with sizing, order updates, shipping, and return requests at ${settings.businessName}.`,
+    path: "/support",
+    settings,
+    siteUrl: getSiteUrl(),
+  });
+}
 
 export default async function SupportPage() {
   const settings = await getSettings();

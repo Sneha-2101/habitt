@@ -35,6 +35,16 @@ describe("T60: Cart sync logic, decideCartSync, and resolveCartSync pure helper"
       expect(decision).toBe("clear");
     });
 
+    it("decision 'clear': unauthenticated with userId null, ownerId u1, prevUserId null -> clear", () => {
+      const decision = decideCartSync({
+        status: "unauthenticated",
+        userId: null,
+        ownerId: "u1",
+        prevUserId: null,
+      });
+      expect(decision).toBe("clear");
+    });
+
     it("decision 'merge': ownerId null (guest) -> merge with per-variant MAX, then save", () => {
       const decision = decideCartSync({
         status: "authenticated",

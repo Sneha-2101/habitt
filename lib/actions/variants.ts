@@ -596,6 +596,7 @@ export async function generateMissingSkusAction(
     try {
       revalidatePath("/admin/products");
       revalidatePath("/shop");
+      revalidatePath("/feed/google");
     } catch {
       // Handled outside Next.js request context (e.g. tests)
     }

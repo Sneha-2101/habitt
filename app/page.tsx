@@ -1,17 +1,43 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import { getSettings } from "@/lib/settings";
+import { buildBusinessProfile } from "@/lib/site/business";
 import { getActiveHomeBanners } from "@/lib/content/content";
 import { storefrontProductWhere } from "@/lib/catalog/visibility";
+import { getSiteUrl } from "@/lib/seo/site-url";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { organizationJsonLd, websiteJsonLd } from "@/lib/seo/jsonld";
+import JsonLd from "@/components/seo/JsonLd";
 import ProductCard from "@/components/ProductCard";
 import RecentlyViewed from "@/components/RecentlyViewed";
+
+export const revalidate = 60;
+
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettings();
+  const profile = buildBusinessProfile(settings);
+  const siteUrl = getSiteUrl();
+  const brandName = profile.displayName || profile.legalName || settings.businessName;
+  return buildPageMetadata({
+    title: brandName,
+    description: profile.tagline || brandName,
+    path: "/",
+    settings,
+    siteUrl,
+  });
+}
 
 export default async function HomePage() {
   const [settings, activeBanners] = await Promise.all([
     getSettings(),
     getActiveHomeBanners().catch(() => []),
   ]);
+  const profile = buildBusinessProfile(settings);
+  const brandName = profile.displayName || profile.legalName || settings.businessName;
+  const siteUrl = getSiteUrl() || "";
   let featured: Awaited<ReturnType<typeof prisma.product.findMany<{
     include: {
       images: true;
@@ -42,20 +68,52 @@ export default async function HomePage() {
 
   return (
     <main>
+      {siteUrl && (
+        <>
+          <JsonLd
+            data={organizationJsonLd({
+              name: brandName,
+              legalName: profile.legalName,
+              url: siteUrl,
+              logo: settings.ogDefaultImageUrl,
+              sameAs: [profile.social.instagramUrl, profile.social.facebookUrl],
+              email: profile.supportEmail,
+              phone: profile.phone,
+              address: {
+                streetAddress: settings.businessAddressLine1,
+                addressLocality: settings.businessCity,
+                addressRegion: settings.businessState,
+                postalCode: settings.businessPincode,
+                addressCountry: "IN",
+              },
+            })}
+          />
+          <JsonLd
+            data={websiteJsonLd({
+              name: brandName,
+              url: siteUrl,
+            })}
+          />
+        </>
+      )}
       {/* ACTIVE HOME BANNERS OR DEFAULT HERO */}
       {activeBanners.length > 0 ? (
         <section className="px-4 sm:px-7 pt-6 pb-10 space-y-6">
-          {activeBanners.map((banner) => (
+          {activeBanners.map((banner, idx) => (
             <div
               key={banner.id}
               className="relative overflow-hidden border border-stone bg-card"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={banner.imageUrl}
-                alt={banner.imageAlt}
-                className="w-full h-[320px] sm:h-[420px] object-cover"
-              />
+              <div className="relative w-full h-[320px] sm:h-[420px]">
+                <Image
+                  src={banner.imageUrl}
+                  alt={banner.imageAlt}
+                  fill
+                  sizes="100vw"
+                  priority={idx === 0}
+                  className="object-cover"
+                />
+              </div>
               <div className="p-6 sm:p-8 bg-paper/95 border-t border-stone">
                 <h1 className="font-display italic font-medium text-2xl sm:text-4xl text-ink">
                   {banner.heading}

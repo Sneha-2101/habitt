@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import Script from "next/script";
 import { isPhoneOtpBlocked } from "@/lib/whatsapp-flag";
 import LoginClient from "./LoginClient";
+
+export const metadata: Metadata = {
+  title: "Sign In",
+  robots: { index: false, follow: false },
+};
 
 export default function LoginPage() {
   const phoneEnabled = !isPhoneOtpBlocked();

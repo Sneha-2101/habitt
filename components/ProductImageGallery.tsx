@@ -1,15 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 
 export default function ProductImageGallery({
   url,
   category,
+  productName,
+  altText,
+  priority = true,
 }: {
   url?: string;
   category: string;
+  productName?: string;
+  altText?: string | null;
+  priority?: boolean;
 }) {
   const [zoomPosition, setZoomPosition] = useState<{ x: number; y: number } | null>(null);
+  const alt = altText || productName || category;
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
     const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
@@ -34,11 +42,13 @@ export default function ProductImageGallery({
       onMouseLeave={handleMouseLeave}
       className="w-full aspect-[4/5] relative overflow-hidden rounded-2xl bg-white border border-stone/30 shadow-[0_10px_30px_rgba(0,0,0,0.08)] cursor-zoom-in"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src={url}
-        alt={category}
-        className="w-full h-full object-cover transition-transform duration-200"
+        alt={alt}
+        fill
+        sizes="(max-width: 768px) 100vw, 50vw"
+        priority={priority}
+        className="object-cover transition-transform duration-200"
         style={{
           transformOrigin: zoomPosition ? `${zoomPosition.x}% ${zoomPosition.y}%` : "center center",
           transform: zoomPosition ? "scale(1.8)" : "scale(1)",

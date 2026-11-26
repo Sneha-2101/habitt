@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateSettings } from "@/lib/actions/settings";
+import { updateSettings, uploadOgDefaultImageAction } from "@/lib/actions/settings";
 
 interface SettingsFormProps {
+  isOwner?: boolean;
+  seoStatus?: { allowed: boolean; blockedReason: string | null };
   initialSettings: {
     codEnabled: boolean;
     codOrderCap: number;
@@ -53,10 +55,17 @@ interface SettingsFormProps {
     dispatchHandlingNote?: string | null;
     instagramUrl?: string | null;
     facebookUrl?: string | null;
+    seoIndexingEnabled?: boolean;
+    googleSiteVerification?: string | null;
+    ogDefaultImageUrl?: string | null;
   };
 }
 
-export default function AdminSettingsForm({ initialSettings }: SettingsFormProps) {
+export default function AdminSettingsForm({
+  isOwner = false,
+  seoStatus,
+  initialSettings,
+}: SettingsFormProps) {
   const [form, setForm] = useState({
     codEnabled: initialSettings.codEnabled,
     codOrderCapRupees: Math.round(initialSettings.codOrderCap / 100),
@@ -106,10 +115,13 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
     dispatchHandlingNote: initialSettings.dispatchHandlingNote || "",
     instagramUrl: initialSettings.instagramUrl || "",
     facebookUrl: initialSettings.facebookUrl || "",
+    seoIndexingEnabled: initialSettings.seoIndexingEnabled ?? false,
+    googleSiteVerification: initialSettings.googleSiteVerification || "",
+    ogDefaultImageUrl: initialSettings.ogDefaultImageUrl || "",
   });
 
   const [activeTab, setActiveTab] = useState<
-    "payments" | "shipping" | "tax" | "contact" | "inventory" | "marketing" | "returns" | "notifications"
+    "payments" | "shipping" | "tax" | "contact" | "inventory" | "marketing" | "returns" | "notifications" | "seo"
   >("payments");
 
   const [isPending, startTransition] = useTransition();
@@ -170,6 +182,9 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
           dispatchHandlingNote: form.dispatchHandlingNote.trim() || null,
           instagramUrl: form.instagramUrl.trim() || null,
           facebookUrl: form.facebookUrl.trim() || null,
+          ...(isOwner ? { seoIndexingEnabled: form.seoIndexingEnabled } : {}),
+          googleSiteVerification: form.googleSiteVerification.trim() || null,
+          ogDefaultImageUrl: form.ogDefaultImageUrl.trim() || null,
         });
         setMessage({ type: "success", text: "Store settings saved successfully." });
       } catch (err: unknown) {
@@ -187,6 +202,7 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
     { id: "marketing", label: "🏷️ Marketing" },
     { id: "returns", label: "↩️ Returns" },
     { id: "notifications", label: "⏱️ Notifications" },
+    { id: "seo", label: "🔍 SEO" },
   ] as const;
 
   return (
@@ -1040,6 +1056,110 @@ export default function AdminSettingsForm({ initialSettings }: SettingsFormProps
                 className="w-full max-w-xs px-3 py-2 border border-stone text-xs rounded-sm focus:outline-none focus:border-ink bg-paper"
                 required
               />
+            </div>
+          </div>
+        )}
+
+        {/* SEO */}
+        {activeTab === "seo" && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-sm font-semibold text-ink mb-1">Search Engine Optimization & Indexing</h2>
+              <p className="text-xs text-stone-dark">
+                Control search engine indexing, Google Search Console verification, and default Open Graph image.
+              </p>
+            </div>
+
+            {seoStatus && (
+              <div
+                className={`p-3 border text-xs rounded-sm ${
+                  seoStatus.allowed
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                    : "bg-amber-50 border-amber-200 text-amber-900"
+                }`}
+              >
+                <strong>Indexing status:</strong>{" "}
+                {seoStatus.allowed
+                  ? "Live — search engines are allowed to index this site."
+                  : `Blocked (${seoStatus.blockedReason ?? "disabled"}).`}
+              </div>
+            )}
+
+            <div className="flex items-start gap-2.5 pt-1">
+              <input
+                type="checkbox"
+                id="seoIndexingEnabled"
+                checked={form.seoIndexingEnabled}
+                disabled={!isOwner}
+                onChange={(e) => setForm({ ...form, seoIndexingEnabled: e.target.checked })}
+                className="mt-0.5 rounded-none border-stone text-ink focus:ring-0 disabled:opacity-50"
+              />
+              <div>
+                <label htmlFor="seoIndexingEnabled" className="text-xs font-medium text-ink cursor-pointer">
+                  Allow Search Engine Indexing (Owner only)
+                </label>
+                <p className="text-[11px] text-stone-dark">
+                  {isOwner
+                    ? "When enabled in production on a public HTTPS domain, robots.txt and metadata allow indexing."
+                    : "Only the store Owner can modify this setting."}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="googleSiteVerification" className="block text-xs font-medium text-ink mb-1">
+                Google Site Verification Token
+              </label>
+              <p className="text-[11px] text-stone-dark mb-2">
+                Verification code from Google Search Console (10–100 alphanumeric, _ or - characters).
+              </p>
+              <input
+                type="text"
+                id="googleSiteVerification"
+                value={form.googleSiteVerification}
+                onChange={(e) => setForm({ ...form, googleSiteVerification: e.target.value })}
+                placeholder="e.g. abc123XYZ_token"
+                className="w-full max-w-md px-3 py-2 border border-stone text-xs font-mono rounded-sm focus:outline-none focus:border-ink bg-paper"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="ogDefaultImageUrl" className="block text-xs font-medium text-ink">
+                Default Open Graph Image URL
+              </label>
+              <input
+                type="text"
+                id="ogDefaultImageUrl"
+                value={form.ogDefaultImageUrl}
+                onChange={(e) => setForm({ ...form, ogDefaultImageUrl: e.target.value })}
+                placeholder="https://... or /og-default.jpg"
+                className="w-full max-w-md px-3 py-2 border border-stone text-xs font-mono rounded-sm focus:outline-none focus:border-ink bg-paper"
+              />
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const fd = new FormData();
+                    fd.set("image", file);
+                    startTransition(async () => {
+                      try {
+                        const res = await uploadOgDefaultImageAction(fd);
+                        setForm((prev) => ({ ...prev, ogDefaultImageUrl: res.url }));
+                        setMessage({ type: "success", text: "OG default image uploaded." });
+                      } catch (err: unknown) {
+                        setMessage({
+                          type: "error",
+                          text: err instanceof Error ? err.message : "Failed to upload OG image.",
+                        });
+                      }
+                    });
+                  }}
+                  className="text-xs file:mr-3 file:py-1.5 file:px-3 file:border file:border-stone file:bg-paper file:text-xs"
+                />
+              </div>
             </div>
           </div>
         )}

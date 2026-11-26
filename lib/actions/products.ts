@@ -10,6 +10,7 @@ import { sendBackInStockEmail } from "@/lib/email";
 import { writeAudit } from "@/lib/audit";
 import { productMerchandiseFields, toProductFieldData } from "@/lib/catalog/product-fields";
 import { validateImageBuffer } from "@/lib/uploads/image-check";
+import { planSlugChange } from "@/lib/seo/slug-redirects";
 import { z } from "zod";
 
 function slugify(name: string) {
@@ -63,6 +64,7 @@ const createProductSchema = z
 const updateProductSchema = z
   .object({
     name: z.string().trim().min(1, "Product name is required"),
+    slug: z.string().trim().min(1, "Slug cannot be empty").max(160).optional(),
     categoryId: z.string().min(1, "Product category is required"),
     price: z.number().positive("Price must be greater than 0"),
     description: z.string().default(""),
@@ -255,8 +257,11 @@ export async function createProduct(formData: FormData) {
     }
   }
 
+  revalidatePath("/");
   revalidatePath("/shop");
   revalidatePath(`/product/${product.slug}`);
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/feed/google");
   revalidatePath("/admin/products");
   redirect(`/admin/products/${product.id}/edit`);
 }
@@ -280,8 +285,14 @@ export async function updateProduct(productId: string, formData: FormData) {
 
   let validated: z.infer<typeof updateProductSchema>;
   try {
+    const rawSlug = formData.has("slug") ? String(formData.get("slug") ?? "").trim() : undefined;
+    const normalizedSlug = rawSlug !== undefined ? slugify(rawSlug) : undefined;
+    if (rawSlug !== undefined && !normalizedSlug) {
+      throw new Error("Slug must contain letters or numbers");
+    }
     validated = updateProductSchema.parse({
       name: formData.get("name") as string,
+      ...(normalizedSlug !== undefined ? { slug: normalizedSlug } : {}),
       categoryId: (formData.get("categoryId") || formData.get("category")) as string,
       price: priceNum,
       description: (formData.get("description") as string) || "",
@@ -306,7 +317,7 @@ export async function updateProduct(productId: string, formData: FormData) {
 
   const pricePaise = Math.round(validated.price * 100);
 
-  const { updatedProduct, beforeSnapshot } = await prisma.$transaction(async (tx) => {
+  const { updatedProduct, beforeSnapshot, oldSlug } = await prisma.$transaction(async (tx) => {
     const current = await tx.product.findUnique({
       where: { id: productId },
       include: { variants: true },
@@ -357,6 +368,43 @@ export async function updateProduct(productId: string, formData: FormData) {
       status: validated.status,
     };
 
+    if (validated.slug && validated.slug !== current.slug) {
+      const slugInUse = await tx.product.findFirst({
+        where: { slug: validated.slug, id: { not: productId } },
+        select: { id: true },
+      });
+      if (slugInUse) {
+        throw new Error("Slug is in use by another product.");
+      }
+
+      const existingRedirects = await tx.productSlugRedirect.findMany({
+        where: { oldSlug: { in: [current.slug, validated.slug] } },
+        select: { id: true, oldSlug: true, productId: true },
+      });
+
+      const plan = planSlugChange({
+        productId,
+        oldSlug: current.slug,
+        newSlug: validated.slug,
+        existingRedirects,
+      });
+      if (!plan.ok) {
+        throw new Error(plan.reason);
+      }
+
+      if (plan.deleteRedirectIds.length > 0) {
+        await tx.productSlugRedirect.deleteMany({
+          where: { id: { in: plan.deleteRedirectIds } },
+        });
+      }
+      if (plan.createRedirect) {
+        await tx.productSlugRedirect.create({
+          data: { oldSlug: current.slug, productId },
+        });
+      }
+      updateData.slug = validated.slug;
+    }
+
     if (hasCompareAt) {
       updateData.compareAtPrice = fieldData.compareAtPrice ?? null;
     }
@@ -383,6 +431,7 @@ export async function updateProduct(productId: string, formData: FormData) {
 
     const before = {
       name: current.name,
+      slug: current.slug,
       price: current.price,
       categoryId: current.categoryId,
       compareAtPrice: current.compareAtPrice,
@@ -420,7 +469,7 @@ export async function updateProduct(productId: string, formData: FormData) {
       }
     }
 
-    return { updatedProduct: updated, beforeSnapshot: before };
+    return { updatedProduct: updated, beforeSnapshot: before, oldSlug: current.slug };
   });
 
   await writeAudit({
@@ -432,6 +481,7 @@ export async function updateProduct(productId: string, formData: FormData) {
       before: beforeSnapshot as Prisma.InputJsonObject,
       after: {
         name: updatedProduct.name,
+        slug: updatedProduct.slug,
         price: updatedProduct.price,
         categoryId: updatedProduct.categoryId,
         compareAtPrice: updatedProduct.compareAtPrice,
@@ -455,8 +505,14 @@ export async function updateProduct(productId: string, formData: FormData) {
     },
   });
 
+  revalidatePath("/");
   revalidatePath("/shop");
   revalidatePath(`/product/${updatedProduct.slug}`);
+  if (oldSlug !== updatedProduct.slug) {
+    revalidatePath(`/product/${oldSlug}`);
+  }
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/feed/google");
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${productId}/edit`);
 }
@@ -467,6 +523,12 @@ export async function addProductImage(productId: string, formData: FormData) {
   const file = formData.get("image") as File;
   if (!file || file.size === 0) return;
 
+  const rawAlt = formData.get("altText");
+  const altText =
+    typeof rawAlt === "string" && rawAlt.trim().length > 0
+      ? rawAlt.trim().slice(0, 200)
+      : null;
+
   try {
     const publicUrl = await uploadFileToSupabase(file);
     const existingCount = await prisma.productImage.count({ where: { productId } });
@@ -475,6 +537,7 @@ export async function addProductImage(productId: string, formData: FormData) {
       data: {
         productId,
         url: publicUrl,
+        altText,
         position: existingCount,
       },
     });
@@ -483,8 +546,41 @@ export async function addProductImage(productId: string, formData: FormData) {
     throw new Error("Failed to upload image.");
   }
 
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { slug: true },
+  });
+  if (product) revalidatePath(`/product/${product.slug}`);
+  revalidatePath("/shop");
   revalidatePath(`/admin/products/${productId}/edit`);
   revalidatePath("/admin/products");
+}
+
+export async function updateProductImageAlt(
+  imageId: string,
+  productId: string,
+  altText: string
+) {
+  const staff = await requireStaff();
+  const normalized = altText.trim().slice(0, 200) || null;
+
+  const updated = await prisma.productImage.update({
+    where: { id: imageId },
+    data: { altText: normalized },
+    include: { product: { select: { slug: true } } },
+  });
+
+  await writeAudit({
+    actorId: staff.id,
+    action: "product_image.alt_update",
+    entity: "ProductImage",
+    entityId: imageId,
+    meta: { productId, altLength: normalized?.length ?? 0 },
+  });
+
+  revalidatePath(`/product/${updated.product.slug}`);
+  revalidatePath("/shop");
+  revalidatePath(`/admin/products/${productId}/edit`);
 }
 
 export async function deleteProductImage(imageId: string, productId: string) {
@@ -560,6 +656,10 @@ export async function updateVariantStock(variantId: string, stock: number) {
     }
   }
 
+  revalidatePath("/");
+  revalidatePath("/shop");
+  revalidatePath(`/product/${variant.product.slug}`);
+  revalidatePath("/feed/google");
   revalidatePath("/admin/products");
 }
 
@@ -567,6 +667,15 @@ export async function archiveProduct(productId: string) {
   await requireStaff();
 
   // Soft-delete only — see Schema.md note on preserving order history.
-  await prisma.product.update({ where: { id: productId }, data: { status: "ARCHIVED" } });
+  const archived = await prisma.product.update({
+    where: { id: productId },
+    data: { status: "ARCHIVED" },
+    select: { slug: true },
+  });
+  revalidatePath("/");
+  revalidatePath("/shop");
+  revalidatePath(`/product/${archived.slug}`);
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/feed/google");
   revalidatePath("/admin/products");
 }

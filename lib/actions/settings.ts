@@ -7,6 +7,8 @@ import { writeAudit } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { getSettings, type UpdateSiteSettingsInput } from "@/lib/settings";
+import { validateImageBuffer } from "@/lib/uploads/image-check";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export type { UpdateSiteSettingsInput };
 
@@ -120,6 +122,31 @@ const settingsSchema = z.object({
   dispatchHandlingNote: z.string().nullish(),
   instagramUrl: optionalHttpsUrlSchema,
   facebookUrl: optionalHttpsUrlSchema,
+  seoIndexingEnabled: z.boolean().optional(),
+  googleSiteVerification: z
+    .string()
+    .nullish()
+    .transform((val) => (val?.trim() ? val.trim() : null))
+    .refine((val) => val === null || /^[A-Za-z0-9_-]{10,100}$/.test(val), {
+      message: "Google site verification token must be 10–100 characters (A-Z, a-z, 0-9, _, -)",
+    }),
+  ogDefaultImageUrl: z
+    .string()
+    .nullish()
+    .transform((val) => (val?.trim() ? val.trim() : null))
+    .refine(
+      (val) => {
+        if (val === null) return true;
+        if (val.startsWith("/")) return true;
+        try {
+          const parsed = new URL(val);
+          return parsed.protocol === "https:";
+        } catch {
+          return false;
+        }
+      },
+      { message: "OG default image URL must be a valid https:// URL or relative path" }
+    ),
 });
 
 function formatAuditValue(key: string, val: unknown): unknown {
@@ -144,6 +171,14 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
 
   const validated = parseResult.data;
   const current = await getSettings();
+
+  if (
+    validated.seoIndexingEnabled !== undefined &&
+    validated.seoIndexingEnabled !== current.seoIndexingEnabled &&
+    staff.role !== "OWNER"
+  ) {
+    throw new Error("Only the store Owner can change search engine indexing settings.");
+  }
 
   const updated = await prisma.siteSettings.update({
     where: { id: "default" },
@@ -196,6 +231,9 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
       dispatchHandlingNote: validated.dispatchHandlingNote !== undefined ? (validated.dispatchHandlingNote?.trim() || null) : current.dispatchHandlingNote,
       instagramUrl: validated.instagramUrl !== undefined ? validated.instagramUrl : current.instagramUrl,
       facebookUrl: validated.facebookUrl !== undefined ? validated.facebookUrl : current.facebookUrl,
+      seoIndexingEnabled: validated.seoIndexingEnabled !== undefined ? validated.seoIndexingEnabled : current.seoIndexingEnabled,
+      googleSiteVerification: validated.googleSiteVerification !== undefined ? validated.googleSiteVerification : current.googleSiteVerification,
+      ogDefaultImageUrl: validated.ogDefaultImageUrl !== undefined ? validated.ogDefaultImageUrl : current.ogDefaultImageUrl,
     },
   });
 
@@ -229,7 +267,10 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
   revalidatePath("/admin/settings");
   revalidatePath("/checkout");
   revalidatePath("/shop");
-  revalidatePath("/");
+  revalidatePath("/", "layout");
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/robots.txt");
+  revalidatePath("/feed/google");
   revalidatePath("/policies/returns");
   revalidatePath("/policies/shipping");
   revalidatePath("/policies/grievance");
@@ -239,4 +280,56 @@ export async function updateSettings(data: UpdateSiteSettingsInput) {
   revalidatePath("/contact");
   revalidatePath("/support");
   return updated;
+}
+
+export async function uploadOgDefaultImageAction(formData: FormData): Promise<{ url: string }> {
+  const staff = await requireStaff();
+  const file = formData.get("image") as File | null;
+  if (!file || file.size === 0) {
+    throw new Error("Please select an image file.");
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const { mimeType, ext } = validateImageBuffer(buffer);
+
+  const supabase = getSupabaseAdmin();
+  const filePath = `seo/og-default-${Date.now()}-${Math.random().toString(36).substring(2)}.${ext}`;
+  const { error } = await supabase.storage
+    .from("product-images")
+    .upload(filePath, buffer, {
+      contentType: mimeType,
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("Supabase OG image upload error:", error);
+    throw new Error("Failed to upload OG default image.");
+  }
+
+  const { data } = supabase.storage.from("product-images").getPublicUrl(filePath);
+  const url = data.publicUrl;
+
+  const current = await getSettings();
+  await prisma.siteSettings.update({
+    where: { id: "default" },
+    data: { ogDefaultImageUrl: url },
+  });
+
+  await writeAudit({
+    actorId: staff.id,
+    action: "SETTINGS_UPDATED",
+    entity: "SiteSettings",
+    entityId: "default",
+    meta: {
+      changes: {
+        ogDefaultImageUrl: { before: current.ogDefaultImageUrl, after: url },
+      },
+      changedKeys: ["ogDefaultImageUrl"],
+    },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  revalidatePath("/shop");
+  return { url };
 }

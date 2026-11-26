@@ -1,11 +1,25 @@
 import { getSettings } from "@/lib/settings";
+import { requireStaff } from "@/lib/guards";
+import { getSiteUrl } from "@/lib/seo/site-url";
+import { getIndexingBlockedReason, isIndexingAllowed } from "@/lib/seo/indexing";
 import AdminSettingsForm from "./AdminSettingsForm";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminSettingsPage() {
-  const settings = await getSettings();
+  const [user, settings] = await Promise.all([requireStaff(), getSettings()]);
+  const siteUrl = getSiteUrl();
+  const indexingInput = {
+    seoIndexingEnabled: settings.seoIndexingEnabled ?? false,
+    nodeEnv: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV,
+    siteUrl,
+  };
+  const seoStatus = {
+    allowed: isIndexingAllowed(indexingInput),
+    blockedReason: getIndexingBlockedReason(indexingInput),
+  };
 
   return (
     <main className="px-7 py-9 max-w-5xl mx-auto space-y-6">
@@ -23,6 +37,8 @@ export default async function AdminSettingsPage() {
       </div>
 
       <AdminSettingsForm
+        isOwner={user.role === "OWNER"}
+        seoStatus={seoStatus}
         initialSettings={{
           codEnabled: settings.codEnabled,
           codOrderCap: settings.codOrderCap,
@@ -72,6 +88,9 @@ export default async function AdminSettingsPage() {
           dispatchHandlingNote: settings.dispatchHandlingNote,
           instagramUrl: settings.instagramUrl,
           facebookUrl: settings.facebookUrl,
+          seoIndexingEnabled: settings.seoIndexingEnabled,
+          googleSiteVerification: settings.googleSiteVerification,
+          ogDefaultImageUrl: settings.ogDefaultImageUrl,
         }}
       />
     </main>

@@ -60,13 +60,14 @@ const bannerInputSchema = z
 
 function revalidateContentPaths() {
   try {
-    revalidatePath("/");
+    revalidatePath("/", "layout");
     revalidatePath("/about");
     revalidatePath("/policies/shipping");
     revalidatePath("/policies/returns");
     revalidatePath("/policies/privacy");
     revalidatePath("/policies/terms");
     revalidatePath("/policies/grievance");
+    revalidatePath("/sitemap.xml");
     revalidatePath("/admin/content");
   } catch {
     // Safe in non-Next test contexts

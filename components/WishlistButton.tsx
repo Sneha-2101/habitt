@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toggleWishlist } from "@/lib/actions/wishlist";
+import { useSession } from "next-auth/react";
+import { getWishlistProductIds, toggleWishlist } from "@/lib/actions/wishlist";
 
 export default function WishlistButton({
   productId,
@@ -13,9 +14,25 @@ export default function WishlistButton({
   initialSaved?: boolean;
   className?: string;
 }) {
+  const { status } = useSession();
   const [saved, setSaved] = useState(initialSaved);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    if (initialSaved || status !== "authenticated") return;
+    let active = true;
+    getWishlistProductIds()
+      .then((ids) => {
+        if (active && ids.includes(productId)) {
+          setSaved(true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [initialSaved, productId, status]);
 
   async function handleToggle(e: React.MouseEvent) {
     e.preventDefault();

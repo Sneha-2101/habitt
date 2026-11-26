@@ -1,9 +1,28 @@
 import Script from "next/script";
 import Link from "next/link";
 import { getBusinessProfile } from "@/lib/site/business";
+import { getSettings } from "@/lib/settings";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { getSiteUrl } from "@/lib/seo/site-url";
 import ContactClient from "./ContactClient";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+
+export async function generateMetadata() {
+  const [settings, profile, siteUrl] = await Promise.all([
+    getSettings(),
+    getBusinessProfile(),
+    Promise.resolve(getSiteUrl()),
+  ]);
+  const brand = profile.displayName || profile.legalName || "Store";
+  return buildPageMetadata({
+    title: "Contact & Support",
+    description: `Contact ${brand} for order support, deliveries, returns, exchanges, or statutory grievances.`,
+    path: "/contact",
+    settings,
+    siteUrl,
+  });
+}
 
 export default async function ContactPage() {
   const profile = await getBusinessProfile();

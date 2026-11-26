@@ -1,6 +1,7 @@
 "use server";
 
 import { requireUser } from "@/lib/guards";
+import { getSessionUser } from "@/lib/sessions";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { formatReviewerName } from "@/lib/reviews";
@@ -67,6 +68,43 @@ export async function submitReview(productId: string, rating: number, comment: s
   if (product?.slug) {
     revalidatePath(`/product/${product.slug}`);
   }
+}
+
+export async function getProductReviewViewerState(productId: string): Promise<{
+  isLoggedIn: boolean;
+  hasPurchased: boolean;
+  hasReviewed: boolean;
+}> {
+  const sessionUser = await getSessionUser();
+  if (!sessionUser?.id) {
+    return { isLoggedIn: false, hasPurchased: false, hasReviewed: false };
+  }
+
+  const [existingReview, purchasedItem] = await Promise.all([
+    prisma.review.findUnique({
+      where: { userId_productId: { userId: sessionUser.id, productId } },
+      select: { id: true },
+    }),
+    prisma.orderItem.findFirst({
+      where: {
+        productId,
+        order: {
+          userId: sessionUser.id,
+          OR: [
+            { fulfilmentStatus: { in: ["SHIPPED", "DELIVERED"] } },
+            { fulfilmentStatus: "PLACED", paymentStatus: "PAID" },
+          ],
+        },
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    isLoggedIn: true,
+    hasPurchased: Boolean(purchasedItem),
+    hasReviewed: Boolean(existingReview),
+  };
 }
 
 export async function getReviewsForProduct(productId: string) {

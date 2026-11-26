@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Wantlist — Habitt",
   description: "Your saved garments and considered pieces.",
+  robots: { index: false, follow: false },
 };
 
 export default async function WantlistPage() {

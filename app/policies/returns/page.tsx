@@ -2,8 +2,22 @@ import Link from "next/link";
 import { getSettings } from "@/lib/settings";
 import { getContent } from "@/lib/content/content";
 import { ContentBlocks } from "@/components/ContentBlocks";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { getSiteUrl } from "@/lib/seo/site-url";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+
+export async function generateMetadata() {
+  const settings = await getSettings();
+  const days = settings.returnWindowDays || 7;
+  return buildPageMetadata({
+    title: "Returns & Refund Policy",
+    description: `${days}-day returns and refund policy for ${settings.businessName}.`,
+    path: "/policies/returns",
+    settings,
+    siteUrl: getSiteUrl(),
+  });
+}
 
 export default async function ReturnsPolicyPage() {
   const [settings, extraContent] = await Promise.all([

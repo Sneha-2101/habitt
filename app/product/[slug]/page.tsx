@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import { savingsPaise } from "@/lib/catalog/pricing-display";
@@ -10,12 +10,22 @@ import WishlistButton from "@/components/WishlistButton";
 import StarRating from "@/components/StarRating";
 import ProductReviews from "@/components/ProductReviews";
 import RecordRecentlyViewed from "@/components/RecordRecentlyViewed";
-import { getWishlistProductIds } from "@/lib/actions/wishlist";
+import JsonLd from "@/components/seo/JsonLd";
 import { getReviewsForProduct, getAverageRating } from "@/lib/actions/reviews";
-import { auth } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
+import { buildBusinessProfile } from "@/lib/site/business";
 import { getActiveAutomaticOfferBadges, resolveOfferBadge } from "@/lib/offers/load";
 import { isProductVisible } from "@/lib/catalog/visibility";
+import { getSiteUrl } from "@/lib/seo/site-url";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { breadcrumbJsonLd, productJsonLd } from "@/lib/seo/jsonld";
+
+export const revalidate = 60;
+export const dynamicParams = true;
+
+export async function generateStaticParams() {
+  return [];
+}
 
 export async function generateMetadata({
   params,
@@ -23,68 +33,73 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const resolvedParams = await params;
-  const product = await prisma.product.findUnique({
-    where: { slug: resolvedParams.slug },
-    select: {
-      name: true,
-      description: true,
-      seoTitle: true,
-      seoDescription: true,
-      status: true,
-      publishAt: true,
-    },
+  const [product, settings] = await Promise.all([
+    prisma.product.findUnique({
+      where: { slug: resolvedParams.slug },
+      select: {
+        name: true,
+        slug: true,
+        description: true,
+        seoTitle: true,
+        seoDescription: true,
+        status: true,
+        publishAt: true,
+        images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+      },
+    }),
+    getSettings(),
+  ]);
+
+  if (!product || !isProductVisible(product)) {
+    return {
+      title: "Product Not Found",
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const profile = buildBusinessProfile(settings);
+  const siteUrl = getSiteUrl();
+
+  return buildPageMetadata({
+    title: product.seoTitle || product.name,
+    description: product.seoDescription || product.description || profile.tagline,
+    path: `/product/${product.slug}`,
+    image: product.images[0]?.url,
+    settings,
+    siteUrl,
   });
-
-  if (!product) {
-    return {
-      title: "Product Not Found — Habitt",
-    };
-  }
-  if (!isProductVisible(product)) {
-    return {
-      title: "Product Not Found — Habitt",
-    };
-  }
-
-  const title = product.seoTitle || `${product.name} — Habitt`;
-  const descRaw = product.seoDescription || product.description || "";
-  const description = descRaw.length > 155 ? descRaw.substring(0, 155) : descRaw;
-
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-    },
-  };
 }
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
-  const session = await auth(); // display only
-  const userId = session?.user?.id;
-
-  const user = session?.user as { role?: string } | undefined;
-  const isStaff = user?.role === "STAFF" || user?.role === "OWNER";
-  const [product, wishlistIds, settings, offerBadges] = await Promise.all([
+  const [product, settings, offerBadges] = await Promise.all([
     prisma.product.findUnique({
       where: { slug: resolvedParams.slug },
       include: {
-        images: true,
+        images: { orderBy: { position: "asc" } },
         variants: true,
         category: true,
         collections: { select: { collectionId: true } },
       },
     }),
-    getWishlistProductIds(),
     getSettings(),
     getActiveAutomaticOfferBadges(),
   ]);
 
-  if (!product) notFound();
-  const visible = isProductVisible(product);
-  if (!visible && !isStaff) notFound();
+  if (!product) {
+    const slugRedirect = await prisma.productSlugRedirect.findUnique({
+      where: { oldSlug: resolvedParams.slug },
+      include: {
+        product: { select: { slug: true, status: true, publishAt: true } },
+      },
+    });
+    if (slugRedirect && isProductVisible(slugRedirect.product)) {
+      permanentRedirect(`/product/${slugRedirect.product.slug}`);
+    }
+    notFound();
+  }
+
+  if (!isProductVisible(product)) notFound();
 
   const offerBadge = resolveOfferBadge(
     product.id,
@@ -93,45 +108,46 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     offerBadges
   );
 
-  const [reviews, ratingAggregate, hasPurchased, hasReviewed] = await Promise.all([
+  const [reviews, ratingAggregate] = await Promise.all([
     getReviewsForProduct(product.id),
     getAverageRating(product.id),
-    userId
-      ? prisma.orderItem
-          .findFirst({
-            where: {
-              productId: product.id,
-              order: {
-                userId,
-                OR: [
-                  { fulfilmentStatus: { in: ["SHIPPED", "DELIVERED"] } },
-                  { fulfilmentStatus: "PLACED", paymentStatus: "PAID" },
-                ],
-              },
-            },
-          })
-          .then(Boolean)
-      : Promise.resolve(false),
-    userId
-      ? prisma.review
-          .findUnique({
-            where: { userId_productId: { userId, productId: product.id } },
-          })
-          .then(Boolean)
-      : Promise.resolve(false),
   ]);
 
-  const isSaved = wishlistIds.includes(product.id);
   const savings = savingsPaise(product.price, product.compareAtPrice);
+
+  const profile = buildBusinessProfile(settings);
+  const brandName = profile.displayName || profile.legalName || settings.businessName;
+  const siteUrl = getSiteUrl() || "http://localhost:3000";
+  const productUrl = `${siteUrl}/product/${product.slug}`;
 
   return (
     <main className="px-4 sm:px-7 py-10 max-w-5xl mx-auto">
-      {!visible && isStaff && (
-        <div className="mb-6 p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs font-mono uppercase tracking-wider flex items-center justify-between">
-          <span>Scheduled / not public</span>
-          <span>Staff Preview Mode</span>
-        </div>
-      )}
+      <JsonLd
+        data={productJsonLd({
+          name: product.name,
+          description: product.description,
+          url: productUrl,
+          images: product.images.map((i) => i.url),
+          brandName,
+          variants: product.variants.map((v) => ({
+            pricePaise: product.price,
+            stock: v.stock,
+            sku: v.sku,
+          })),
+          returnWindowDays: settings.returnWindowDays,
+          freeReturnShipping: settings.freeReturnShipping,
+          shippingFeePaise: settings.shippingFee,
+          freeShippingOnPrepaid: settings.freeShippingOnPrepaid,
+          maxDeliveryDays: settings.maxDeliveryDays,
+        })}
+      />
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: "Home", url: `${siteUrl}/` },
+          { name: "Shop", url: `${siteUrl}/shop` },
+          { name: product.name, url: productUrl },
+        ])}
+      />
       <RecordRecentlyViewed
         product={{
           id: product.id,
@@ -144,7 +160,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       />
       <div className="grid md:grid-cols-2 gap-8 md:gap-10 items-start">
         <div>
-          <ProductImageGallery url={product.images[0]?.url} category={product.category?.name?.toUpperCase() ?? ""} />
+          <ProductImageGallery
+            url={product.images[0]?.url}
+            category={product.category?.name?.toUpperCase() ?? ""}
+            productName={product.name}
+            altText={product.images[0]?.altText}
+            priority
+          />
         </div>
         <div>
           <div className="flex justify-between items-start gap-4">
@@ -152,7 +174,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               {product.name}
             </h1>
             <div className="flex items-center gap-2 shrink-0">
-              <WishlistButton productId={product.id} initialSaved={isSaved} />
+              <WishlistButton productId={product.id} />
               <CareTag>{product.category?.name?.toUpperCase() ?? ""}</CareTag>
             </div>
           </div>
@@ -238,13 +260,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       </div>
 
       {/* Product Reviews & Ratings Section */}
-      <ProductReviews
-        productId={product.id}
-        reviews={reviews}
-        isLoggedIn={!!userId}
-        hasPurchased={hasPurchased}
-        hasReviewed={hasReviewed}
-      />
+      <ProductReviews productId={product.id} reviews={reviews} />
     </main>
   );
 }

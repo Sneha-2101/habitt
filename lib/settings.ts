@@ -49,6 +49,9 @@ export interface UpdateSiteSettingsInput {
   dispatchHandlingNote?: string | null;
   instagramUrl?: string | null;
   facebookUrl?: string | null;
+  seoIndexingEnabled?: boolean;
+  googleSiteVerification?: string | null;
+  ogDefaultImageUrl?: string | null;
 }
 
 export async function getSettings() {

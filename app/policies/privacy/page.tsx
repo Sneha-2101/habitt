@@ -1,8 +1,21 @@
 import { getSettings } from "@/lib/settings";
 import { getContent } from "@/lib/content/content";
 import { ContentBlocks } from "@/components/ContentBlocks";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { getSiteUrl } from "@/lib/seo/site-url";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+
+export async function generateMetadata() {
+  const settings = await getSettings();
+  return buildPageMetadata({
+    title: "Privacy Policy",
+    description: `Privacy policy for ${settings.businessName}: how we collect, use, and protect your personal information.`,
+    path: "/policies/privacy",
+    settings,
+    siteUrl: getSiteUrl(),
+  });
+}
 
 export default async function PrivacyPolicyPage() {
   const [settings, extraContent] = await Promise.all([

@@ -1,6 +1,7 @@
 import { createProduct } from "@/lib/actions/products";
 import { getPickerCategories } from "@/lib/catalog/categories";
 import { requireStaff } from "@/lib/guards";
+import { SeoFieldsWithCounter } from "@/components/admin/SeoFieldsWithCounter";
 
 export default async function NewProductPage() {
   const user = await requireStaff();
@@ -116,25 +117,7 @@ export default async function NewProductPage() {
             className="w-full h-[44px] px-3.5 py-3 border border-stone bg-card text-[13.5px] rounded-none"
           />
         </div>
-        <div>
-          <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">SEO TITLE</label>
-          <input
-            name="seoTitle"
-            maxLength={70}
-            placeholder="SEO title (max 70 chars)"
-            className="w-full h-[44px] px-3.5 py-3 border border-stone bg-card text-[13.5px] rounded-none"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">SEO DESCRIPTION</label>
-          <textarea
-            name="seoDescription"
-            maxLength={160}
-            placeholder="SEO description (max 160 chars)"
-            rows={3}
-            className="w-full px-3.5 py-3 border border-stone bg-card text-[13.5px] rounded-none"
-          />
-        </div>
+        <SeoFieldsWithCounter />
         <div>
           <label className="block text-[11px] tracking-[0.06em] text-stone-dark mb-1">INITIAL STOCK PER SIZE</label>
           <input

@@ -1,9 +1,62 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import ProductCard from "@/components/ProductCard";
-import { getWishlistProductIds } from "@/lib/actions/wishlist";
 import { getActiveAutomaticOfferBadges, resolveOfferBadge } from "@/lib/offers/load";
 import { storefrontProductWhere } from "@/lib/catalog/visibility";
+import { getSettings } from "@/lib/settings";
+import { buildBusinessProfile } from "@/lib/site/business";
+import { getSiteUrl } from "@/lib/seo/site-url";
+import { buildListingMetadata } from "@/lib/seo/metadata";
+
+// Dynamic by design: reads searchParams for category, search, and sort.
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ category?: string; q?: string; sort?: string }>;
+}): Promise<Metadata> {
+  const resolved = await searchParams;
+  const rawCategory = resolved.category?.trim();
+  const hasFiltersOrSort = Boolean(
+    rawCategory || resolved.q?.trim() || resolved.sort?.trim()
+  );
+
+  const [settings, categoryRow] = await Promise.all([
+    getSettings(),
+    rawCategory
+      ? prisma.category.findFirst({
+          where: {
+            active: true,
+            OR: [
+              { slug: { equals: rawCategory, mode: "insensitive" } },
+              { name: { equals: rawCategory, mode: "insensitive" } },
+            ],
+          },
+          select: { name: true, seoTitle: true, seoDescription: true, introText: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  const profile = buildBusinessProfile(settings);
+  const siteUrl = getSiteUrl();
+
+  const title = categoryRow?.seoTitle || categoryRow?.name || "Shop";
+  const description =
+    categoryRow?.seoDescription ||
+    categoryRow?.introText ||
+    profile.tagline ||
+    profile.displayName;
+
+  return buildListingMetadata({
+    title,
+    description,
+    basePath: "/shop",
+    hasFiltersOrSort,
+    settings,
+    siteUrl,
+  });
+}
 
 export default async function ShopPage({
   searchParams,
@@ -15,7 +68,7 @@ export default async function ShopPage({
   const searchQuery = resolvedParams.q?.trim();
 
   let products: any[] = [];
-  let wishlistSet = new Set<string>();
+  const wishlistSet = new Set<string>();
   let categories: Array<{ id: string; slug: string; name: string; position: number }> = [];
   let activeCategory: { id: string; slug: string; name: string } | undefined;
 
@@ -34,7 +87,7 @@ export default async function ShopPage({
       );
     }
 
-    const [dbProducts, wishlistIds, offerBadges] = await Promise.all([
+    const [dbProducts, offerBadges] = await Promise.all([
       prisma.product.findMany({
         where: {
           ...storefrontProductWhere(),
@@ -50,7 +103,6 @@ export default async function ShopPage({
         },
         orderBy: { createdAt: "desc" },
       }),
-      getWishlistProductIds(),
       getActiveAutomaticOfferBadges(),
     ]);
     products = dbProducts.map((p) => ({
@@ -62,7 +114,6 @@ export default async function ShopPage({
         offerBadges
       ),
     }));
-    wishlistSet = new Set(wishlistIds);
   } catch (err) {
     console.error("ShopPage products fetch error:", err);
   }

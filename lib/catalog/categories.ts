@@ -35,6 +35,24 @@ export const categoryInputSchema = z.object({
     .max(999, "Position must be between 0 and 999")
     .default(0),
   active: z.boolean().default(true),
+  seoTitle: z
+    .string()
+    .trim()
+    .max(70, "SEO title must be 70 characters or fewer")
+    .nullish()
+    .transform((v) => v || null),
+  seoDescription: z
+    .string()
+    .trim()
+    .max(160, "SEO description must be 160 characters or fewer")
+    .nullish()
+    .transform((v) => v || null),
+  introText: z
+    .string()
+    .trim()
+    .max(2000, "Intro text must be 2000 characters or fewer")
+    .nullish()
+    .transform((v) => v || null),
 });
 
 export type CategoryInput = z.infer<typeof categoryInputSchema>;

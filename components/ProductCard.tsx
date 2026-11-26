@@ -17,16 +17,22 @@ interface ProductCardProps {
     price: number;
     compareAtPrice?: number | null;
     category: string | { name: string };
-    images?: Array<{ url: string }>;
+    images?: Array<{ url: string; altText?: string | null }>;
     variants?: Array<{ id: string; size: string; stock: number; color?: string; colorHex?: string | null }>;
     reviews?: Array<{ rating: number }>;
     offerBadge?: string | null;
   };
   initialSaved?: boolean;
   lowStockThreshold?: number;
+  priority?: boolean;
 }
 
-export default function ProductCard({ product, initialSaved = false, lowStockThreshold = 3 }: ProductCardProps) {
+export default function ProductCard({
+  product,
+  initialSaved = false,
+  lowStockThreshold = 3,
+  priority = false,
+}: ProductCardProps) {
   const [showQuickView, setShowQuickView] = useState(false);
 
   // Single visual signal determination:
@@ -60,7 +66,13 @@ export default function ProductCard({ product, initialSaved = false, lowStockThr
                 {product.offerBadge}
               </span>
             )}
-            <ProductSwatchImage url={product.images?.[0]?.url} category={categoryName} />
+            <ProductSwatchImage
+              url={product.images?.[0]?.url}
+              category={categoryName}
+              productName={product.name}
+              altText={product.images?.[0]?.altText}
+              priority={priority}
+            />
             
             {/* Quick-view hover overlay trigger (Desktop only) */}
             <button

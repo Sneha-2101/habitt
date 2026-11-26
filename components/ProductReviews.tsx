@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useSession } from "next-auth/react";
 import StarRating from "./StarRating";
-import { submitReview } from "@/lib/actions/reviews";
+import { getProductReviewViewerState, submitReview } from "@/lib/actions/reviews";
 
 interface ReviewItem {
   id: string;
@@ -17,18 +18,44 @@ interface ReviewItem {
 interface ProductReviewsProps {
   productId: string;
   reviews: ReviewItem[];
-  isLoggedIn: boolean;
-  hasPurchased: boolean;
-  hasReviewed: boolean;
+  isLoggedIn?: boolean;
+  hasPurchased?: boolean;
+  hasReviewed?: boolean;
 }
 
 export default function ProductReviews({
   productId,
   reviews,
-  isLoggedIn,
-  hasPurchased,
-  hasReviewed,
+  isLoggedIn: initialIsLoggedIn = false,
+  hasPurchased: initialHasPurchased = false,
+  hasReviewed: initialHasReviewed = false,
 }: ProductReviewsProps) {
+  const { status: sessionStatus } = useSession();
+  const [isLoggedIn, setIsLoggedIn] = useState(initialIsLoggedIn);
+  const [hasPurchased, setHasPurchased] = useState(initialHasPurchased);
+  const [hasReviewed, setHasReviewed] = useState(initialHasReviewed);
+
+  useEffect(() => {
+    if (sessionStatus === "loading") return;
+    if (sessionStatus === "unauthenticated") {
+      setIsLoggedIn(false);
+      setHasPurchased(false);
+      setHasReviewed(false);
+      return;
+    }
+    let active = true;
+    getProductReviewViewerState(productId)
+      .then((state) => {
+        if (!active) return;
+        setIsLoggedIn(state.isLoggedIn);
+        setHasPurchased(state.hasPurchased);
+        setHasReviewed(state.hasReviewed);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [productId, sessionStatus]);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);

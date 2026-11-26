@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
 import { useCartStore } from "@/lib/cart-store";
 import { syncCartAction, saveCartAction, loadCartAction } from "@/lib/actions/cart";
 import { decideCartSync, CartSyncDecision, DecideCartSyncInput } from "@/lib/cart/merge";
@@ -9,7 +10,7 @@ export { decideCartSync };
 export type { CartSyncDecision, DecideCartSyncInput };
 
 interface CartSyncProps {
-  isSignedIn: boolean;
+  isSignedIn?: boolean;
   userId?: string | null;
 }
 
@@ -25,14 +26,27 @@ export function handleStaleCartOwner(userId: string | null | undefined): boolean
   return false;
 }
 
-export default function CartSync({ isSignedIn, userId = null }: CartSyncProps) {
+export default function CartSync({
+  isSignedIn: propIsSignedIn,
+  userId: propUserId,
+}: CartSyncProps = {}) {
+  const { data: session, status: sessionStatus } = useSession();
   const isSyncingRef = useRef(false);
   const prevUserIdRef = useRef<string | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const ownerId = useCartStore((state) => state.ownerId);
+  const sessionUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
+  const userId = propUserId !== undefined ? propUserId : sessionUserId;
+  const isSignedIn =
+    propIsSignedIn !== undefined
+      ? propIsSignedIn
+      : sessionStatus === "authenticated" && !!userId;
 
   useEffect(() => {
+    if (propIsSignedIn === undefined && sessionStatus === "loading") {
+      return;
+    }
     const status = isSignedIn && userId ? "authenticated" : "unauthenticated";
     const decision = decideCartSync({
       status,
@@ -104,7 +118,7 @@ export default function CartSync({ isSignedIn, userId = null }: CartSyncProps) {
         });
       return;
     }
-  }, [isSignedIn, userId, ownerId]);
+  }, [propIsSignedIn, sessionStatus, isSignedIn, userId, ownerId]);
 
   useEffect(() => {
     if (!isSignedIn || !userId) return;

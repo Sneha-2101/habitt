@@ -1,19 +1,28 @@
-import Link from "next/link";
 import { getSettings } from "@/lib/settings";
 import { formatINR } from "@/lib/money";
-import { getSessionUser } from "@/lib/sessions";
 import { getContent } from "@/lib/content/content";
 import { ContentBlocks } from "@/components/ContentBlocks";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { getSiteUrl } from "@/lib/seo/site-url";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+
+export async function generateMetadata() {
+  const settings = await getSettings();
+  return buildPageMetadata({
+    title: "Shipping Policy",
+    description: `Shipping rates, dispatch timelines, and delivery coverage for ${settings.businessName}.`,
+    path: "/policies/shipping",
+    settings,
+    siteUrl: getSiteUrl(),
+  });
+}
 
 export default async function ShippingPolicyPage() {
-  const [settings, sessionUser, extraContent] = await Promise.all([
+  const [settings, extraContent] = await Promise.all([
     getSettings(),
-    getSessionUser().catch(() => null),
     getContent("policy.shipping").catch(() => null),
   ]);
-  const isStaff = sessionUser?.role === "STAFF" || sessionUser?.role === "OWNER";
   const freeThresholdStr = formatINR(settings.freeShippingThreshold);
   const shippingFeeStr = formatINR(settings.shippingFee);
 
@@ -42,11 +51,7 @@ export default async function ShippingPolicyPage() {
               ? `All packages are dispatched from our primary facility in ${settings.businessState} and delivered across India within ${settings.maxDeliveryDays} days of dispatch.`
               : `All packages are dispatched from our primary facility and delivered across India within ${settings.maxDeliveryDays} days of dispatch.`}
           </p>
-          {!settings.businessState && isStaff && (
-            <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 text-[11.5px] rounded-xs">
-              Set business state in <Link href="/admin/gst" className="underline font-medium">/admin/gst</Link>
-            </div>
-          )}
+
           {settings.dispatchHandlingNote && (
             <p>{settings.dispatchHandlingNote}</p>
           )}
