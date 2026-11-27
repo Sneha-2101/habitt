@@ -6,6 +6,7 @@ import { formatINR } from "@/lib/money";
 import { getWalletSummary } from "@/lib/wallet/service";
 import { computeLoyaltyEarn } from "@/lib/rewards/loyalty";
 import type { WalletEntryType } from "@prisma/client";
+import RedeemGiftCardForm from "./RedeemGiftCardForm";
 
 export const dynamic = "force-dynamic";
 
@@ -126,6 +127,8 @@ export default async function AccountWalletPage() {
           </div>
         </div>
       </div>
+
+      <RedeemGiftCardForm />
 
       {pendingLoyaltyOrders.length > 0 && (
         <div className="border border-stone bg-white p-6 space-y-3">

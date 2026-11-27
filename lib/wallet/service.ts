@@ -19,7 +19,7 @@ async function runInTx<T>(
   return prisma.$transaction(fn);
 }
 
-async function lockUserWallet(
+export async function lockUserWallet(
   db: Prisma.TransactionClient,
   userId: string
 ): Promise<void> {

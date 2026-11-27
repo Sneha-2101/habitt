@@ -85,6 +85,11 @@ export default async function AdminLayout({
                 </Link>
               )}
               {isOwner && (
+                <Link href="/admin/gift-cards" className="hover:text-ink transition-colors">
+                  Gift cards
+                </Link>
+              )}
+              {isOwner && (
                 <Link href="/admin/team" className="hover:text-ink transition-colors">
                   Team
                 </Link>

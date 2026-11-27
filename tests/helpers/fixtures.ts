@@ -801,6 +801,21 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
+  // 13a. GiftCard (before User rows due to RESTRICT FKs)
+  await prisma.giftCard.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { note: { startsWith: "m1test" } },
+        { createdById: { in: m1UserIds } },
+        { redeemedById: { in: m1UserIds } },
+        { voidedById: { in: m1UserIds } },
+        { createdById: { startsWith: "m1test" } },
+        { redeemedById: { startsWith: "m1test" } },
+      ],
+    },
+  });
+
   // 13. Review, StockNotification, NewsletterSubscriber, OtpCode
   await prisma.review.deleteMany({
     where: {
@@ -941,6 +956,16 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     cartItems: await prisma.cartItem.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { cart: { userId: { startsWith: "m1test" } } }] } }),
     carts: await prisma.cart.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
     addresses: await prisma.address.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
+    giftCards: await prisma.giftCard.count({
+      where: {
+        OR: [
+          { id: { startsWith: "m1test" } },
+          { note: { startsWith: "m1test" } },
+          { createdById: { startsWith: "m1test" } },
+          { redeemedById: { startsWith: "m1test" } },
+        ],
+      },
+    }),
     users: await prisma.user.count({ where: { id: { startsWith: "m1test" } } }),
   };
 

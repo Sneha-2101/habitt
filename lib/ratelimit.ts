@@ -31,7 +31,9 @@ export type RateLimitPolicy =
   | "ticketGuestOtpIp"
   | "ticketGuestOtpEmail"
   | "ticketGuestCreateIp"
-  | "ticketReply";
+  | "ticketReply"
+  | "giftCardRedeemUser"
+  | "giftCardRedeemIp";
 
 export interface PolicyConfig {
   limit: number;
@@ -64,6 +66,8 @@ export const POLICY_CONFIGS: Record<RateLimitPolicy, PolicyConfig> = {
   ticketGuestOtpEmail: { limit: 3, windowMs: 15 * 60 * 1000, upstashDuration: "15 m", failMode: "closed" },
   ticketGuestCreateIp: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "open" },
   ticketReply: { limit: 30, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "open" },
+  giftCardRedeemUser: { limit: 10, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "closed" },
+  giftCardRedeemIp: { limit: 30, windowMs: 60 * 60 * 1000, upstashDuration: "1 h", failMode: "closed" },
 };
 
 // In-memory sliding window state for development and fail-open fallback
