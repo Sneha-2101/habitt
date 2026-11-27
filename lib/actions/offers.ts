@@ -11,6 +11,64 @@ import {
   type OfferInput,
 } from "@/lib/offers/schema";
 
+export async function upsertInfluencerOfferInTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    offerId?: string | null;
+    name: string;
+    code: string;
+    active: boolean;
+    percent: number;
+  }
+) {
+  const parsed = offerInputSchema.parse({
+    name: input.name,
+    kind: "PERCENT_OFF",
+    code: input.code,
+    active: input.active,
+    startsAt: null,
+    endsAt: null,
+    minCartPaise: 0,
+    maxUsesTotal: null,
+    maxUsesPerCustomer: null,
+    priority: 100,
+    audience: "ALL",
+    config: { percent: input.percent },
+    targets: [],
+  });
+
+  if (input.offerId) {
+    return tx.offer.update({
+      where: { id: input.offerId },
+      data: {
+        name: parsed.name,
+        code: parsed.code,
+        active: parsed.active,
+        startsAt: null,
+        endsAt: null,
+        config: parsed.config,
+      },
+    });
+  }
+
+  return tx.offer.create({
+    data: {
+      name: parsed.name,
+      kind: parsed.kind,
+      code: parsed.code,
+      active: parsed.active,
+      startsAt: null,
+      endsAt: null,
+      minCartPaise: parsed.minCartPaise,
+      maxUsesTotal: null,
+      maxUsesPerCustomer: null,
+      priority: parsed.priority,
+      audience: parsed.audience,
+      config: parsed.config,
+    },
+  });
+}
+
 export async function createOffer(rawInput: unknown) {
   const staff = await requireStaff();
 

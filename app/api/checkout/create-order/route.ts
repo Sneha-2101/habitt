@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { Prisma, Order, OrderItem, PaymentStatus, FulfilmentStatus, PaymentMethod, OrderDiscountKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
@@ -10,6 +11,8 @@ import { limit } from "@/lib/ratelimit";
 import { calculateQuote } from "@/lib/pricing/quote";
 import { debitWallet, getWalletBalance } from "@/lib/wallet/service";
 import { getSettings } from "@/lib/settings";
+import { parseAttributionCookie } from "@/lib/influencers/code";
+import { resolveAttribution } from "@/lib/influencers/attribution";
 import { z } from "zod";
 
 class StoreCreditConflictError extends Error {
@@ -215,6 +218,49 @@ export async function POST(req: Request) {
     if (res) return res;
   }
 
+  // 3b. Resolve influencer attribution before transaction (no pricing impact)
+  let cookieInfCode: string | null = null;
+  try {
+    const cookieStore = await cookies();
+    cookieInfCode = parseAttributionCookie(cookieStore.get("habitt_inf")?.value);
+  } catch {
+    // Ignore if called outside Next request cookie context
+  }
+
+  let couponInfluencer: { id: string; active: boolean } | null = null;
+  if (appliedCouponCode) {
+    const couponOffer = await prisma.offer.findFirst({
+      where: { code: { equals: appliedCouponCode, mode: "insensitive" } },
+      select: { id: true },
+    });
+    if (couponOffer) {
+      couponInfluencer = await prisma.influencer.findUnique({
+        where: { offerId: couponOffer.id },
+        select: { id: true, active: true },
+      });
+    }
+  }
+
+  let cookieInfluencer: { id: string; active: boolean } | null = null;
+  if (cookieInfCode) {
+    try {
+      cookieInfluencer = await prisma.influencer.findUnique({
+        where: { code: cookieInfCode },
+        select: { id: true, active: true },
+      });
+    } catch (err) {
+      console.error(
+        "[create-order] cookie influencer lookup failed:",
+        err instanceof Error ? err.message : "unknown error"
+      );
+    }
+  }
+
+  const attribution = resolveAttribution({
+    couponInfluencer,
+    cookieInfluencer,
+  });
+
   // 4. Create Order inside Transaction with guarded offer limit checks, store credit debit, and strict stock reservation
   let createdOrder: (Order & { items: OrderItem[] }) | null = null;
   let payable = total;
@@ -395,6 +441,8 @@ export async function POST(req: Request) {
             paymentStatus: initialPaymentStatus,
             fulfilmentStatus: initialFulfilmentStatus,
             paymentMethod: selectedPaymentMethod,
+            influencerId: attribution?.influencerId ?? null,
+            influencerSource: attribution?.source ?? null,
             items: {
               create: allItemsToCreate,
             },

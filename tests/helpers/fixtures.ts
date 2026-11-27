@@ -708,6 +708,16 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
+  // 8b. Influencer (after Order due to RESTRICT FK)
+  await prisma.influencer.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { code: { startsWith: "m1test", mode: "insensitive" } },
+        { name: { startsWith: "m1test", mode: "insensitive" } },
+      ],
+    },
+  });
 
   // 9. ProductImage
   await prisma.productImage.deleteMany({
@@ -822,6 +832,16 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     },
   });
 
+  await prisma.eventOutbox.deleteMany({
+    where: {
+      OR: [
+        { id: { startsWith: "m1test" } },
+        { orderId: { startsWith: "m1test" } },
+        { payload: { path: ["email"], string_starts_with: "m1test" } },
+      ],
+    },
+  });
+
   await prisma.otpCode.deleteMany({
     where: {
       OR: [
@@ -892,17 +912,28 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     shipments: await prisma.shipment.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
     shipmentEvents: await prisma.shipmentEvent.count({ where: { id: { startsWith: "m1test" } } }),
     eventOutboxes: await prisma.eventOutbox.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { orderId: { startsWith: "m1test" } }] } }),
+    eventOutboxM1test: await prisma.eventOutbox.count({ where: { payload: { path: ["email"], string_starts_with: "m1test" } } }),
     cronRuns: await prisma.cronRun.count({ where: { id: { startsWith: "m1test" } } }),
     tickets: await prisma.ticket.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { number: { startsWith: "m1test" } }, { guestEmail: { startsWith: "m1test" } }] } }),
     ticketMessages: await prisma.ticketMessage.count({ where: { id: { startsWith: "m1test" } } }),
     gstRules: await prisma.gstRule.count({ where: { id: { startsWith: "m1test" } } }),
     orders: await prisma.order.count({ where: { id: { startsWith: "m1test" } } }),
+    influencers: await prisma.influencer.count({
+      where: {
+        OR: [
+          { id: { startsWith: "m1test" } },
+          { code: { startsWith: "m1test", mode: "insensitive" } },
+          { name: { startsWith: "m1test", mode: "insensitive" } },
+        ],
+      },
+    }),
     productVariants: await prisma.productVariant.count({ where: { id: { startsWith: "m1test" } } }),
     productSlugRedirects: await prisma.productSlugRedirect.count({ where: { OR: [{ oldSlug: { startsWith: "m1test" } }, { productId: { startsWith: "m1test" } }] } }),
     products: await prisma.product.count({ where: { id: { startsWith: "m1test" } } }),
     reviews: await prisma.review.count({ where: { id: { startsWith: "m1test" } } }),
     stockNotifications: await prisma.stockNotification.count({ where: { id: { startsWith: "m1test" } } }),
     newsletterSubscribers: await prisma.newsletterSubscriber.count({ where: { id: { startsWith: "m1test" } } }),
+    newsletterSubscribersM1test: await prisma.newsletterSubscriber.count({ where: { email: { startsWith: "m1test" } } }),
     otpCodes: await prisma.otpCode.count({ where: { id: { startsWith: "m1test" } } }),
     sessions: await prisma.session.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
     auditLogs: await prisma.auditLog.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { actorId: { startsWith: "m1test" } }] } }),

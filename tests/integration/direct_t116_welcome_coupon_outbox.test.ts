@@ -52,7 +52,10 @@ describe("T116: Welcome Coupon Email via Outbox", () => {
 
     const batchRes = await processOutboxBatch(25);
     expect(batchRes.sent).toBeGreaterThanOrEqual(1);
-    expect(mockSendWelcome).toHaveBeenCalledTimes(1);
+    const callsForEmail = mockSendWelcome.mock.calls.filter(
+      (args) => args[0] === email
+    );
+    expect(callsForEmail).toHaveLength(1);
 
     const processedRow = await prisma.eventOutbox.findUnique({ where: { id: outboxRows[0].id } });
     expect(processedRow?.status).toBe("SENT");

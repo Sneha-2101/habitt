@@ -150,10 +150,33 @@ model Order {
   stockDeducted        Boolean            @default(false)
   abandonedEmailSentAt DateTime?
   loyaltyAccrual       LoyaltyAccrual?
+  influencerId         String?
+  influencerSource     InfluencerAttributionSource?
+  influencer           Influencer?        @relation(fields: [influencerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
   @@index([paymentStatus, fulfilmentStatus, createdAt])
+  @@index([influencerId, createdAt])
+}
+
+enum InfluencerAttributionSource {
+  COUPON
+  LINK
+}
+
+model Influencer {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  email     String?
+  notes     String?
+  active    Boolean  @default(true)
+  offerId   String?  @unique
+  offer     Offer?   @relation(fields: [offerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 enum PaymentMethod {
@@ -231,6 +254,7 @@ model SiteSettings {
   seoIndexingEnabled            Boolean    @default(false)
   googleSiteVerification        String?
   ogDefaultImageUrl             String?
+  influencerCookieDays          Int        @default(30)
   updatedAt                     DateTime   @updatedAt
 }
 
@@ -827,6 +851,7 @@ model Offer {
   targets            OfferTarget[]
   redemptions        OfferRedemption[]
   discounts          OrderDiscount[]
+  influencer         Influencer?
 }
 
 model OfferTarget {

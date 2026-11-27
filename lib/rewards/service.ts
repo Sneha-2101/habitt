@@ -19,7 +19,7 @@ function getIstMonthStart(now: Date): Date {
   return new Date(istStart - IST_OFFSET_MS);
 }
 
-function computeOrderGoodsNetPaise(order: {
+export function computeOrderGoodsNetPaise(order: {
   total: number;
   shippingFee: number;
   codFee: number;
@@ -27,7 +27,7 @@ function computeOrderGoodsNetPaise(order: {
   return Math.max(0, order.total - order.shippingFee - order.codFee);
 }
 
-function computeRefundedGoodsPaise(order: {
+export function computeRefundedGoodsPaise(order: {
   items: Array<{ id: string; unitPrice: number; qty: number; discountPaise: number; isGift: boolean }>;
   returnRequests: Array<{
     status: string;
