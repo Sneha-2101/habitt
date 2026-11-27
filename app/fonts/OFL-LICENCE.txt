@@ -1,0 +1,8 @@
+Self-hosted Google Fonts (latin subset, WOFF2)
+Licensed under the SIL Open Font License, Version 1.1 (OFL-1.1):
+https://scripts.sil.org/OFL
+
+Families:
+- Fraunces (https://fonts.google.com/specimen/Fraunces) — Copyright 2020 The Fraunces Project Authors
+- Inter (https://fonts.google.com/specimen/Inter) — Copyright 2020 The Inter Project Authors
+- JetBrains Mono (https://fonts.google.com/specimen/JetBrains+Mono) — Copyright 2020 The JetBrains Mono Project Authors

@@ -1,4 +1,6 @@
+import type { SiteSettings } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { readOrBuildFallback } from "@/lib/build-safe";
 
 export interface UpdateSiteSettingsInput {
   codEnabled?: boolean;
@@ -54,18 +56,97 @@ export interface UpdateSiteSettingsInput {
   ogDefaultImageUrl?: string | null;
 }
 
-export async function getSettings() {
-  let settings = await prisma.siteSettings.findUnique({
-    where: { id: "default" },
-  });
+export const DEFAULT_SITE_SETTINGS: SiteSettings = {
+  id: "default",
+  codEnabled: true,
+  codOrderCap: 500000,
+  shippingFee: 9900,
+  freeShippingThreshold: 299900,
+  codFeeEnabled: false,
+  codFee: 0,
+  gstEnabled: false,
+  gstRate: 0.0,
+  gstin: null,
+  businessName: "habitt",
+  businessTagline: "Minimalist Apparel Essentials",
+  supportEmail: "",
+  orderSenderEmail: "",
+  businessAddress: null,
+  lowStockThreshold: 3,
+  welcomeCouponCode: "WELCOME10",
+  welcomeCouponPercent: 10,
+  birthdayDiscountPercent: 10,
+  returnWindowDays: 7,
+  abandonedCartDelayHours: 24,
+  freeShippingOnPrepaid: true,
+  codRequiresDeliveredOrder: true,
+  freeReturnShipping: true,
+  refundProcessingHours: 48,
+  maxDeliveryDays: 7,
+  legalName: null,
+  businessPhone: null,
+  businessState: null,
+  businessPincode: null,
+  whatsappSupportNumber: null,
+  shiprocketPickupLocation: "Primary",
+  gstFeeMode: "COMPOSITE",
+  gstFeeRate: 18.0,
+  invoicePrefix: "HB",
+  grievanceOfficerName: null,
+  grievanceOfficerEmail: null,
+  grievanceOfficerPhone: null,
+  grievanceOfficerAddress: null,
+  businessAddressLine1: null,
+  businessAddressLine2: null,
+  businessCity: null,
+  pickupAddressLine1: null,
+  pickupAddressLine2: null,
+  pickupCity: null,
+  pickupPincode: null,
+  pickupPhone: null,
+  ordersEmail: null,
+  replyToEmail: null,
+  dispatchHandlingNote: null,
+  instagramUrl: null,
+  facebookUrl: null,
+  promoCreditExpiryDays: 180,
+  walletMaxPercentOfOrder: 100,
+  maxAdminAdjustPaise: 500000,
+  loyaltyEnabled: false,
+  loyaltyEnabledAt: null,
+  loyaltyModel: "FLAT_PERCENT",
+  loyaltyPercentBps: 200,
+  referralEnabled: false,
+  referrerRewardPaise: 0,
+  refereeRewardPaise: 0,
+  referralMonthlyCapPerReferrer: 10,
+  referralMinOrderPaise: 0,
+  referralValidityDays: 90,
+  seoIndexingEnabled: false,
+  googleSiteVerification: null,
+  ogDefaultImageUrl: null,
+  influencerCookieDays: 30,
+  updatedAt: new Date(0),
+};
 
-  if (!settings) {
-    settings = await prisma.siteSettings.create({
-      data: {
-        id: "default",
-      },
-    });
-  }
+export async function getSettings(): Promise<SiteSettings> {
+  return readOrBuildFallback(
+    async () => {
+      let settings = await prisma.siteSettings.findUnique({
+        where: { id: "default" },
+      });
 
-  return settings;
+      if (!settings) {
+        settings = await prisma.siteSettings.create({
+          data: {
+            id: "default",
+          },
+        });
+      }
+
+      return settings;
+    },
+    DEFAULT_SITE_SETTINGS,
+    "getSettings"
+  );
 }

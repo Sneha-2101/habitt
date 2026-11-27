@@ -1,7 +1,10 @@
 import { PrismaClient } from "@prisma/client";
+import { withBuildConnectionLimit } from "@/lib/db-url";
 
 function createPrismaClient() {
+  const url = withBuildConnectionLimit(process.env.DATABASE_URL, process.env.NEXT_PHASE);
   return new PrismaClient({
+    ...(url ? { datasources: { db: { url } } } : {}),
     omit: {
       product: {
         costPrice: true,

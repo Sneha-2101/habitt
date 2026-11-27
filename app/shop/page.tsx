@@ -8,6 +8,7 @@ import { getSettings } from "@/lib/settings";
 import { buildBusinessProfile } from "@/lib/site/business";
 import { getSiteUrl } from "@/lib/seo/site-url";
 import { buildListingMetadata } from "@/lib/seo/metadata";
+import { readOrBuildFallback } from "@/lib/build-safe";
 
 // Dynamic by design: reads searchParams for category, search, and sort.
 
@@ -25,16 +26,21 @@ export async function generateMetadata({
   const [settings, categoryRow] = await Promise.all([
     getSettings(),
     rawCategory
-      ? prisma.category.findFirst({
-          where: {
-            active: true,
-            OR: [
-              { slug: { equals: rawCategory, mode: "insensitive" } },
-              { name: { equals: rawCategory, mode: "insensitive" } },
-            ],
-          },
-          select: { name: true, seoTitle: true, seoDescription: true, introText: true },
-        })
+      ? readOrBuildFallback(
+          () =>
+            prisma.category.findFirst({
+              where: {
+                active: true,
+                OR: [
+                  { slug: { equals: rawCategory, mode: "insensitive" } },
+                  { name: { equals: rawCategory, mode: "insensitive" } },
+                ],
+              },
+              select: { name: true, seoTitle: true, seoDescription: true, introText: true },
+            }),
+          null,
+          "shop.generateMetadata.category"
+        )
       : Promise.resolve(null),
   ]);
 

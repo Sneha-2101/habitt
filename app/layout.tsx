@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import WhatsAppWidget from "@/components/WhatsAppWidget";
@@ -14,14 +14,36 @@ import { isIndexingAllowed } from "@/lib/seo/indexing";
 import { truncateSeoDescription } from "@/lib/seo/metadata";
 import "./globals.css";
 
-const fraunces = Fraunces({
-  subsets: ["latin"],
+const fraunces = localFont({
+  src: [
+    { path: "./fonts/fraunces-normal-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/fraunces-normal-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/fraunces-italic-500.woff2", weight: "500", style: "italic" },
+    { path: "./fonts/fraunces-italic-600.woff2", weight: "600", style: "italic" },
+  ],
   variable: "--font-fraunces",
-  style: ["normal", "italic"],
-  weight: ["500", "600"],
+  display: "swap",
+  fallback: ["serif"],
 });
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", weight: ["400", "500", "600"] });
-const jbMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jbmono", weight: ["400", "500"] });
+const inter = localFont({
+  src: [
+    { path: "./fonts/inter-normal-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/inter-normal-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/inter-normal-600.woff2", weight: "600", style: "normal" },
+  ],
+  variable: "--font-inter",
+  display: "swap",
+  fallback: ["sans-serif"],
+});
+const jbMono = localFont({
+  src: [
+    { path: "./fonts/jetbrains-mono-normal-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/jetbrains-mono-normal-500.woff2", weight: "500", style: "normal" },
+  ],
+  variable: "--font-jbmono",
+  display: "swap",
+  fallback: ["monospace"],
+});
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings();
@@ -53,6 +75,8 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   themeColor: "#111111",
 };
+
+export const revalidate = 60;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const settings = await getSettings();

@@ -100,7 +100,7 @@ describe("consent/pixel-queue", () => {
     const storage = createMemoryStorage();
     const key = purchaseDedupeKey("ord_never");
 
-    queuePixelEvent(
+    const queued = queuePixelEvent(
       {
         eventName: "Purchase",
         data: { value: 500, currency: "INR", order_id: "ord_never" },
@@ -111,9 +111,16 @@ describe("consent/pixel-queue", () => {
       storage
     );
 
+    expect(queued).toBe(true);
+    expect(hasPendingPurchase("ord_never")).toBe(true);
     // Without flush, key is never written
     expect(storage.getItem(key)).toBeNull();
+    // When consent is unset, pixel does not load and queue holds the event without calling fbq
+    expect(shouldLoadPixel({ pixelId: "12345", consent: "unset" })).toBe(false);
+    expect(hasPendingPurchase("ord_never")).toBe(true);
+
     resetPixelQueueForTests();
+    expect(hasPendingPurchase("ord_never")).toBe(false);
     expect(storage.getItem(key)).toBeNull();
   });
 });
