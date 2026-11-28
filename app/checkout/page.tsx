@@ -221,12 +221,17 @@ export default function CheckoutPage() {
   // Meta Pixel track initiate checkout
   useEffect(() => {
     if (quote?.subtotal) {
-      import("@/components/MetaPixel").then(({ trackPixelEvent }) => {
-        trackPixelEvent("InitiateCheckout", {
-          value: quote.subtotal / 100,
-          currency: "INR",
-          num_items: items.reduce((acc, item) => acc + item.qty, 0),
-        });
+      Promise.all([
+        import("@/components/MetaPixel"),
+        import("@/lib/consent/pixel-payload"),
+      ]).then(([{ trackPixelEvent }, { buildInitiateCheckoutPayload }]) => {
+        trackPixelEvent(
+          "InitiateCheckout",
+          buildInitiateCheckoutPayload({
+            items,
+            subtotalRupees: quote.subtotal / 100,
+          })
+        );
       });
     }
   }, [quote?.subtotal, items]);

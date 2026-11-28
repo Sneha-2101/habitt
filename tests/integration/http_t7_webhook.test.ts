@@ -47,7 +47,6 @@ describe("T7: Razorpay Webhook Handling", () => {
         },
       },
     });
-    const validSig = webhookSignature(validPayload);
 
     // 1. Missing signature -> 400
     const missingSigRes = await fetch(`${BASE_URL}/api/webhooks/razorpay`, {

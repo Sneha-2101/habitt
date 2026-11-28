@@ -1,8 +1,12 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
 import { reserveStock } from "@/lib/stock";
 import { sendOrderConfirmationEmail } from "@/lib/email";
-import { issueRefund } from "@/lib/refunds/issue-refund";
+import { enqueueOutbox } from "@/lib/outbox/enqueue";
+import {
+  LATE_CAPTURE_REFUND_OUTBOX_TYPE,
+  buildLateCaptureRefundDedupeKey,
+  buildLateCaptureRefundOutboxPayload,
+} from "@/lib/orders/late-capture-refund";
 import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function markOrderPaid(
@@ -63,41 +67,24 @@ export async function markOrderPaid(
         },
       });
 
-      // After transaction, attempt full Razorpay refund of captured amount via issueRefund
+      // Enqueue durable outbox job inside the SAME transaction
       const refundAmount = Math.max(0, current.total - (current.storeCreditApplied || 0));
-      setTimeout(async () => {
-        try {
-          if (refundAmount <= 0) return;
-          const res = await issueRefund({
+      if (refundAmount > 0) {
+        await enqueueOutbox(
+          {
+            type: LATE_CAPTURE_REFUND_OUTBOX_TYPE,
+            channel: "INTERNAL",
             orderId,
-            method: "RAZORPAY",
-            amountPaise: refundAmount,
-            idempotencyKey: `late-capture-refund-${orderId}-${razorpayPaymentId}`,
-            reason: "Payment captured after cancellation",
-          });
-          if (!res.success) {
-            await prisma.orderStatusEvent.create({
-              data: {
-                orderId,
-                fulfilmentStatus: "CANCELLED",
-                note: `REFUND FAILED for payment ${razorpayPaymentId}: ${res.error || "Gateway failure"}`,
-              },
-            });
-          }
-        } catch (err: unknown) {
-          console.error(
-            "Razorpay refund error after late capture on cancelled order:",
-            safeErrorSummary(err)
-          );
-          await prisma.orderStatusEvent.create({
-            data: {
+            dedupeKey: buildLateCaptureRefundDedupeKey(orderId, razorpayPaymentId),
+            payload: buildLateCaptureRefundOutboxPayload({
               orderId,
-              fulfilmentStatus: "CANCELLED",
-              note: `REFUND FAILED for payment ${razorpayPaymentId}: ${safeErrorSummary(err)}`,
-            },
-          });
-        }
-      }, 100);
+              paymentId: razorpayPaymentId,
+              amountPaise: refundAmount,
+            }),
+          },
+          tx
+        );
+      }
 
       return { updated: false };
     }

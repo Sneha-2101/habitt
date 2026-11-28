@@ -33,7 +33,19 @@ export async function POST(req: Request) {
     return new Response("invalid signature", { status: 400 });
   }
 
-  let event: any;
+  let event: {
+    id?: string;
+    event?: string;
+    payload?: {
+      payment?: {
+        entity?: {
+          order_id?: string;
+          id?: string;
+          error_description?: string;
+        };
+      };
+    };
+  };
   try {
     event = JSON.parse(rawBody);
   } catch {
@@ -93,7 +105,7 @@ export async function POST(req: Request) {
     },
     { maxWait: 15000, timeout: 20000 }
   );
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       // Event already processed
       return new Response("Duplicate webhook event", { status: 200 });

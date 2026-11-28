@@ -10,6 +10,8 @@ import {
   shouldLoadPixel,
 } from "@/lib/consent/consent";
 import { flushPixelQueue, queuePixelEvent } from "@/lib/consent/pixel-queue";
+import { buildPurchasePayload } from "@/lib/consent/pixel-payload";
+import type { FeedVariantIdInput } from "@/lib/seo/feed-id";
 
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim();
 
@@ -58,7 +60,11 @@ export function trackPixelEvent(
   queuePixelEvent({ eventName, data, options });
 }
 
-export function trackPurchaseOnce(orderId: string, totalRupees: number) {
+export function trackPurchaseOnce(
+  orderId: string,
+  totalRupees: number,
+  items?: ReadonlyArray<FeedVariantIdInput>
+) {
   if (typeof window === "undefined") return;
   if (!shouldLoadPixel({ pixelId: PIXEL_ID, consent: readConsent() })) return;
 
@@ -70,11 +76,7 @@ export function trackPurchaseOnce(orderId: string, totalRupees: number) {
     // ignore storage read errors
   }
 
-  const data = {
-    value: totalRupees,
-    currency: "INR",
-    order_id: orderId,
-  };
+  const data = buildPurchasePayload({ orderId, totalRupees, items });
   const options = { eventID: orderId };
 
   if (window.fbq) {

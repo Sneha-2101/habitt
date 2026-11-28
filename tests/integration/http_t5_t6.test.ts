@@ -163,13 +163,30 @@ describe("T5 & T6: Oversell Clamp & Late Capture After Cancel", () => {
     const checkedVariant = await prisma.productVariant.findUnique({ where: { id: variant.id } });
     expect(checkedVariant?.stock).toBe(5);
 
-    // Wait a brief moment for the asynchronous refund attempt to complete
-    await new Promise((r) => setTimeout(r, 1200));
+    const outboxRows = await prisma.eventOutbox.findMany({
+      where: { orderId: order.id, type: "LATE_CAPTURE_REFUND" },
+    });
+    expect(outboxRows).toHaveLength(1);
 
-    // Check OrderStatusEvents
-    const events = await prisma.orderStatusEvent.findMany({
+    // Trigger outbox processing the same way the cron does
+    const cronSecret = process.env.CRON_SECRET;
+    const cronRes = await fetch(`${BASE_URL}/api/cron/outbox`, {
+      method: "GET",
+      headers: cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {},
+    });
+    expect(cronRes.status).toBe(200);
+
+    // Poll for the asynchronous outbox refund attempt to write REFUND FAILED (up to 15s)
+    let events = await prisma.orderStatusEvent.findMany({
       where: { orderId: order.id },
     });
+    const deadline = Date.now() + 15000;
+    while (!events.some((e) => e.note?.includes("REFUND FAILED")) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 500));
+      events = await prisma.orderStatusEvent.findMany({
+        where: { orderId: order.id },
+      });
+    }
 
     // First event: "Payment captured after cancellation"
     expect(

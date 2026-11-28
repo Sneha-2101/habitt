@@ -74,12 +74,11 @@ export default async function ShopPage({
   const rawCategoryParam = resolvedParams.category?.trim();
   const searchQuery = resolvedParams.q?.trim();
 
-  let products: any[] = [];
   const wishlistSet = new Set<string>();
   let categories: Array<{ id: string; slug: string; name: string; position: number }> = [];
   let activeCategory: { id: string; slug: string; name: string } | undefined;
 
-  try {
+  const loadShopProducts = async () => {
     categories = await prisma.category.findMany({
       where: { active: true },
       orderBy: { position: "asc" },
@@ -112,7 +111,7 @@ export default async function ShopPage({
       }),
       getActiveAutomaticOfferBadges(),
     ]);
-    products = dbProducts.map((p) => ({
+    return dbProducts.map((p) => ({
       ...p,
       offerBadge: resolveOfferBadge(
         p.id,
@@ -121,6 +120,11 @@ export default async function ShopPage({
         offerBadges
       ),
     }));
+  };
+
+  let products: Awaited<ReturnType<typeof loadShopProducts>> = [];
+  try {
+    products = await loadShopProducts();
   } catch (err) {
     console.error("ShopPage products fetch error:", safeErrorSummary(err));
   }

@@ -6,7 +6,6 @@ import {
   createTestProduct,
   createTestOrder,
   cleanupM1TestRows,
-  genId,
 } from "../helpers/fixtures";
 import { createSessionCookie } from "../helpers/session";
 import { verifySignature, webhookSignature } from "../helpers/razorpay";

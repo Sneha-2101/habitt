@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
 import { safeErrorSummary } from "@/lib/log-redact";
+import type { FulfilmentStatus, Prisma, Refund } from "@prisma/client";
 
 export const STALE_REFUND_THRESHOLD_MS = 15 * 60 * 1000;
+export const INTERRUPTED_REFUND_FAILURE_REASON = "Interrupted before gateway confirmation";
 
 export interface GatewayRefundRecord {
   id: string;
@@ -41,6 +43,100 @@ export function computeRefundPaymentStatus(
   orderTotalPaise: number
 ): "REFUNDED" | "PARTIALLY_REFUNDED" {
   return processedAmountPaise >= orderTotalPaise ? "REFUNDED" : "PARTIALLY_REFUNDED";
+}
+
+export async function lookupGatewayRefund(
+  razorpayPaymentId: string,
+  refundId: string,
+  providerRefundId?: string | null
+): Promise<GatewayRefundRecord | null> {
+  const razorpay = getRazorpay();
+  if (providerRefundId) {
+    return (await razorpay.payments.fetchRefund(
+      razorpayPaymentId,
+      providerRefundId
+    )) as GatewayRefundRecord;
+  }
+  const list = await razorpay.payments.fetchMultipleRefund(razorpayPaymentId, {
+    count: 100,
+  });
+  return findMatchingGatewayRefund(
+    (list?.items ?? []) as GatewayRefundRecord[],
+    refundId
+  );
+}
+
+export async function completeRecoveredRefundTx(
+  tx: Prisma.TransactionClient,
+  params: {
+    refund: Pick<Refund, "id" | "orderId" | "returnId" | "amountPaise">;
+    order: {
+      id: string;
+      total: number;
+      fulfilmentStatus: FulfilmentStatus;
+      refunds: ReadonlyArray<Pick<Refund, "id" | "status" | "amountPaise">>;
+    };
+    providerRefundId: string;
+    now: Date;
+    actorId?: string | null;
+  }
+): Promise<Refund> {
+  const { refund, order, providerRefundId, now, actorId = null } = params;
+  const otherProcessed = order.refunds
+    .filter((r) => r.status === "PROCESSED" && r.id !== refund.id)
+    .reduce((sum, r) => sum + r.amountPaise, 0);
+  const newCumulative = otherProcessed + refund.amountPaise;
+  const nextPaymentStatus = computeRefundPaymentStatus(newCumulative, order.total);
+
+  const updatedRefund = await tx.refund.update({
+    where: { id: refund.id },
+    data: {
+      status: "PROCESSED",
+      providerRefundId,
+      processedAt: now,
+      failureReason: null,
+    },
+  });
+
+  await tx.order.update({
+    where: { id: order.id },
+    data: {
+      paymentStatus: nextPaymentStatus,
+      razorpayRefundId: providerRefundId,
+      refundAmount: newCumulative,
+      refundedAt: now,
+    },
+  });
+
+  await tx.orderStatusEvent.create({
+    data: {
+      orderId: order.id,
+      fulfilmentStatus: order.fulfilmentStatus,
+      paymentStatus: nextPaymentStatus,
+      note: `Razorpay refund recovered: ${providerRefundId} (₹${(
+        refund.amountPaise / 100
+      ).toFixed(2)})`,
+    },
+  });
+
+  await tx.auditLog.create({
+    data: {
+      actorId,
+      action: "REFUND_RECOVERED_PROCESSED",
+      entity: "Refund",
+      entityId: refund.id,
+      meta: {
+        orderId: refund.orderId,
+        returnId: refund.returnId,
+        method: "RAZORPAY",
+        amountPaise: refund.amountPaise,
+        providerRefundId,
+        nextPaymentStatus,
+      },
+    },
+  });
+
+  return updatedRefund;
 }
 
 export interface RecoverRefundsResult {
@@ -161,22 +257,11 @@ export async function recoverInterruptedRefunds(
 
           let gatewayRefund: GatewayRefundRecord | null = null;
           try {
-            const razorpay = getRazorpay();
-            if (refund.providerRefundId) {
-              gatewayRefund = (await razorpay.payments.fetchRefund(
-                order.razorpayPaymentId,
-                refund.providerRefundId
-              )) as GatewayRefundRecord;
-            } else {
-              const list = await razorpay.payments.fetchMultipleRefund(
-                order.razorpayPaymentId,
-                { count: 100 }
-              );
-              gatewayRefund = findMatchingGatewayRefund(
-                (list?.items ?? []) as GatewayRefundRecord[],
-                refund.id
-              );
-            }
+            gatewayRefund = await lookupGatewayRefund(
+              order.razorpayPaymentId,
+              refund.id,
+              refund.providerRefundId
+            );
           } catch (err: unknown) {
             console.error(
               `[RefundRecovery] Gateway lookup failed for refund ${refund.id}:`,
@@ -186,60 +271,12 @@ export async function recoverInterruptedRefunds(
           }
 
           if (gatewayRefund && gatewayRefund.status === "processed") {
-            const otherProcessed = order.refunds
-              .filter((r) => r.status === "PROCESSED" && r.id !== refund.id)
-              .reduce((sum, r) => sum + r.amountPaise, 0);
-            const newCumulative = otherProcessed + refund.amountPaise;
-            const nextPaymentStatus = computeRefundPaymentStatus(newCumulative, order.total);
-
-            await tx.refund.update({
-              where: { id: refund.id },
-              data: {
-                status: "PROCESSED",
-                providerRefundId: gatewayRefund.id,
-                processedAt: now,
-                failureReason: null,
-              },
+            await completeRecoveredRefundTx(tx, {
+              refund,
+              order,
+              providerRefundId: gatewayRefund.id,
+              now,
             });
-
-            await tx.order.update({
-              where: { id: order.id },
-              data: {
-                paymentStatus: nextPaymentStatus,
-                razorpayRefundId: gatewayRefund.id,
-                refundAmount: newCumulative,
-                refundedAt: now,
-              },
-            });
-
-            await tx.orderStatusEvent.create({
-              data: {
-                orderId: order.id,
-                fulfilmentStatus: order.fulfilmentStatus,
-                paymentStatus: nextPaymentStatus,
-                note: `Razorpay refund recovered: ${gatewayRefund.id} (₹${(
-                  refund.amountPaise / 100
-                ).toFixed(2)})`,
-              },
-            });
-
-            await tx.auditLog.create({
-              data: {
-                actorId: null,
-                action: "REFUND_RECOVERED_PROCESSED",
-                entity: "Refund",
-                entityId: refund.id,
-                meta: {
-                  orderId: refund.orderId,
-                  returnId: refund.returnId,
-                  method: "RAZORPAY",
-                  amountPaise: refund.amountPaise,
-                  providerRefundId: gatewayRefund.id,
-                  nextPaymentStatus,
-                },
-              },
-            });
-
             return "processed" as const;
           }
 
@@ -256,7 +293,7 @@ export async function recoverInterruptedRefunds(
           const failureReason =
             gatewayRefund && gatewayRefund.status === "failed"
               ? "Gateway reported refund failed"
-              : "Interrupted before gateway confirmation";
+              : INTERRUPTED_REFUND_FAILURE_REASON;
 
           await tx.refund.update({
             where: { id: refund.id },

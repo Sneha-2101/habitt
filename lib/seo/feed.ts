@@ -1,6 +1,7 @@
 import { stripMarkupAndCollapse } from "@/lib/seo/metadata";
 import { formatInrPrice } from "@/lib/seo/jsonld";
 import { normalizeColor } from "@/lib/catalog/image-color";
+import { formatFeedVariantId } from "@/lib/seo/feed-id";
 
 export function resolveFeedVariantImageUrl(
   images: ReadonlyArray<{ url: string; color?: string | null; position?: number }>,
@@ -50,7 +51,7 @@ export function buildGoogleFeedXml(input: {
 
   const itemXml = input.items
     .map((it) => {
-      const gid = escapeXml(it.sku?.trim() || `${it.productId}-${it.variantId}`);
+      const gid = escapeXml(formatFeedVariantId(it));
       const title = escapeXml(it.title);
       const desc = escapeXml(stripMarkupAndCollapse(it.description));
       const link = escapeXml(`${baseUrl}/product/${it.slug}`);

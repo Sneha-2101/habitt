@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import BulkSkuModal from "./BulkSkuModal";
@@ -6,8 +7,15 @@ import { safeErrorSummary } from "@/lib/log-redact";
 
 export const dynamic = "force-dynamic";
 
+type AdminProductRow = Omit<
+  Prisma.ProductGetPayload<{
+    include: { variants: true; images: true; category: true };
+  }>,
+  "costPrice"
+>;
+
 export default async function AdminProductsPage() {
-  let products: any[] = [];
+  let products: AdminProductRow[] = [];
   try {
     products = await prisma.product.findMany({
       include: { variants: true, images: { take: 1, orderBy: { position: "asc" } }, category: true },

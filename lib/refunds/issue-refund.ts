@@ -2,6 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { getRazorpay } from "@/lib/razorpay";
 import { refundToWallet } from "@/lib/wallet/service";
 import type { Refund, RefundMethod } from "@prisma/client";
+import { safeErrorSummary } from "@/lib/log-redact";
+import {
+  INTERRUPTED_REFUND_FAILURE_REASON,
+  lookupGatewayRefund,
+  completeRecoveredRefundTx,
+} from "./recover-refunds";
+import { isDefiniteGatewayRejection } from "./gateway-errors";
 
 export interface IssueRefundInput {
   orderId: string;
@@ -223,6 +230,68 @@ export async function issueRefund(input: IssueRefundInput): Promise<IssueRefundR
   }
 
   // --- RAZORPAY MODE ---
+  // Pre-retry gateway lookup when retrying an inconclusive/interrupted FAILED refund
+  if (
+    existingRefund &&
+    existingRefund.status === "FAILED" &&
+    existingRefund.failureReason?.startsWith(INTERRUPTED_REFUND_FAILURE_REASON)
+  ) {
+    const orderForLookup = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { refunds: true },
+    });
+
+    if (orderForLookup?.razorpayPaymentId) {
+      let gatewayMatch;
+      try {
+        gatewayMatch = await lookupGatewayRefund(
+          orderForLookup.razorpayPaymentId,
+          existingRefund.id,
+          existingRefund.providerRefundId
+        );
+      } catch (lookupErr: unknown) {
+        console.error(
+          `[issueRefund] Pre-retry gateway lookup failed for refund ${existingRefund.id}:`,
+          safeErrorSummary(lookupErr)
+        );
+        return {
+          success: false,
+          refund: existingRefund,
+          error: "Gateway lookup failed before retry; cannot safely re-issue refund",
+        };
+      }
+
+      if (gatewayMatch && gatewayMatch.status === "processed") {
+        const completed = await prisma.$transaction((tx) =>
+          completeRecoveredRefundTx(tx, {
+            refund: existingRefund,
+            order: orderForLookup,
+            providerRefundId: gatewayMatch.id,
+            now: new Date(),
+            actorId: actorId || null,
+          })
+        );
+        return { success: true, refund: completed, idempotent: true };
+      }
+
+      if (gatewayMatch && gatewayMatch.status === "pending") {
+        const pendingAgain = await prisma.refund.update({
+          where: { id: existingRefund.id },
+          data: {
+            status: "PENDING",
+            providerRefundId: gatewayMatch.id,
+            failureReason: null,
+          },
+        });
+        return {
+          success: false,
+          refund: pendingAgain,
+          error: "Refund is still pending at gateway",
+        };
+      }
+    }
+  }
+
   // Step 1: Create PENDING refund inside transaction with row lock
   const pendingRefund = await prisma.$transaction(async (tx) => {
     // Row lock on Order
@@ -368,12 +437,15 @@ export async function issueRefund(input: IssueRefundInput): Promise<IssueRefundR
     const errorObj = err as { message?: string; error?: { description?: string } } | undefined;
     const safeReason =
       errorObj?.error?.description || errorObj?.message || "Razorpay refund failed";
+    const failureReason = isDefiniteGatewayRejection(err)
+      ? safeReason
+      : `${INTERRUPTED_REFUND_FAILURE_REASON}: ${safeReason}`;
 
     const failedRefund = await prisma.refund.update({
       where: { id: refund.id },
       data: {
         status: "FAILED",
-        failureReason: safeReason,
+        failureReason,
       },
     });
 

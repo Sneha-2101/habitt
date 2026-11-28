@@ -29,7 +29,7 @@ describe("T23: Newsletter Subscription & Coupon Generation", () => {
 
     // Response must strictly return { success: true } and contain no code
     expect(res1).toEqual({ success: true });
-    expect((res1 as any).code).toBeUndefined();
+    expect((res1 as { code?: unknown }).code).toBeUndefined();
 
     // Verify subscriber record created in database
     const subscriber = await prisma.newsletterSubscriber.findUnique({
@@ -58,7 +58,7 @@ describe("T23: Newsletter Subscription & Coupon Generation", () => {
     resetMemoryLimits(); // reset rate limit to isolate subscriber deduplication logic
     const res2 = await subscribeNewsletter(email);
     expect(res2).toEqual({ success: true });
-    expect((res2 as any).code).toBeUndefined();
+    expect((res2 as { code?: unknown }).code).toBeUndefined();
 
     // No second coupon must be created
     const couponsAfter2 = await prisma.offer.findMany({

@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import crypto from "crypto";
 import { prisma } from "../helpers/prisma";
 import {
   createTestUser,

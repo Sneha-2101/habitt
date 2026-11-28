@@ -5,12 +5,6 @@ import { getDashboardStats } from "@/lib/admin/dashboard";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboard() {
-  // Baseline ESLint warnings preserved
-  const weekOrders: any[] = [];
-  const lowStock: any[] = [];
-  void weekOrders;
-  void lowStock;
-
   const stats = await getDashboardStats();
 
   return (

@@ -3,12 +3,14 @@
 import { useEffect } from "react";
 import { recordRecentlyViewed } from "@/lib/recently-viewed";
 import { trackPixelEvent } from "@/components/MetaPixel";
+import { buildViewContentPayload } from "@/lib/consent/pixel-payload";
 
 export default function RecordRecentlyViewed({
   product,
 }: {
   product: {
     id: string;
+    feedContentId?: string;
     name: string;
     slug: string;
     price: number;
@@ -18,12 +20,14 @@ export default function RecordRecentlyViewed({
 }) {
   useEffect(() => {
     recordRecentlyViewed(product);
-    trackPixelEvent("ViewContent", {
-      content_name: product.name,
-      content_ids: [product.id],
-      value: product.price / 100,
-      currency: "INR",
-    });
+    trackPixelEvent(
+      "ViewContent",
+      buildViewContentPayload({
+        contentId: product.feedContentId || product.id,
+        productName: product.name,
+        priceRupees: product.price / 100,
+      })
+    );
   }, [product]);
 
   return null;

@@ -11,13 +11,30 @@ export default async function OrderSuccessPage({ params }: { params: Promise<{ i
     where: { id: resolvedParams.id },
     include: {
       statusEvents: { orderBy: { createdAt: "asc" } },
+      items: {
+        select: {
+          productId: true,
+          variantId: true,
+          sku: true,
+        },
+      },
     },
   });
   if (!order) notFound();
 
+  const pixelItems = order.items.map((it) => ({
+    productId: it.productId,
+    variantId: it.variantId,
+    sku: it.sku ?? null,
+  }));
+
   return (
     <main className="max-w-lg mx-auto px-4 sm:px-7 py-16 text-center space-y-8">
-      <TrackPurchasePixel orderId={order.displayId} totalRupees={order.total / 100} />
+      <TrackPurchasePixel
+        orderId={order.displayId}
+        totalRupees={order.total / 100}
+        items={pixelItems}
+      />
       <div>
         <div className="w-13 h-13 rounded-full bg-moss flex items-center justify-center mx-auto mb-4" style={{ width: 52, height: 52 }}>
           <span className="text-paper text-xl">✓</span>

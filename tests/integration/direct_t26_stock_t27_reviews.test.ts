@@ -52,7 +52,7 @@ describe("T26 & T27: Stock Notification Validation & Review Privacy", () => {
       ],
     });
 
-    const { product: otherProduct, variants: otherVariants } = await createTestProduct({
+    const { variants: otherVariants } = await createTestProduct({
       status: "ACTIVE",
       variants: [{ size: "S", stock: 0 }],
     });
@@ -81,8 +81,8 @@ describe("T26 & T27: Stock Notification Validation & Review Privacy", () => {
     // Create 4 more products/variants to make 5 total distinct open notifications
     const p2 = await createTestProduct({ variants: [{ size: "M", stock: 0 }] });
     const p3 = await createTestProduct({ variants: [{ size: "M", stock: 0 }] });
-    const p4 = await createTestProduct({ variants: [{ size: "M", stock: 0 }] });
-    const p5 = await createTestProduct({ variants: [{ size: "M", stock: 0 }] });
+    await createTestProduct({ variants: [{ size: "M", stock: 0 }] });
+    await createTestProduct({ variants: [{ size: "M", stock: 0 }] });
 
     // Request 1 to 4 on activeVariants
     await requestStockNotification(email, activeProduct.id, activeVariants[0].id);
@@ -166,8 +166,8 @@ describe("T26 & T27: Stock Notification Validation & Review Privacy", () => {
 
     // Check privacy: none of the returned review objects should leak full name or email or userId
     for (const r of reviews) {
-      expect((r as any).userId).toBeUndefined();
-      expect((r as any).user.email).toBeUndefined();
+      expect((r as unknown as Record<string, unknown>).userId).toBeUndefined();
+      expect((r.user as unknown as Record<string, unknown>).email).toBeUndefined();
       expect(r.user.name).not.toBe("Johnathan Doe");
       expect(r.user.name).not.toBe("Vikram Kumar Singh");
     }

@@ -9,6 +9,12 @@ import {
   sendWalletExpiryWarningEmail,
 } from "@/lib/email";
 import { isWhatsappMessagesLive } from "@/lib/whatsapp-flag";
+import { issueRefund } from "@/lib/refunds/issue-refund";
+import {
+  LATE_CAPTURE_REFUND_OUTBOX_TYPE,
+  buildLateCaptureRefundIdempotencyKey,
+} from "@/lib/orders/late-capture-refund";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 function redactOutboxPayload(payload: unknown): Prisma.InputJsonValue | undefined {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -114,7 +120,7 @@ export async function processOutboxBatch(batchSize = 25): Promise<ProcessOutboxR
       continue;
     }
 
-    if (item.channel === "EMAIL") {
+    if (item.channel === "EMAIL" || item.channel === "INTERNAL") {
       const payloadObj =
         item.payload && typeof item.payload === "object"
           ? (item.payload as Record<string, unknown>)
@@ -128,7 +134,55 @@ export async function processOutboxBatch(batchSize = 25): Promise<ProcessOutboxR
       try {
         let res: { success?: boolean; error?: unknown; reason?: string } | undefined = { success: false };
 
-        if (item.type.startsWith("TICKET_")) {
+        if (item.channel === "INTERNAL") {
+          if (item.type === LATE_CAPTURE_REFUND_OUTBOX_TYPE) {
+            const refundOrderId = typeof payloadObj?.orderId === "string" ? payloadObj.orderId : null;
+            const paymentId = typeof payloadObj?.paymentId === "string" ? payloadObj.paymentId : null;
+            const amountPaise =
+              typeof payloadObj?.amountPaise === "number" ? payloadObj.amountPaise : null;
+
+            if (!refundOrderId || !paymentId || amountPaise === null || amountPaise <= 0) {
+              throw new Error(
+                "Missing orderId, paymentId, or amountPaise in LATE_CAPTURE_REFUND outbox payload"
+              );
+            }
+
+            try {
+              const refRes = await issueRefund({
+                orderId: refundOrderId,
+                method: "RAZORPAY",
+                amountPaise,
+                idempotencyKey: buildLateCaptureRefundIdempotencyKey(refundOrderId, paymentId),
+                reason: "Payment captured after cancellation",
+              });
+
+              if (!refRes.success) {
+                await prisma.orderStatusEvent.create({
+                  data: {
+                    orderId: refundOrderId,
+                    fulfilmentStatus: "CANCELLED",
+                    note: `REFUND FAILED for payment ${paymentId}: ${refRes.error || "Gateway failure"}`,
+                  },
+                });
+                res = { success: false, error: refRes.error || "Gateway failure" };
+              } else {
+                res = { success: true };
+              }
+            } catch (err: unknown) {
+              const summary = safeErrorSummary(err);
+              await prisma.orderStatusEvent.create({
+                data: {
+                  orderId: refundOrderId,
+                  fulfilmentStatus: "CANCELLED",
+                  note: `REFUND FAILED for payment ${paymentId}: ${summary}`,
+                },
+              });
+              res = { success: false, error: summary };
+            }
+          } else {
+            res = { success: true };
+          }
+        } else if (item.type.startsWith("TICKET_")) {
           res = await sendTicketEventEmail(item.type, payloadObj || {});
           if (
             res?.success !== false &&

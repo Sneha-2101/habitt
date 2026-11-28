@@ -17,7 +17,6 @@ describe("T11: Database Non-Negative Stock Check Constraint", () => {
 
     // Attempting raw UPDATE with stock = -1 must throw from Postgres
     let threw = false;
-    let errorCode: string | undefined;
     let errorMessage: string | undefined;
 
     try {
@@ -25,10 +24,9 @@ describe("T11: Database Non-Negative Stock Check Constraint", () => {
         `UPDATE "ProductVariant" SET stock = -1 WHERE id = $1`,
         variant.id
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       threw = true;
-      errorCode = err.code;
-      errorMessage = err.message;
+      errorMessage = err instanceof Error ? err.message : undefined;
     }
 
     expect(threw).toBe(true);

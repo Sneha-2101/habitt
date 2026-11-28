@@ -12,6 +12,7 @@ import StarRating from "@/components/StarRating";
 import ProductReviews from "@/components/ProductReviews";
 import RecordRecentlyViewed from "@/components/RecordRecentlyViewed";
 import TrackViewContentPixel from "@/components/TrackViewContentPixel";
+import { formatFeedVariantId } from "@/lib/seo/feed-id";
 import JsonLd from "@/components/seo/JsonLd";
 import { getReviewsForProduct, getAverageRating } from "@/lib/actions/reviews";
 import { getSettings } from "@/lib/settings";
@@ -127,9 +128,20 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     })),
     product.category?.sizes ?? []
   );
+  const defaultVariant = pickDefaultVariant(grouped);
   const defaultColor = grouped.hasColors
-    ? pickDefaultVariant(grouped)?.color || grouped.colors[0]?.color || ""
+    ? defaultVariant?.color || grouped.colors[0]?.color || ""
     : "";
+  const defaultVariantRow = defaultVariant
+    ? product.variants.find((v) => v.id === defaultVariant.id)
+    : product.variants[0];
+  const defaultFeedContentId = defaultVariantRow
+    ? formatFeedVariantId({
+        productId: product.id,
+        variantId: defaultVariantRow.id,
+        sku: defaultVariantRow.sku,
+      })
+    : product.id;
 
   const profile = buildBusinessProfile(settings);
   const brandName = profile.displayName || profile.legalName || settings.businessName;
@@ -167,6 +179,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <RecordRecentlyViewed
         product={{
           id: product.id,
+          feedContentId: defaultFeedContentId,
           name: product.name,
           slug: product.slug,
           price: product.price,
@@ -175,7 +188,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         }}
       />
       <TrackViewContentPixel
-        productId={product.id}
+        contentId={defaultFeedContentId}
         productName={product.name}
         priceRupees={product.price / 100}
       />
@@ -270,6 +283,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             categorySizes={product.category?.sizes ?? []}
             variants={product.variants.map((v) => ({
               id: v.id,
+              sku: v.sku,
               size: v.size,
               color: v.color,
               colorHex: v.colorHex,

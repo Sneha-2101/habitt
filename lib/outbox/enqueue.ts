@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 
 export interface EnqueueOutboxInput {
   type: string;
-  channel: "EMAIL" | "WHATSAPP";
+  channel: "EMAIL" | "WHATSAPP" | "INTERNAL";
   orderId?: string | null;
   payload: Prisma.InputJsonValue;
   dedupeKey: string;

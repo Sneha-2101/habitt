@@ -2,25 +2,23 @@
 
 import { useEffect } from "react";
 import { trackPixelEvent } from "@/components/MetaPixel";
+import { buildViewContentPayload } from "@/lib/consent/pixel-payload";
 
 export default function TrackViewContentPixel({
-  productId,
+  contentId,
   productName,
   priceRupees,
 }: {
-  productId: string;
+  contentId: string;
   productName: string;
   priceRupees: number;
 }) {
   useEffect(() => {
-    trackPixelEvent("ViewContent", {
-      content_ids: [productId],
-      content_name: productName,
-      content_type: "product",
-      value: priceRupees,
-      currency: "INR",
-    });
-  }, [productId, productName, priceRupees]);
+    trackPixelEvent(
+      "ViewContent",
+      buildViewContentPayload({ contentId, productName, priceRupees })
+    );
+  }, [contentId, productName, priceRupees]);
 
   return null;
 }

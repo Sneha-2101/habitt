@@ -8,9 +8,11 @@ import { requestStockNotification } from "@/lib/actions/notifications";
 import { sortSizes } from "@/lib/catalog/categories";
 import { groupVariants, pickDefaultVariant } from "@/lib/catalog/variants";
 import { useProductColor } from "@/components/ProductColorContext";
+import { buildAddToCartPayload } from "@/lib/consent/pixel-payload";
 
 interface Variant {
   id: string;
+  sku?: string | null;
   size: string;
   color?: string;
   colorHex?: string | null;
@@ -107,6 +109,7 @@ export default function AddToBagPanel({
     add({
       productId,
       variantId: activeVariant.id,
+      sku: activeVariant.sku ?? null,
       name: productName,
       size: selectedSize,
       color: activeVariant.color || undefined,
@@ -115,12 +118,17 @@ export default function AddToBagPanel({
     });
 
     import("@/components/MetaPixel").then(({ trackPixelEvent }) => {
-      trackPixelEvent("AddToCart", {
-        content_ids: [activeVariant.id],
-        content_type: "product",
-        value: price / 100,
-        currency: "INR",
-      });
+      trackPixelEvent(
+        "AddToCart",
+        buildAddToCartPayload({
+          variant: {
+            productId,
+            variantId: activeVariant.id,
+            sku: activeVariant.sku ?? null,
+          },
+          priceRupees: price / 100,
+        })
+      );
     });
 
     open();

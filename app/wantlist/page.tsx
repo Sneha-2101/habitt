@@ -25,9 +25,8 @@ export default async function WantlistPage() {
     redirect("/login?redirect=/wantlist");
   }
 
-  let items: any[] = [];
-  try {
-    items = await prisma.wishlistItem.findMany({
+  const loadWishlist = () =>
+    prisma.wishlistItem.findMany({
       where: {
         userId,
         product: storefrontProductWhere(),
@@ -39,6 +38,10 @@ export default async function WantlistPage() {
       },
       orderBy: { createdAt: "desc" },
     });
+
+  let items: Awaited<ReturnType<typeof loadWishlist>> = [];
+  try {
+    items = await loadWishlist();
   } catch (err) {
     console.error("Wantlist query error:", safeErrorSummary(err));
   }

@@ -34,7 +34,7 @@ vi.mock("@/lib/email", () => ({
 vi.mock("@/lib/razorpay", () => ({
   getRazorpay: () => ({
     payments: {
-      refund: mockRefund,
+      fetchMultipleRefund: vi.fn().mockResolvedValue({ items: [] }), fetchRefund: vi.fn().mockResolvedValue({}), refund: mockRefund,
     },
   }),
 }));

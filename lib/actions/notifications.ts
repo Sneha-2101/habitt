@@ -29,8 +29,8 @@ export async function requestStockNotification(
     if (!rl.ok) {
       throw new Error("Too many stock notification requests. Please try again later.");
     }
-  } catch (err: any) {
-    if (err?.message?.includes("Too many stock notification requests")) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes("Too many stock notification requests")) {
       throw err;
     }
   }
