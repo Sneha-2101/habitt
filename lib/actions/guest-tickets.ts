@@ -6,6 +6,7 @@ import { limit } from "@/lib/ratelimit";
 import { headers } from "next/headers";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { normalizeIdentifier, hashOtp } from "@/lib/otp";
+import { otpIdentifierKey } from "@/lib/otp-identifier";
 import { sendEmailOtp } from "@/lib/otp-email";
 import {
   guestTicketSchema,
@@ -72,7 +73,7 @@ export async function requestGuestTicketCode(email: string, turnstileToken?: str
   // 2. Rate limit by IP and by email
   const [ipLimit, emailLimit] = await Promise.all([
     limit("ticketGuestOtpIp", ip),
-    limit("ticketGuestOtpEmail", normalized),
+    limit("ticketGuestOtpEmail", otpIdentifierKey(normalized)),
   ]);
 
   if (!ipLimit.ok || !emailLimit.ok) {
@@ -83,13 +84,14 @@ export async function requestGuestTicketCode(email: string, turnstileToken?: str
   }
 
   const identifier = `ticket_guest:${normalized}`;
+  const identifierKey = otpIdentifierKey(identifier);
   const now = new Date();
   const sixtySecondsAgo = new Date(now.getTime() - 60 * 1000);
 
   // 60-second cooldown check
   const recent = await prisma.otpCode.findFirst({
     where: {
-      identifier,
+      identifier: identifierKey,
       channel: "EMAIL",
       verified: false,
       expiresAt: { gt: now },
@@ -104,7 +106,7 @@ export async function requestGuestTicketCode(email: string, turnstileToken?: str
 
     await prisma.otpCode.create({
       data: {
-        identifier,
+        identifier: identifierKey,
         channel: "EMAIL",
         code: hashedCode,
         expiresAt,
@@ -145,12 +147,13 @@ export async function createGuestTicket(input: GuestTicketInput) {
   const parsed = guestTicketSchema.parse(input);
   const normalizedEmail = normalizeIdentifier(parsed.email, "EMAIL");
   const identifier = `ticket_guest:${normalizedEmail}`;
+  const identifierKey = otpIdentifierKey(identifier);
   const now = new Date();
 
   // Verify OTP code
   const activeCode = await prisma.otpCode.findFirst({
     where: {
-      identifier,
+      identifier: identifierKey,
       channel: "EMAIL",
       verified: false,
       expiresAt: { gt: now },

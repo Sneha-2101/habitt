@@ -14,6 +14,7 @@ import * as otpEmailModule from "@/lib/otp-email";
 import * as ratelimitModule from "@/lib/ratelimit";
 import * as turnstileModule from "@/lib/turnstile";
 import { PHONE_UNAVAILABLE_MESSAGE } from "@/lib/whatsapp-flag";
+import { otpIdentifierKey } from "@/lib/otp-identifier";
 
 function randomPhone(): string {
   return "+919" + String(Math.floor(100000000 + Math.random() * 900000000));
@@ -48,7 +49,7 @@ describe("T67: Phone gates when WhatsApp is not live", () => {
     });
 
     const otpRows = await prisma.otpCode.findMany({
-      where: { identifier: phone },
+      where: { identifier: otpIdentifierKey(phone) },
     });
     expect(otpRows).toHaveLength(0);
 
@@ -111,12 +112,12 @@ describe("T67: Phone gates when WhatsApp is not live", () => {
 
     // Zero OtpCode rows for either
     const freeCodes = await prisma.otpCode.findMany({
-      where: { identifier: freePhone },
+      where: { identifier: otpIdentifierKey(freePhone) },
     });
     expect(freeCodes).toHaveLength(0);
 
     const takenCodes = await prisma.otpCode.findMany({
-      where: { identifier: ownedPhone },
+      where: { identifier: otpIdentifierKey(ownedPhone) },
     });
     expect(takenCodes).toHaveLength(0);
   });
@@ -140,7 +141,7 @@ describe("T67: Phone gates when WhatsApp is not live", () => {
     expect(loginRes.success).toBe(true);
 
     const otpRowsA = await prisma.otpCode.findMany({
-      where: { identifier: phoneA },
+      where: { identifier: otpIdentifierKey(phoneA) },
     });
     expect(otpRowsA.length).toBeGreaterThan(0);
 
@@ -171,7 +172,7 @@ describe("T67: Phone gates when WhatsApp is not live", () => {
     expect(contactRes.message).toBe("If this can be used, we've sent a code to it.");
 
     const otpRowsB = await prisma.otpCode.findMany({
-      where: { identifier: phoneB },
+      where: { identifier: otpIdentifierKey(phoneB) },
     });
     expect(otpRowsB.length).toBeGreaterThan(0);
 
@@ -200,7 +201,7 @@ describe("T67: Phone gates when WhatsApp is not live", () => {
     expect(loginRes.success).toBe(true);
 
     const loginRows = await prisma.otpCode.findMany({
-      where: { identifier: loginEmail },
+      where: { identifier: otpIdentifierKey(loginEmail) },
     });
     expect(loginRows.length).toBeGreaterThan(0);
 
@@ -231,7 +232,7 @@ describe("T67: Phone gates when WhatsApp is not live", () => {
     expect(contactRes.message).toBe("If this can be used, we've sent a code to it.");
 
     const contactRows = await prisma.otpCode.findMany({
-      where: { identifier: newEmail },
+      where: { identifier: otpIdentifierKey(newEmail) },
     });
     expect(contactRows.length).toBeGreaterThan(0);
 

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole, requireUser } from "@/lib/guards";
 import { writeAudit } from "@/lib/audit";
-import { limit } from "@/lib/ratelimit";
+import { limit, peekLimit } from "@/lib/ratelimit";
 import { getClientIp } from "@/lib/client-ip";
 import { creditWalletLot, lockUserWallet } from "@/lib/wallet/service";
 import {
@@ -173,23 +173,42 @@ export async function issueGiftCardsAction(
       const last4 = getCodeLast4(normalized);
 
       try {
-        created = await prisma.giftCard.create({
-          data: {
-            codeHash,
-            last4,
-            amountPaise,
-            status: "ISSUED",
-            redeemBy: redeemByUtc,
-            note: parsed.note,
-            createdById: owner.id,
-          },
-          select: {
-            id: true,
-            last4: true,
-            amountPaise: true,
-            redeemBy: true,
-            note: true,
-          },
+        created = await prisma.$transaction(async (tx) => {
+          const card = await tx.giftCard.create({
+            data: {
+              codeHash,
+              last4,
+              amountPaise,
+              status: "ISSUED",
+              redeemBy: redeemByUtc,
+              note: parsed.note,
+              createdById: owner.id,
+            },
+            select: {
+              id: true,
+              last4: true,
+              amountPaise: true,
+              redeemBy: true,
+              note: true,
+            },
+          });
+
+          await writeAudit(
+            {
+              actorId: owner.id,
+              action: "gift_card.issue",
+              entity: "GiftCard",
+              entityId: card.id,
+              meta: {
+                id: card.id,
+                last4: card.last4,
+                amountPaise: card.amountPaise,
+              },
+            },
+            tx
+          );
+
+          return card;
         });
         plaintextCode = candidate;
         break;
@@ -207,18 +226,6 @@ export async function issueGiftCardsAction(
     if (!created) {
       throw new Error("Failed to issue gift card after collision retries.");
     }
-
-    await writeAudit({
-      actorId: owner.id,
-      action: "gift_card.issue",
-      entity: "GiftCard",
-      entityId: created.id,
-      meta: {
-        id: created.id,
-        last4: created.last4,
-        amountPaise: created.amountPaise,
-      },
-    });
 
     createdCards.push({
       id: created.id,
@@ -238,37 +245,42 @@ export async function voidGiftCardAction(id: string): Promise<{ success: true }>
   const owner = await requireRole("OWNER");
   const now = new Date();
 
-  const updated = await prisma.giftCard.updateMany({
-    where: { id, status: "ISSUED" },
-    data: {
-      status: "VOID",
-      voidedById: owner.id,
-      voidedAt: now,
-    },
-  });
-
-  if (updated.count === 0) {
-    throw new Error("Only issued gift cards can be voided.");
-  }
-
-  const card = await prisma.giftCard.findUnique({
-    where: { id },
-    select: { id: true, last4: true, amountPaise: true },
-  });
-
-  if (card) {
-    await writeAudit({
-      actorId: owner.id,
-      action: "gift_card.void",
-      entity: "GiftCard",
-      entityId: card.id,
-      meta: {
-        id: card.id,
-        last4: card.last4,
-        amountPaise: card.amountPaise,
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.giftCard.updateMany({
+      where: { id, status: "ISSUED" },
+      data: {
+        status: "VOID",
+        voidedById: owner.id,
+        voidedAt: now,
       },
     });
-  }
+
+    if (updated.count === 0) {
+      throw new Error("Only issued gift cards can be voided.");
+    }
+
+    const card = await tx.giftCard.findUnique({
+      where: { id },
+      select: { id: true, last4: true, amountPaise: true },
+    });
+
+    if (card) {
+      await writeAudit(
+        {
+          actorId: owner.id,
+          action: "gift_card.void",
+          entity: "GiftCard",
+          entityId: card.id,
+          meta: {
+            id: card.id,
+            last4: card.last4,
+            amountPaise: card.amountPaise,
+          },
+        },
+        tx
+      );
+    }
+  });
 
   safeRevalidate("/admin/gift-cards");
   return { success: true };
@@ -354,6 +366,17 @@ export async function redeemGiftCardAction(
   const user = await requireUser();
   const ip = await resolveClientIp();
 
+  const [userPeek, ipPeek] = await Promise.all([
+    peekLimit("giftCardRedeemUser", user.id),
+    peekLimit("giftCardRedeemIp", ip),
+  ]);
+  if (userPeek.blocked || ipPeek.blocked) {
+    return {
+      ok: false,
+      error: "Too many failed attempts. Please try again later.",
+    };
+  }
+
   const normalized = normalizeCode(rawCode);
   if (!normalized) {
     const [userRl, ipRl] = await Promise.all([
@@ -421,6 +444,21 @@ export async function redeemGiftCardAction(
       });
     }
 
+    await writeAudit(
+      {
+        actorId: user.id,
+        action: "gift_card.redeem",
+        entity: "GiftCard",
+        entityId: card.id,
+        meta: {
+          id: card.id,
+          last4: card.last4,
+          amountPaise: card.amountPaise,
+        },
+      },
+      tx
+    );
+
     return {
       claimed: true as const,
       card,
@@ -441,18 +479,6 @@ export async function redeemGiftCardAction(
     }
     return { ok: false, error: GENERIC_REDEEM_ERROR };
   }
-
-  await writeAudit({
-    actorId: user.id,
-    action: "gift_card.redeem",
-    entity: "GiftCard",
-    entityId: txResult.card.id,
-    meta: {
-      id: txResult.card.id,
-      last4: txResult.card.last4,
-      amountPaise: txResult.card.amountPaise,
-    },
-  });
 
   safeRevalidate("/account/wallet");
   safeRevalidate("/admin/gift-cards");

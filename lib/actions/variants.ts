@@ -228,6 +228,9 @@ export async function removeColorAction(
   const staff = await requireStaff();
 
   const result = await prisma.$transaction(async (tx) => {
+    // Lock the Product row to serialize concurrent color removals on the same product
+    await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${productId} FOR UPDATE`;
+
     const product = await tx.product.findUnique({
       where: { id: productId },
       include: { variants: true },

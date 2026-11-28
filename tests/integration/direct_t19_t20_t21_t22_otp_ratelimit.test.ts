@@ -4,6 +4,7 @@ import { prisma } from "../helpers/prisma";
 import { cleanupM1TestRows } from "../helpers/fixtures";
 import { requestOtpAction } from "@/lib/actions/otp";
 import { verifyOtp } from "@/lib/otp";
+import { otpIdentifierKey } from "@/lib/otp-identifier";
 import { limit, otpDailyCap, resetMemoryLimits } from "@/lib/ratelimit";
 
 describe("T19–T22: OTP Abuse Protection & Rate Limiting", () => {
@@ -28,7 +29,7 @@ describe("T19–T22: OTP Abuse Protection & Rate Limiting", () => {
     expect(actionRes.success).toBe(true);
 
     const storedOtp = await prisma.otpCode.findFirst({
-      where: { identifier: email },
+      where: { identifier: otpIdentifierKey(email) },
       orderBy: { createdAt: "desc" },
     });
 
@@ -62,7 +63,7 @@ describe("T19–T22: OTP Abuse Protection & Rate Limiting", () => {
 
     // Check attempts in DB
     const record = await prisma.otpCode.findFirst({
-      where: { identifier: email },
+      where: { identifier: otpIdentifierKey(email) },
       orderBy: { createdAt: "desc" },
     });
 
@@ -75,7 +76,7 @@ describe("T19–T22: OTP Abuse Protection & Rate Limiting", () => {
 
     // Bypass 60-second cooldown in DB to allow fresh request
     await prisma.otpCode.updateMany({
-      where: { identifier: email },
+      where: { identifier: otpIdentifierKey(email) },
       data: { createdAt: new Date(Date.now() - 70000) },
     });
 
@@ -117,7 +118,7 @@ describe("T19–T22: OTP Abuse Protection & Rate Limiting", () => {
       expect(res.success).toBe(true);
       // bypass cooldown
       await prisma.otpCode.updateMany({
-        where: { identifier: email },
+        where: { identifier: otpIdentifierKey(email) },
         data: { createdAt: new Date(Date.now() - 70000) },
       });
     }

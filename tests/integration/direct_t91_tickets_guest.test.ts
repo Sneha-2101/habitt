@@ -7,6 +7,7 @@ import {
   getGuestTicket,
   guestReply,
 } from "@/lib/actions/guest-tickets";
+import { otpIdentifierKey } from "@/lib/otp-identifier";
 
 let lastOtpCode = "";
 
@@ -61,12 +62,12 @@ describe("T91: Guest Tickets, OTP Verification & Token Security Integration", ()
 
     // Both should generate OTP records in OtpCode table
     const otp1 = await prisma.otpCode.findFirst({
-      where: { identifier: `ticket_guest:${existingUser.email!.toLowerCase()}` },
+      where: { identifier: otpIdentifierKey(`ticket_guest:${existingUser.email!.toLowerCase()}`) },
     });
     expect(otp1).not.toBeNull();
 
     const otp2 = await prisma.otpCode.findFirst({
-      where: { identifier: `ticket_guest:${unregisteredEmail.toLowerCase()}` },
+      where: { identifier: otpIdentifierKey(`ticket_guest:${unregisteredEmail.toLowerCase()}`) },
     });
     expect(otp2).not.toBeNull();
   });
@@ -77,7 +78,7 @@ describe("T91: Guest Tickets, OTP Verification & Token Security Integration", ()
     expect(lastOtpCode).not.toBe("");
 
     const otpRecord = await prisma.otpCode.findFirst({
-      where: { identifier: `ticket_guest:${guestEmail.toLowerCase()}` },
+      where: { identifier: otpIdentifierKey(`ticket_guest:${guestEmail.toLowerCase()}`) },
       orderBy: { createdAt: "desc" },
     });
     expect(otpRecord).not.toBeNull();

@@ -18,6 +18,7 @@ import {
 } from "../helpers/fixtures";
 import { confirmContactChangeAction } from "@/lib/actions/contact";
 import { confirmStepUpAction } from "@/lib/actions/step-up";
+import { otpIdentifierKey } from "@/lib/otp-identifier";
 import { maskIdentifier } from "@/lib/mask";
 import { verifyOtp, hashOtp } from "@/lib/otp";
 import * as otpModule from "@/lib/otp";
@@ -158,7 +159,7 @@ describe("T63, T64, T65: Hardening verification", () => {
         await prisma.otpCode.create({
           data: {
             id: genId("m1test_otp"),
-            identifier: staffEmail,
+            identifier: otpIdentifierKey(staffEmail),
             channel: "EMAIL",
             code: hashed,
             expiresAt: new Date(Date.now() + 300000),

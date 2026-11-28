@@ -5,6 +5,10 @@ function createPrismaClient() {
   const url = withBuildConnectionLimit(process.env.DATABASE_URL, process.env.NEXT_PHASE);
   return new PrismaClient({
     ...(url ? { datasources: { db: { url } } } : {}),
+    transactionOptions: {
+      maxWait: 10000,
+      timeout: 15000,
+    },
     omit: {
       product: {
         costPrice: true,

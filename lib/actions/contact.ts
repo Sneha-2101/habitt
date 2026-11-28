@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser, requireFreshStepUp } from "@/lib/guards";
 import { limit } from "@/lib/ratelimit";
 import { normalizeIdentifier, generateAndSendOtp, verifyOtp } from "@/lib/otp";
+import { safeErrorSummary } from "@/lib/log-redact";
 import { prisma } from "@/lib/prisma";
 import { revokeAllSessions } from "@/lib/sessions";
 import { writeAudit } from "@/lib/audit";
@@ -70,7 +71,7 @@ export async function requestContactChangeAction({
   try {
     await generateAndSendOtp(normalized, channel);
   } catch (err) {
-    console.error("[Contact Change OTP Send Error]:", err);
+    console.error("[Contact Change OTP Send Error]:", safeErrorSummary(err));
   }
 
   return {
@@ -162,7 +163,7 @@ export async function confirmContactChangeAction({
       name: oldUser?.name,
       channel,
     }).catch((err) => {
-      console.error("[Contact Change Alert Error]:", err);
+      console.error("[Contact Change Alert Error]:", safeErrorSummary(err));
     });
   }
 

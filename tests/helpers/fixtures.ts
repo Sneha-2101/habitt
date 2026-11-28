@@ -861,6 +861,7 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     where: {
       OR: [
         { id: { startsWith: "m1test" } },
+        { identifier: { startsWith: "m1test~" } },
         { identifier: { startsWith: "m1test" } },
       ],
     },
@@ -949,7 +950,15 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
     stockNotifications: await prisma.stockNotification.count({ where: { id: { startsWith: "m1test" } } }),
     newsletterSubscribers: await prisma.newsletterSubscriber.count({ where: { id: { startsWith: "m1test" } } }),
     newsletterSubscribersM1test: await prisma.newsletterSubscriber.count({ where: { email: { startsWith: "m1test" } } }),
-    otpCodes: await prisma.otpCode.count({ where: { id: { startsWith: "m1test" } } }),
+    otpCodes: await prisma.otpCode.count({
+      where: {
+        OR: [
+          { id: { startsWith: "m1test" } },
+          { identifier: { startsWith: "m1test~" } },
+          { identifier: { startsWith: "m1test" } },
+        ],
+      },
+    }),
     sessions: await prisma.session.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { userId: { startsWith: "m1test" } }] } }),
     auditLogs: await prisma.auditLog.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { actorId: { startsWith: "m1test" } }] } }),
     staffAllowlists: await prisma.staffAllowlist.count({ where: { OR: [{ id: { startsWith: "m1test" } }, { email: { startsWith: "m1test" } }] } }),

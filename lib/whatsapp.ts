@@ -7,6 +7,7 @@
  */
 
 import { isWhatsappOtpLive } from "@/lib/whatsapp-flag";
+import { maskPhone, safeErrorSummary } from "@/lib/log-redact";
 
 export function graphVersion(): string {
   const version = process.env.META_GRAPH_VERSION?.trim();
@@ -39,7 +40,7 @@ export async function sendWhatsappOtp(
       return { success: false, error: "WhatsApp is not configured" };
     }
     console.log("==========================================================");
-    console.log(`[DEV MODE] WhatsApp OTP for ${phone}: ${code}`);
+    console.log(`[DEV MODE] WhatsApp OTP for ${maskPhone(phone)}: ${code}`);
     console.log("==========================================================");
     return { success: true, devMode: true };
   }
@@ -82,7 +83,7 @@ export async function sendWhatsappOtp(
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
-      console.error("[WhatsApp Cloud API Error]:", errorData);
+      console.error("[WhatsApp Cloud API Error]:", res.status);
       return {
         success: false,
         error: errorData?.error?.message || `WhatsApp API error: ${res.status}`,
@@ -91,7 +92,7 @@ export async function sendWhatsappOtp(
 
     return { success: true };
   } catch (err) {
-    console.error("[WhatsApp Send Exception]:", err);
+    console.error("[WhatsApp Send Exception]:", safeErrorSummary(err));
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to dispatch WhatsApp message",

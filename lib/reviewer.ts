@@ -33,7 +33,17 @@ export function isReviewerLoginActive(): boolean {
     return false;
   }
 
-  if (expiresDate.getTime() <= Date.now()) {
+  const now = Date.now();
+  if (expiresDate.getTime() <= now) {
+    return false;
+  }
+
+  // In production, reviewer login is capped to a 14-day expiry window from now.
+  const maxProdWindowMs = 14 * 24 * 60 * 60 * 1000;
+  if (
+    process.env.NODE_ENV === "production" &&
+    expiresDate.getTime() - now > maxProdWindowMs
+  ) {
     return false;
   }
 

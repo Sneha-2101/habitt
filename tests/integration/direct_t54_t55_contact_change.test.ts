@@ -17,6 +17,7 @@ import {
 } from "@/lib/actions/contact";
 import { requestStepUpAction, confirmStepUpAction } from "@/lib/actions/step-up";
 import { authorizeCustomerOtp } from "@/lib/auth-authorize";
+import { otpIdentifierKey } from "@/lib/otp-identifier";
 import { createSession } from "@/lib/sessions";
 import { StepUpRequiredError } from "@/lib/guards";
 import * as sessionsModule from "@/lib/sessions";
@@ -103,7 +104,7 @@ describe("T54, T55: Contact Change, Customer Step-Up, and Identifier Verificatio
 
     // Ensure NO OtpCode row was created for userB's email
     const takenCodes = await prisma.otpCode.findMany({
-      where: { identifier: userB.email!.toLowerCase().trim() },
+      where: { identifier: otpIdentifierKey(userB.email!.toLowerCase().trim()) },
     });
     expect(takenCodes.length).toBe(0);
 
@@ -120,7 +121,7 @@ describe("T54, T55: Contact Change, Customer Step-Up, and Identifier Verificatio
 
     // Verify OtpCode row WAS created for free email
     const freeCodes = await prisma.otpCode.findMany({
-      where: { identifier: freeEmail.toLowerCase().trim() },
+      where: { identifier: otpIdentifierKey(freeEmail.toLowerCase().trim()) },
     });
     expect(freeCodes.length).toBe(1);
   });

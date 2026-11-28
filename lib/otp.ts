@@ -5,6 +5,7 @@ import { sendEmailOtp } from "@/lib/otp-email";
 import { limit } from "@/lib/ratelimit";
 import { mapOtpError } from "@/lib/safe-error";
 import { isReviewerIdentifier } from "@/lib/reviewer";
+import { otpIdentifierKey } from "@/lib/otp-identifier";
 
 export type OtpChannel = "PHONE" | "EMAIL";
 
@@ -68,11 +69,13 @@ export async function generateAndSendOtp(
     };
   }
 
+  const identifierKey = otpIdentifierKey(identifier);
+
   // 60-second cooldown check
   const sixtySecondsAgo = new Date(Date.now() - 60 * 1000);
   const recentCode = await prisma.otpCode.findFirst({
     where: {
-      identifier,
+      identifier: identifierKey,
       channel,
       verified: false,
       expiresAt: { gt: new Date() },
@@ -91,7 +94,7 @@ export async function generateAndSendOtp(
 
   await prisma.otpCode.create({
     data: {
-      identifier,
+      identifier: identifierKey,
       channel,
       code: hashedCode,
       expiresAt,
@@ -129,9 +132,11 @@ export async function verifyOtp(
     return { success: false, message: "Invalid or expired verification code" };
   }
 
+  const identifierKey = otpIdentifierKey(identifier);
+
   try {
     // Rate limit verification attempts by identifier (10 per 15 min)
-    const idRateLimit = await limit("otpVerifyIdentifier", identifier);
+    const idRateLimit = await limit("otpVerifyIdentifier", identifierKey);
     if (!idRateLimit.ok) {
       return { success: false, message: "Too many verification attempts. Please wait 15 minutes." };
     }
@@ -187,7 +192,7 @@ export async function verifyOtp(
     // Find active, unexpired, unverified OtpCode
     const activeCode = await prisma.otpCode.findFirst({
       where: {
-        identifier,
+        identifier: identifierKey,
         verified: false,
         expiresAt: { gt: now },
       },
@@ -245,7 +250,7 @@ export async function verifyOtp(
 
     return {
       success: true,
-      identifier: activeCode.identifier,
+      identifier,
       channel: activeCode.channel,
     };
   } catch (err) {

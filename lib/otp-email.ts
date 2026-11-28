@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { getSettings } from "@/lib/settings";
 import { escapeHtml } from "@/lib/escape-html";
+import { maskEmail, safeErrorSummary } from "@/lib/log-redact";
 
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY?.trim();
@@ -44,7 +45,7 @@ export async function sendEmailOtp(
     if (process.env.NODE_ENV === "production") {
       return { success: false, error: "Email is not configured" };
     }
-    console.log(`[DEV MODE] Email OTP for ${email}: ${code} (RESEND_API_KEY not configured)`);
+    console.log(`[DEV MODE] Email OTP for ${maskEmail(email)}: ${code} (RESEND_API_KEY not configured)`);
     return { success: true, devMode: true };
   }
 
@@ -75,10 +76,10 @@ export async function sendEmailOtp(
       html: htmlContent,
     });
 
-    console.log(`[Email OTP] Sent verification code to ${email}:`, response);
+    console.log(`[Email OTP] Sent verification code to ${maskEmail(email)}:`, response);
     return { success: true };
   } catch (error) {
-    console.error(`[Email OTP Error] Failed to send code to ${email}:`, error);
+    console.error(`[Email OTP Error] Failed to send code to ${maskEmail(email)}:`, safeErrorSummary(error));
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to send email OTP",

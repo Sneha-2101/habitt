@@ -2,6 +2,7 @@ import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { escapeHtml } from "@/lib/escape-html";
+import { maskEmail, safeErrorSummary } from "@/lib/log-redact";
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
@@ -126,10 +127,10 @@ export async function sendOrderConfirmationEmail(orderId: string) {
       html: htmlContent,
     });
 
-    console.log(`[Email] Confirmation sent for order ${order.displayId} to ${recipientEmail}:`, response);
+    console.log(`[Email] Confirmation sent for order ${order.displayId} to ${maskEmail(recipientEmail)}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send order confirmation email for ${orderId}:`, error);
+    console.error(`[Email] Failed to send order confirmation email for ${orderId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -188,10 +189,10 @@ export async function sendShipmentNotificationEmail(orderId: string) {
       html: htmlContent,
     });
 
-    console.log(`[Email] Shipment notification sent for order ${order.displayId} to ${recipientEmail}:`, response);
+    console.log(`[Email] Shipment notification sent for order ${order.displayId} to ${maskEmail(recipientEmail)}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send shipment notification email for ${orderId}:`, error);
+    console.error(`[Email] Failed to send shipment notification email for ${orderId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -251,10 +252,10 @@ export async function sendOutForDeliveryEmail(orderId: string) {
       html: htmlContent,
     });
 
-    console.log(`[Email] Out for delivery email sent for order ${order.displayId} to ${recipientEmail}:`, response);
+    console.log(`[Email] Out for delivery email sent for order ${order.displayId} to ${maskEmail(recipientEmail)}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send out for delivery email for ${orderId}:`, error);
+    console.error(`[Email] Failed to send out for delivery email for ${orderId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -315,10 +316,10 @@ export async function sendCancellationEmail(orderId: string) {
       html: htmlContent,
     });
 
-    console.log(`[Email] Cancellation email sent for order ${order.displayId} to ${recipientEmail}:`, response);
+    console.log(`[Email] Cancellation email sent for order ${order.displayId} to ${maskEmail(recipientEmail)}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send cancellation email for ${orderId}:`, error);
+    console.error(`[Email] Failed to send cancellation email for ${orderId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -373,17 +374,17 @@ export async function sendDeliveredEmail(orderId: string) {
       html: htmlContent,
     });
 
-    console.log(`[Email] Delivery email sent for order ${order.displayId} to ${recipientEmail}:`, response);
+    console.log(`[Email] Delivery email sent for order ${order.displayId} to ${maskEmail(recipientEmail)}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send delivery notification email for ${orderId}:`, error);
+    console.error(`[Email] Failed to send delivery notification email for ${orderId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
 
 export async function sendBackInStockEmail(email: string, productName: string, productSlug: string, size: string) {
   if (!resend) {
-    console.log(`[Email] RESEND_API_KEY is not set. Skipping back in stock email for ${email}.`);
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping back in stock email for ${maskEmail(email)}.`);
     return { success: false, reason: "No API Key" };
   }
 
@@ -412,17 +413,17 @@ export async function sendBackInStockEmail(email: string, productName: string, p
       html: htmlContent,
     });
 
-    console.log(`[Email] Back-in-stock email sent to ${email} for ${productName}:`, response);
+    console.log(`[Email] Back-in-stock email sent to ${maskEmail(email)} for ${productName}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send back-in-stock email to ${email}:`, error);
+    console.error(`[Email] Failed to send back-in-stock email to ${maskEmail(email)}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
 
 export async function sendNewsletterWelcomeEmail(email: string, couponCodeInput?: string) {
   if (!resend) {
-    console.log(`[Email] RESEND_API_KEY is not set. Skipping newsletter welcome email for ${email}.`);
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping newsletter welcome email for ${maskEmail(email)}.`);
     return { success: false, reason: "No API Key" };
   }
 
@@ -461,10 +462,10 @@ export async function sendNewsletterWelcomeEmail(email: string, couponCodeInput?
       html: htmlContent,
     });
 
-    console.log(`[Email] Newsletter welcome email sent to ${email}:`, response);
+    console.log(`[Email] Newsletter welcome email sent to ${maskEmail(email)}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send newsletter welcome email to ${email}:`, error);
+    console.error(`[Email] Failed to send newsletter welcome email to ${maskEmail(email)}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -502,10 +503,10 @@ export async function sendAbandonedCartEmail(email: string, customerName: string
       html: htmlContent,
     });
 
-    console.log(`[Email] Abandoned cart email sent for order ${displayId} to ${email}:`, response);
+    console.log(`[Email] Abandoned cart email sent for order ${displayId} to ${maskEmail(email)}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send abandoned cart email to ${email}:`, error);
+    console.error(`[Email] Failed to send abandoned cart email to ${maskEmail(email)}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -564,17 +565,17 @@ export async function sendReviewRequestEmail(orderId: string) {
       html: htmlContent,
     });
 
-    console.log(`[Email] Review request email sent for order ${order.displayId} to ${recipientEmail}:`, response);
+    console.log(`[Email] Review request email sent for order ${order.displayId} to ${maskEmail(recipientEmail)}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send review request email for ${orderId}:`, error);
+    console.error(`[Email] Failed to send review request email for ${orderId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
 
 export async function sendBirthdayDiscountEmail(email: string, userName: string, couponCode: string, percent: number) {
   if (!resend) {
-    console.log(`[Email] RESEND_API_KEY is not set. Skipping birthday email for ${email}. Code: ${couponCode}`);
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping birthday email for ${maskEmail(email)}. Code: ${couponCode}`);
     return { success: false, reason: "No API Key" };
   }
 
@@ -610,17 +611,17 @@ export async function sendBirthdayDiscountEmail(email: string, userName: string,
       html: htmlContent,
     });
 
-    console.log(`[Email] Birthday discount email sent to ${email} (${couponCode}):`, response);
+    console.log(`[Email] Birthday discount email sent to ${maskEmail(email)} (${couponCode}):`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send birthday discount email to ${email}:`, error);
+    console.error(`[Email] Failed to send birthday discount email to ${maskEmail(email)}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
 
 export async function sendStoreCreditIssuedEmail(email: string, userName: string, amountPaise: number, reason: string) {
   if (!resend) {
-    console.log(`[Email] RESEND_API_KEY is not set. Skipping store credit email for ${email}.`);
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping store credit email for ${maskEmail(email)}.`);
     return { success: false, reason: "No API Key" };
   }
 
@@ -658,10 +659,10 @@ export async function sendStoreCreditIssuedEmail(email: string, userName: string
       html: htmlContent,
     });
 
-    console.log(`[Email] Store credit notification email sent to ${email}:`, response);
+    console.log(`[Email] Store credit notification email sent to ${maskEmail(email)}:`, response);
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send store credit notification email to ${email}:`, error);
+    console.error(`[Email] Failed to send store credit notification email to ${maskEmail(email)}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -674,7 +675,7 @@ export async function sendStaffSignInAlertEmail(params: {
   ipPrefix: string;
 }) {
   if (!resend) {
-    console.log(`[Email] RESEND_API_KEY is not set. Skipping staff sign-in alert email for ${params.to}.`);
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping staff sign-in alert email for ${maskEmail(params.to)}.`);
     return { success: false, reason: "No API Key" };
   }
 
@@ -703,7 +704,7 @@ export async function sendStaffSignInAlertEmail(params: {
 
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send staff sign-in alert to ${params.to}:`, error);
+    console.error(`[Email] Failed to send staff sign-in alert to ${maskEmail(params.to)}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -714,7 +715,7 @@ export async function sendContactChangedAlertEmail(params: {
   channel: "EMAIL" | "PHONE";
 }) {
   if (!resend) {
-    console.log(`[Email] RESEND_API_KEY is not set. Skipping contact change alert email for ${params.to}.`);
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping contact change alert email for ${maskEmail(params.to)}.`);
     return { success: false, reason: "No API Key" };
   }
 
@@ -740,7 +741,7 @@ export async function sendContactChangedAlertEmail(params: {
 
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send contact change alert to ${params.to}:`, error);
+    console.error(`[Email] Failed to send contact change alert to ${maskEmail(params.to)}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -802,7 +803,7 @@ export async function sendReturnRequestedEmail(returnId: string) {
 
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send return requested email for return ${returnId}:`, error);
+    console.error(`[Email] Failed to send return requested email for return ${returnId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -850,7 +851,7 @@ export async function sendReturnApprovedEmail(returnId: string) {
 
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send return approved email for return ${returnId}:`, error);
+    console.error(`[Email] Failed to send return approved email for return ${returnId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -902,7 +903,7 @@ export async function sendReturnRejectedEmail(returnId: string, reason: string) 
 
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send return rejected email for return ${returnId}:`, error);
+    console.error(`[Email] Failed to send return rejected email for return ${returnId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -950,7 +951,7 @@ export async function sendReturnReceivedEmail(returnId: string) {
 
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send return received email for return ${returnId}:`, error);
+    console.error(`[Email] Failed to send return received email for return ${returnId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -1009,7 +1010,7 @@ export async function sendReturnRefundedEmail(
 
     return { success: true, data: response };
   } catch (error) {
-    console.error(`[Email] Failed to send return refunded email for return ${returnId}:`, error);
+    console.error(`[Email] Failed to send return refunded email for return ${returnId}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }
@@ -1033,7 +1034,7 @@ export async function sendTicketEventEmail(
   const customerName = typeof payload.customerName === "string" ? payload.customerName : "Customer";
 
   if (!resend) {
-    console.log(`[Email] RESEND_API_KEY is not set. Mock dispatch for ${type} to ${recipientEmail}`);
+    console.log(`[Email] RESEND_API_KEY is not set. Mock dispatch for ${type} to ${maskEmail(recipientEmail)}`);
     return { success: true };
   }
 
@@ -1114,7 +1115,7 @@ export async function sendTicketEventEmail(
 
     return { success: true };
   } catch (error) {
-    console.error(`[Email] Failed to send ticket event email (${type}) to ${recipientEmail}:`, error);
+    console.error(`[Email] Failed to send ticket event email (${type}) to ${maskEmail(recipientEmail)}:`, safeErrorSummary(error));
     return { success: false, error };
   }
 }

@@ -125,6 +125,49 @@ function checkMemoryLimit(
   return { ok: true, retryAfterSec: 0 };
 }
 
+function peekMemoryLimit(
+  policy: RateLimitPolicy,
+  key: string,
+  config: PolicyConfig
+): { blocked: boolean } {
+  const now = Date.now();
+  const fullKey = `${policy}:${key}`;
+  const timestamps = (memoryStore.get(fullKey) || []).filter(
+    (ts) => now - ts < config.windowMs
+  );
+  return { blocked: timestamps.length >= config.limit };
+}
+
+/**
+ * Checks whether a policy/key is currently at or over its limit WITHOUT consuming a token.
+ */
+export async function peekLimit(
+  policy: RateLimitPolicy,
+  key: string
+): Promise<{ blocked: boolean }> {
+  const config = POLICY_CONFIGS[policy];
+  if (!config) {
+    throw new Error(`Unknown rate limit policy: ${policy}`);
+  }
+
+  const redis = getRedisClient();
+  if (!redis) {
+    if (process.env.NODE_ENV === "production") {
+      return { blocked: config.failMode === "closed" };
+    }
+    return peekMemoryLimit(policy, key, config);
+  }
+
+  try {
+    const limiter = getUpstashLimiter(policy, redis);
+    const result = await limiter.getRemaining(key);
+    return { blocked: result.remaining <= 0 };
+  } catch (err) {
+    console.error(`[RateLimit Peek Error for ${policy}]:`, err);
+    return { blocked: config.failMode === "closed" };
+  }
+}
+
 /**
  * Checks and increments rate limit for a policy and key.
  * Returns { ok, retryAfterSec }

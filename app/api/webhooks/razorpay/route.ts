@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { markOrderPaid } from "@/lib/orders/mark-paid";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function POST(req: Request) {
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -97,7 +98,7 @@ export async function POST(req: Request) {
       // Event already processed
       return new Response("Duplicate webhook event", { status: 200 });
     }
-    console.error("Razorpay webhook processing error:", err);
+    console.error("Razorpay webhook processing error:", safeErrorSummary(err));
     return new Response("Processing error", { status: 500 });
   }
 

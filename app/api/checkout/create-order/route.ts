@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
+import { safeErrorSummary } from "@/lib/log-redact";
 import { cookies } from "next/headers";
 import { Prisma, Order, OrderItem, PaymentStatus, FulfilmentStatus, PaymentMethod, OrderDiscountKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -251,7 +252,7 @@ export async function POST(req: Request) {
     } catch (err) {
       console.error(
         "[create-order] cookie influencer lookup failed:",
-        err instanceof Error ? err.message : "unknown error"
+        safeErrorSummary(err)
       );
     }
   }
@@ -608,7 +609,7 @@ export async function POST(req: Request) {
         continue;
       }
 
-      console.error("Order creation transaction error:", err);
+      console.error("Order creation transaction error:", safeErrorSummary(err));
       return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
     }
   }
@@ -620,7 +621,9 @@ export async function POST(req: Request) {
   // 5. Zero-total order paid completely with store credit
   if (isZeroTotal) {
     const { sendOrderConfirmationEmail } = await import("@/lib/email");
-    sendOrderConfirmationEmail(createdOrder.id).catch(console.error);
+    sendOrderConfirmationEmail(createdOrder.id).catch((err) =>
+      console.error("Order confirmation email error:", safeErrorSummary(err))
+    );
 
     return NextResponse.json({
       orderId: createdOrder.id,
@@ -661,7 +664,7 @@ export async function POST(req: Request) {
       currency: "INR",
     });
   } catch (rzpErr) {
-    console.error("Razorpay order creation failed:", rzpErr);
+    console.error("Razorpay order creation failed:", safeErrorSummary(rzpErr));
     await prisma.$transaction(async (tx) => {
       await failOrder(tx, createdOrder, "Payment provider unavailable during checkout");
     });

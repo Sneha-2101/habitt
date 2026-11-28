@@ -67,6 +67,9 @@ export async function authorizeCustomerOtp(
       }
     }
   } else {
+    if (isReviewerIdentifier(verifiedIdentifier) && user.role !== "CUSTOMER") {
+      return null;
+    }
     user = await prisma.user.update({
       where: { id: user.id },
       data: isPhone ? { phoneVerifiedAt: now } : { emailVerifiedAt: now },
@@ -79,6 +82,9 @@ export async function authorizeCustomerOtp(
 
   const isReviewer = isReviewerIdentifier(verifiedIdentifier);
   if (isReviewer) {
+    if (user.role !== "CUSTOMER") {
+      return null;
+    }
     const onStaffAllowlist = await prisma.staffAllowlist.findFirst({
       where: {
         OR: [
