@@ -9,6 +9,7 @@ import { buildBusinessProfile } from "@/lib/site/business";
 import { getSiteUrl } from "@/lib/seo/site-url";
 import { buildListingMetadata } from "@/lib/seo/metadata";
 import { readOrBuildFallback } from "@/lib/build-safe";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 // Dynamic by design: reads searchParams for category, search, and sort.
 
@@ -121,7 +122,7 @@ export default async function ShopPage({
       ),
     }));
   } catch (err) {
-    console.error("ShopPage products fetch error:", err);
+    console.error("ShopPage products fetch error:", safeErrorSummary(err));
   }
 
   return (

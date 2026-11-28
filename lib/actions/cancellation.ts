@@ -2,7 +2,7 @@
 
 import { requireStaff, requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
-import { getRazorpay } from "@/lib/razorpay";
+import { safeErrorSummary } from "@/lib/log-redact";
 import { releaseStock } from "@/lib/stock";
 import { canTransition } from "@/lib/orders/transitions";
 import { legacyStage } from "@/lib/orders/status-label";
@@ -96,52 +96,32 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
 
   if (owesRazorpayRefund && order.razorpayPaymentId) {
     try {
-      const razorpay = getRazorpay();
-      const refund = await razorpay.payments.refund(order.razorpayPaymentId, {
-        amount: razorpayAmountToRefund,
-        notes: {
-          reason: cancellationReason,
-          orderId: order.displayId,
-        },
-      });
-
-      const nextPaymentStatus = razorpayAmountToRefund >= order.total ? "REFUNDED" : "PARTIALLY_REFUNDED";
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          razorpayRefundId: refund.id,
-          refundedAt: new Date(),
-          refundAmount: razorpayAmountToRefund,
-          paymentStatus: nextPaymentStatus,
-        },
-      });
-
-      await prisma.orderStatusEvent.create({
-        data: {
-          orderId,
-          fulfilmentStatus: "CANCELLED",
-          paymentStatus: nextPaymentStatus,
-          note: `Razorpay refund processed: ${refund.id} (₹${(razorpayAmountToRefund / 100).toFixed(2)})`,
-        },
-      });
-
-      await issueRefund({
+      const refRes = await issueRefund({
         orderId,
         method: "RAZORPAY",
         amountPaise: razorpayAmountToRefund,
         idempotencyKey: `cancel-customer-razorpay-${orderId}`,
-        recordOnly: true,
-        providerRefundId: refund.id,
         reason: cancellationReason,
       });
-    } catch (err: any) {
-      console.error("Razorpay refund error during customer cancellation:", err);
+
+      if (!refRes.success) {
+        await prisma.orderStatusEvent.create({
+          data: {
+            orderId,
+            fulfilmentStatus: "CANCELLED",
+            paymentStatus: order.paymentStatus,
+            note: `REFUND FAILED – manual action required: ${refRes.error || "Gateway failure"}`,
+          },
+        });
+      }
+    } catch (err: unknown) {
+      console.error("Razorpay refund error during customer cancellation:", safeErrorSummary(err));
       await prisma.orderStatusEvent.create({
         data: {
           orderId,
           fulfilmentStatus: "CANCELLED",
           paymentStatus: order.paymentStatus,
-          note: `REFUND FAILED – manual action required: ${err?.message || err}`,
+          note: `REFUND FAILED – manual action required: ${safeErrorSummary(err)}`,
         },
       });
     }
@@ -149,7 +129,7 @@ export async function cancelOrderAsCustomer(orderId: string, reason: string) {
 
   // Async email notification
   sendCancellationEmail(orderId).catch((err) => {
-    console.error("Failed to send cancellation email:", err);
+    console.error("Failed to send cancellation email:", safeErrorSummary(err));
   });
 
   revalidatePath("/account");
@@ -238,52 +218,32 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
 
   if (owesRazorpayRefund && order.razorpayPaymentId) {
     try {
-      const razorpay = getRazorpay();
-      const refund = await razorpay.payments.refund(order.razorpayPaymentId, {
-        amount: razorpayAmountToRefund,
-        notes: {
-          reason: cancellationReason,
-          orderId: order.displayId,
-        },
-      });
-
-      const nextPaymentStatus = razorpayAmountToRefund >= order.total ? "REFUNDED" : "PARTIALLY_REFUNDED";
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          razorpayRefundId: refund.id,
-          refundedAt: new Date(),
-          refundAmount: razorpayAmountToRefund,
-          paymentStatus: nextPaymentStatus,
-        },
-      });
-
-      await prisma.orderStatusEvent.create({
-        data: {
-          orderId,
-          fulfilmentStatus: "CANCELLED",
-          paymentStatus: nextPaymentStatus,
-          note: `Razorpay refund processed: ${refund.id} (₹${(razorpayAmountToRefund / 100).toFixed(2)})`,
-        },
-      });
-
-      await issueRefund({
+      const refRes = await issueRefund({
         orderId,
         method: "RAZORPAY",
         amountPaise: razorpayAmountToRefund,
         idempotencyKey: `cancel-admin-razorpay-${orderId}`,
-        recordOnly: true,
-        providerRefundId: refund.id,
         reason: cancellationReason,
       });
-    } catch (err: any) {
-      console.error("Razorpay refund error during admin cancellation:", err);
+
+      if (!refRes.success) {
+        await prisma.orderStatusEvent.create({
+          data: {
+            orderId,
+            fulfilmentStatus: "CANCELLED",
+            paymentStatus: order.paymentStatus,
+            note: `REFUND FAILED – manual action required: ${refRes.error || "Gateway failure"}`,
+          },
+        });
+      }
+    } catch (err: unknown) {
+      console.error("Razorpay refund error during admin cancellation:", safeErrorSummary(err));
       await prisma.orderStatusEvent.create({
         data: {
           orderId,
           fulfilmentStatus: "CANCELLED",
           paymentStatus: order.paymentStatus,
-          note: `REFUND FAILED – manual action required: ${err?.message || err}`,
+          note: `REFUND FAILED – manual action required: ${safeErrorSummary(err)}`,
         },
       });
     }
@@ -313,7 +273,7 @@ export async function cancelOrderAsAdmin(orderId: string, reason: string) {
   }
 
   sendCancellationEmail(orderId).catch((err) => {
-    console.error("Failed to send cancellation email:", err);
+    console.error("Failed to send cancellation email:", safeErrorSummary(err));
   });
 
   revalidatePath(`/admin/orders/${orderId}`);

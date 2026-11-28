@@ -1,5 +1,6 @@
 import { RateLimitUnavailableError } from "./ratelimit";
 import { PHONE_UNAVAILABLE_MESSAGE } from "./whatsapp-flag";
+import { safeErrorSummary } from "./log-redact";
 
 /**
  * Maps OTP-related errors to safe, user-facing error messages.
@@ -27,7 +28,7 @@ export function mapOtpError(
     return msg;
   }
 
-  console.error(err);
+  console.error(safeErrorSummary(err));
   return defaultMessage;
 }
 

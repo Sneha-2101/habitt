@@ -1,5 +1,7 @@
 "use client";
 
+import { safeErrorSummary } from "@/lib/log-redact";
+
 const RECENTLY_VIEWED_KEY = "habitt_recently_viewed";
 
 export interface RecentlyViewedItem {
@@ -24,7 +26,7 @@ export function recordRecentlyViewed(item: RecentlyViewedItem) {
 
     localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
   } catch (e) {
-    console.error("Failed to update recently viewed items:", e);
+    console.error("Failed to update recently viewed items:", safeErrorSummary(e));
   }
 }
 
@@ -35,7 +37,7 @@ export function getRecentlyViewed(): RecentlyViewedItem[] {
     const existingRaw = localStorage.getItem(RECENTLY_VIEWED_KEY);
     return existingRaw ? JSON.parse(existingRaw) : [];
   } catch (e) {
-    console.error("Failed to read recently viewed items:", e);
+    console.error("Failed to read recently viewed items:", safeErrorSummary(e));
     return [];
   }
 }

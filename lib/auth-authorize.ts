@@ -8,6 +8,7 @@ import { sendStaffSignInAlertEmail } from "@/lib/email";
 import { writeAudit } from "@/lib/audit";
 import { isReviewerLoginActive, isReviewerIdentifier } from "@/lib/reviewer";
 import { attachReferral, maybeGrantRefereeCredit } from "@/lib/rewards/service";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export interface AuthContext {
   ip?: string;
@@ -234,7 +235,7 @@ export async function authorizeStaffOtp(
         ipPrefix,
       });
     } catch (emailErr) {
-      console.error("[Staff Login Alert Email Error]:", emailErr);
+      console.error("[Staff Login Alert Email Error]:", safeErrorSummary(emailErr));
       // Non-blocking
     }
   }
@@ -249,7 +250,7 @@ export async function authorizeStaffOtp(
       ip,
     });
   } catch (auditErr) {
-    console.error("[Staff Login Audit Error]:", auditErr);
+    console.error("[Staff Login Audit Error]:", safeErrorSummary(auditErr));
   }
 
   return {

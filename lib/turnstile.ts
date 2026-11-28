@@ -1,3 +1,5 @@
+import { safeErrorSummary } from "@/lib/log-redact";
+
 /**
  * Cloudflare Turnstile siteverify helper.
  * No secret: allow in development, fail closed in production.
@@ -45,7 +47,7 @@ export async function verifyTurnstile(
     const outcome = await res.json();
     return outcome.success === true;
   } catch (err) {
-    console.error("[Turnstile] Error verifying turnstile token:", err);
+    console.error("[Turnstile] Error verifying turnstile token:", safeErrorSummary(err));
     return false;
   }
 }

@@ -10,6 +10,7 @@ import {
   normalizeEmail,
   normalizePhone,
 } from "@/lib/rewards/referral";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -286,7 +287,7 @@ export async function maybeGrantRefereeCredit(
     const referralId = user.referralReceived.id;
     await prisma.$transaction((tx) => grantRefereeCredit(tx, referralId, now));
   } catch (err) {
-    console.error("[maybeGrantRefereeCredit] suppressed error:", err);
+    console.error("[maybeGrantRefereeCredit] suppressed error:", safeErrorSummary(err));
   }
 }
 
@@ -315,7 +316,7 @@ export async function sweepPendingRefereeCredits(now: Date = new Date()) {
       errorCount += 1;
       console.error(
         `[sweepPendingRefereeCredits] failed referral=${c.id}:`,
-        err instanceof Error ? err.message : "unknown error"
+        safeErrorSummary(err)
       );
     }
   }
@@ -445,7 +446,7 @@ export async function releaseLoyaltyAccruals(now: Date = new Date()) {
       errorCount += 1;
       console.error(
         `[releaseLoyaltyAccruals] failed order=${ord.id}:`,
-        err instanceof Error ? err.message : "unknown error"
+        safeErrorSummary(err)
       );
     }
   }
@@ -583,7 +584,7 @@ export async function releaseReferrerRewards(now: Date = new Date()) {
       errorCount += 1;
       console.error(
         `[releaseReferrerRewards] failed referral=${refRow.id}:`,
-        err instanceof Error ? err.message : "unknown error"
+        safeErrorSummary(err)
       );
     }
   }

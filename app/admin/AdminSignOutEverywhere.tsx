@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signOutEverywhereAction } from "@/lib/actions/sessions";
 import { useCartStore } from "@/lib/cart-store";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export default function AdminSignOutEverywhere() {
   const [loading, setLoading] = useState(false);
@@ -18,7 +19,7 @@ export default function AdminSignOutEverywhere() {
       await signOutEverywhereAction();
       window.location.href = "/staff/login";
     } catch (err) {
-      console.error(err);
+      console.error(safeErrorSummary(err));
       window.location.href = "/staff/login";
     }
   }

@@ -2,7 +2,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { reserveStock } from "@/lib/stock";
 import { sendOrderConfirmationEmail } from "@/lib/email";
-import { getRazorpay } from "@/lib/razorpay";
+import { issueRefund } from "@/lib/refunds/issue-refund";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function markOrderPaid(
   tx: Prisma.TransactionClient,
@@ -48,7 +49,12 @@ export async function markOrderPaid(
     }
 
     if (current.fulfilmentStatus === "CANCELLED") {
-      // Do NOT change status. Log note inside transaction.
+      // Do NOT change status. Save payment ID if missing and log note inside transaction.
+      await tx.order.updateMany({
+        where: { id: orderId, razorpayPaymentId: null },
+        data: { razorpayPaymentId },
+      });
+
       await tx.orderStatusEvent.create({
         data: {
           orderId,
@@ -57,32 +63,37 @@ export async function markOrderPaid(
         },
       });
 
-      // After transaction, attempt full Razorpay refund of captured amount
+      // After transaction, attempt full Razorpay refund of captured amount via issueRefund
       const refundAmount = Math.max(0, current.total - (current.storeCreditApplied || 0));
       setTimeout(async () => {
         try {
-          const razorpay = getRazorpay();
-          await razorpay.payments.refund(razorpayPaymentId, {
-            amount: refundAmount,
-            notes: {
-              reason: "Payment captured after cancellation",
-              orderId: current.displayId,
-            },
+          if (refundAmount <= 0) return;
+          const res = await issueRefund({
+            orderId,
+            method: "RAZORPAY",
+            amountPaise: refundAmount,
+            idempotencyKey: `late-capture-refund-${orderId}-${razorpayPaymentId}`,
+            reason: "Payment captured after cancellation",
           });
+          if (!res.success) {
+            await prisma.orderStatusEvent.create({
+              data: {
+                orderId,
+                fulfilmentStatus: "CANCELLED",
+                note: `REFUND FAILED for payment ${razorpayPaymentId}: ${res.error || "Gateway failure"}`,
+              },
+            });
+          }
+        } catch (err: unknown) {
+          console.error(
+            "Razorpay refund error after late capture on cancelled order:",
+            safeErrorSummary(err)
+          );
           await prisma.orderStatusEvent.create({
             data: {
               orderId,
               fulfilmentStatus: "CANCELLED",
-              note: `Auto-refunded ₹${(refundAmount / 100).toFixed(2)} via Razorpay for payment ${razorpayPaymentId}`,
-            },
-          });
-        } catch (err: any) {
-          console.error("Razorpay refund error after late capture on cancelled order:", err);
-          await prisma.orderStatusEvent.create({
-            data: {
-              orderId,
-              fulfilmentStatus: "CANCELLED",
-              note: `REFUND FAILED for payment ${razorpayPaymentId}: ${err?.message || err}`,
+              note: `REFUND FAILED for payment ${razorpayPaymentId}: ${safeErrorSummary(err)}`,
             },
           });
         }
@@ -127,7 +138,7 @@ export async function markOrderPaid(
     // 3. After commit, send confirmation email (fire and forget)
     setTimeout(() => {
       sendOrderConfirmationEmail(order.id).catch((err) => {
-        console.error("Failed to send order confirmation email:", err);
+        console.error("Failed to send order confirmation email:", safeErrorSummary(err));
       });
     }, 100);
   }

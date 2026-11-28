@@ -11,6 +11,7 @@ import { canTransition } from "@/lib/returns/transitions";
 import { computeRefund } from "@/lib/returns/rules";
 import { issueRefund } from "@/lib/refunds/issue-refund";
 import { limit } from "@/lib/ratelimit";
+import { safeErrorSummary } from "@/lib/log-redact";
 import {
   sendReturnRequestedEmail,
   sendReturnApprovedEmail,
@@ -186,7 +187,7 @@ export async function requestReturn(
 
   // Async customer email
   sendReturnRequestedEmail(returnReq.id).catch((err) => {
-    console.error("Failed to send return requested email:", err);
+    console.error("Failed to send return requested email:", safeErrorSummary(err));
   });
 
   revalidatePath("/account");
@@ -310,7 +311,7 @@ export async function approveReturn(returnId: string, adminNote?: string) {
   });
 
   sendReturnApprovedEmail(returnId).catch((err) => {
-    console.error("Failed to send return approved email:", err);
+    console.error("Failed to send return approved email:", safeErrorSummary(err));
   });
 
   revalidatePath("/admin/returns");
@@ -381,7 +382,7 @@ export async function rejectReturn(returnId: string, adminNote: string) {
   });
 
   sendReturnRejectedEmail(returnId, reasonText).catch((err) => {
-    console.error("Failed to send return rejected email:", err);
+    console.error("Failed to send return rejected email:", safeErrorSummary(err));
   });
 
   revalidatePath("/admin/returns");
@@ -489,7 +490,7 @@ export async function receiveReturn(
   });
 
   sendReturnReceivedEmail(returnId).catch((err) => {
-    console.error("Failed to send return received email:", err);
+    console.error("Failed to send return received email:", safeErrorSummary(err));
   });
 
   revalidatePath("/admin/returns");
@@ -769,7 +770,7 @@ export async function refundReturn(
       ? { gatewayAmountPaise: emailGatewayAmount, walletAmountPaise: emailWalletAmount }
       : undefined
   ).catch((err) => {
-    console.error("Failed to send return refunded email:", err);
+    console.error("Failed to send return refunded email:", safeErrorSummary(err));
   });
 
   // Credit Note in its own transaction after commit
@@ -786,7 +787,7 @@ export async function refundReturn(
       });
     });
   } catch (cnErr) {
-    console.error(`Failed to create credit note for return ${returnReq.id} on order ${order.id}:`, cnErr);
+    console.error(`Failed to create credit note for return ${returnReq.id} on order ${order.id}:`, safeErrorSummary(cnErr));
     await prisma.orderStatusEvent.create({
       data: {
         orderId: order.id,

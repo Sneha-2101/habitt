@@ -852,6 +852,7 @@ export async function cleanupM1TestRows(): Promise<{ remainingTotal: number; det
       OR: [
         { id: { startsWith: "m1test" } },
         { orderId: { startsWith: "m1test" } },
+        { dedupeKey: { startsWith: "wallet-expiry-warn:m1test" } },
         { payload: { path: ["email"], string_starts_with: "m1test" } },
       ],
     },

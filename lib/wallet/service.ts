@@ -690,3 +690,78 @@ export async function expireWalletLots(now: Date = new Date()) {
 
   return { expiredCount, expiredPaise };
 }
+
+export const WALLET_EXPIRY_WARNING_DAYS = 7;
+
+export function isLotEligibleForExpiryWarning(
+  lot: { remainingPaise: number; kind: string; expiresAt: Date | null },
+  now: Date = new Date()
+): boolean {
+  if (lot.remainingPaise <= 0) return false;
+  if (lot.kind === "REFUND") return false;
+  if (!lot.expiresAt) return false;
+  const expiryMs = lot.expiresAt.getTime();
+  const nowMs = now.getTime();
+  const windowEndMs = nowMs + WALLET_EXPIRY_WARNING_DAYS * 24 * 60 * 60 * 1000;
+  return expiryMs > nowMs && expiryMs <= windowEndMs;
+}
+
+export async function enqueueWalletExpiryWarnings(now: Date = new Date()) {
+  const { enqueueOutbox } = await import("@/lib/outbox/enqueue");
+  const windowEnd = new Date(now.getTime() + WALLET_EXPIRY_WARNING_DAYS * 24 * 60 * 60 * 1000);
+
+  const candidates = await prisma.walletLot.findMany({
+    where: {
+      remainingPaise: { gt: 0 },
+      kind: { not: "REFUND" },
+      expiresAt: { gt: now, lte: windowEnd },
+      user: { email: { not: null } },
+    },
+    include: {
+      user: { select: { id: true, email: true } },
+    },
+    orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
+  });
+
+  let warnedCount = 0;
+  let alreadyWarnedCount = 0;
+  let skippedCount = 0;
+
+  for (const lot of candidates) {
+    if (!isLotEligibleForExpiryWarning(lot, now)) {
+      skippedCount++;
+      continue;
+    }
+
+    const email = lot.user?.email?.trim();
+    if (!email) {
+      skippedCount++;
+      continue;
+    }
+
+    const dedupeKey = `wallet-expiry-warn:${lot.id}`;
+    const existing = await prisma.eventOutbox.findUnique({
+      where: { dedupeKey },
+      select: { id: true },
+    });
+    if (existing) {
+      alreadyWarnedCount++;
+      continue;
+    }
+
+    await enqueueOutbox({
+      type: "WALLET_EXPIRY_WARNING",
+      channel: "EMAIL",
+      dedupeKey,
+      payload: {
+        email,
+        lotId: lot.id,
+        amountPaise: lot.remainingPaise,
+        expiresAt: lot.expiresAt!.toISOString(),
+      },
+    });
+    warnedCount++;
+  }
+
+  return { warnedCount, alreadyWarnedCount, skippedCount };
+}

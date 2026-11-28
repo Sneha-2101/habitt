@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatINR } from "@/lib/money";
+import { getMarginTabState } from "@/lib/admin/reports-view";
 import type {
   SalesReportResult,
   GstSummaryResult,
@@ -23,6 +24,7 @@ interface ReportsClientProps {
   stockData: StockReportResult | null;
   offersData: OffersUsageReportResult | null;
   marginData: MarginReportResult | null;
+  marginError?: boolean;
 }
 
 export default function ReportsClient({
@@ -36,6 +38,7 @@ export default function ReportsClient({
   stockData,
   offersData,
   marginData,
+  marginError = false,
 }: ReportsClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -416,7 +419,16 @@ export default function ReportsClient({
           </div>
         )}
 
-        {activeTab === "margin" && isOwner && marginData && (
+        {activeTab === "margin" && getMarginTabState(isOwner, marginData, marginError) === "error" && (
+          <div
+            role="alert"
+            className="p-6 bg-red-50 border border-red-200 text-red-900 text-sm font-mono"
+          >
+            Could not load margin data. Please refresh the page or try again later.
+          </div>
+        )}
+
+        {activeTab === "margin" && getMarginTabState(isOwner, marginData, marginError) === "data" && marginData && (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div className="p-4 bg-white border border-stone">

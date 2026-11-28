@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { failOrder } from "@/lib/orders/fail-order";
 import crypto from "crypto";
 import { withCronRun } from "@/lib/cron/run-log";
+import { recoverInterruptedRefunds } from "@/lib/refunds/recover-refunds";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function GET(request: Request) {
   try {
@@ -48,16 +50,26 @@ export async function GET(request: Request) {
             closedCount++;
           }
         } catch (orderErr) {
-          console.error(`Failed to close stale order ${order.id}:`, orderErr);
+          console.error(`Failed to close stale order ${order.id}:`, safeErrorSummary(orderErr));
         }
       }
 
-      return { closedCount, itemsProcessed: closedCount };
+      const refundRecovery = await recoverInterruptedRefunds();
+
+      return {
+        closedCount,
+        refundRecovery,
+        itemsProcessed: closedCount + refundRecovery.checked,
+      };
     });
 
-    return NextResponse.json({ success: true, closedCount: result.closedCount });
+    return NextResponse.json({
+      success: true,
+      closedCount: result.closedCount,
+      refundRecovery: result.refundRecovery,
+    });
   } catch (err: unknown) {
-    console.error("Close stale orders cron error:", err);
+    console.error("Close stale orders cron error:", safeErrorSummary(err));
     return NextResponse.json({ error: "Failed to close stale orders" }, { status: 500 });
   }
 }

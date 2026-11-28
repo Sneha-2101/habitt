@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { sendShipmentNotificationEmail } from "@/lib/email";
 import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
 import { computeShipmentEventDedupeKey } from "@/lib/shipping/transitions";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function bulkMarkShipped(
   shipments: {
@@ -158,7 +159,7 @@ export async function bulkMarkShipped(
           await issueInvoiceForOrder(invTx, order.id);
         });
       } catch (invErr) {
-        console.error(`Failed to issue invoice for bulk order ${order.id}:`, invErr);
+        console.error(`Failed to issue invoice for bulk order ${order.id}:`, safeErrorSummary(invErr));
         await prisma.orderStatusEvent.create({
           data: {
             orderId: order.id,
@@ -169,10 +170,10 @@ export async function bulkMarkShipped(
 
       successCount++;
       sendShipmentNotificationEmail(order.id).catch((err) => {
-        console.error(`Failed to send bulk shipment email for ${order.id}:`, err);
+        console.error(`Failed to send bulk shipment email for ${order.id}:`, safeErrorSummary(err));
       });
     } catch (err) {
-      console.error(`Bulk fulfill error for ${item.orderId}:`, err);
+      console.error(`Bulk fulfill error for ${item.orderId}:`, safeErrorSummary(err));
       skipped.push({ row: rowNum, orderId: item.orderId, reason: "Failed to fulfill" });
     }
   }

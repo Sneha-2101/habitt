@@ -4,6 +4,7 @@ import { getSettings } from "@/lib/settings";
 import { sendBirthdayDiscountEmail } from "@/lib/email";
 import crypto from "crypto";
 import { withCronRun } from "@/lib/cron/run-log";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function GET(request: Request) {
   try {
@@ -107,7 +108,7 @@ export async function GET(request: Request) {
       couponsGenerated: result.couponsGenerated,
     });
   } catch (error) {
-    console.error("[Cron Birthday Discount Error]:", error);
+    console.error("[Cron Birthday Discount Error]:", safeErrorSummary(error));
     return NextResponse.json({ error: "Failed to process birthday discounts" }, { status: 500 });
   }
 }

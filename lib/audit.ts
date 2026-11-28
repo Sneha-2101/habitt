@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { computeIpPrefix } from "@/lib/sessions";
 import { Prisma } from "@prisma/client";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export interface WriteAuditParams {
   actorId?: string | null;
@@ -33,7 +34,7 @@ export async function writeAudit(
   try {
     await prisma.auditLog.create({ data });
   } catch (err) {
-    console.error("[AuditLog Error]: Failed to write audit log:", err);
+    console.error("[AuditLog Error]: Failed to write audit log:", safeErrorSummary(err));
   }
 }
 

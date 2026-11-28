@@ -4,6 +4,7 @@ import { sendAbandonedCartEmail } from "@/lib/email";
 import { getSettings } from "@/lib/settings";
 import crypto from "crypto";
 import { withCronRun } from "@/lib/cron/run-log";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function GET(request: Request) {
   try {
@@ -76,7 +77,7 @@ export async function GET(request: Request) {
       emailsSent: result.emailsSent,
     });
   } catch (err) {
-    console.error("Abandoned cart job error:", err);
+    console.error("Abandoned cart job error:", safeErrorSummary(err));
     return NextResponse.json({ error: "Failed to process abandoned carts" }, { status: 500 });
   }
 }

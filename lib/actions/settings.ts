@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { getSettings, type UpdateSiteSettingsInput } from "@/lib/settings";
 import { validateImageBuffer } from "@/lib/uploads/image-check";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export type { UpdateSiteSettingsInput };
 
@@ -302,7 +303,7 @@ export async function uploadOgDefaultImageAction(formData: FormData): Promise<{ 
     });
 
   if (error) {
-    console.error("Supabase OG image upload error:", error);
+    console.error("Supabase OG image upload error:", safeErrorSummary(error));
     throw new Error("Failed to upload OG default image.");
   }
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import BulkSkuModal from "./BulkSkuModal";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function AdminProductsPage() {
       orderBy: { createdAt: "desc" },
     });
   } catch (err) {
-    console.error("AdminProductsPage query error:", err);
+    console.error("AdminProductsPage query error:", safeErrorSummary(err));
   }
 
   return (

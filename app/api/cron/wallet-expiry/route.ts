@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { expireWalletLots } from "@/lib/wallet/service";
+import { expireWalletLots, enqueueWalletExpiryWarnings } from "@/lib/wallet/service";
 import { withCronRun } from "@/lib/cron/run-log";
 
 export async function GET(request: Request) {
@@ -26,10 +26,13 @@ export async function GET(request: Request) {
 
   try {
     const result = await withCronRun("wallet-expiry", async () => {
-      const res = await expireWalletLots();
+      const now = new Date();
+      const res = await expireWalletLots(now);
+      const warnings = await enqueueWalletExpiryWarnings(now);
       return {
-        itemsProcessed: res.expiredCount,
+        itemsProcessed: res.expiredCount + warnings.warnedCount,
         ...res,
+        warnedCount: warnings.warnedCount,
       };
     });
 

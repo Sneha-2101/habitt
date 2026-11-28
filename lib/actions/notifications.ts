@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getClientIp } from "@/lib/client-ip";
 import { limit } from "@/lib/ratelimit";
 import { isProductPurchasable } from "@/lib/catalog/visibility";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 const emailSchema = z.string().email("Please enter a valid email address.");
 
@@ -76,7 +77,7 @@ export async function requestStockNotification(
     });
     return notification;
   } catch (err) {
-    console.error("Error creating stock notification:", err);
+    console.error("Error creating stock notification:", safeErrorSummary(err));
     throw new Error("Could not save notification request.");
   }
 }

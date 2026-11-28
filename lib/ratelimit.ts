@@ -1,5 +1,6 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export class RateLimitUnavailableError extends Error {
   constructor(message = "Rate limiting service is temporarily unavailable") {
@@ -163,7 +164,7 @@ export async function peekLimit(
     const result = await limiter.getRemaining(key);
     return { blocked: result.remaining <= 0 };
   } catch (err) {
-    console.error(`[RateLimit Peek Error for ${policy}]:`, err);
+    console.error(`[RateLimit Peek Error for ${policy}]:`, safeErrorSummary(err));
     return { blocked: config.failMode === "closed" };
   }
 }
@@ -209,7 +210,7 @@ export async function limit(
 
     return { ok: true, retryAfterSec: 0 };
   } catch (err) {
-    console.error(`[RateLimit Error for ${policy}]:`, err);
+    console.error(`[RateLimit Error for ${policy}]:`, safeErrorSummary(err));
     if (config.failMode === "closed") {
       throw new RateLimitUnavailableError();
     }
@@ -266,7 +267,7 @@ export async function otpDailyCap(): Promise<{ ok: boolean }> {
 
     return { ok: true };
   } catch (err) {
-    console.error("[RateLimit Error in otpDailyCap]:", err);
+    console.error("[RateLimit Error in otpDailyCap]:", safeErrorSummary(err));
     throw new RateLimitUnavailableError();
   }
 }

@@ -1120,4 +1120,84 @@ export async function sendTicketEventEmail(
   }
 }
 
+export function formatIstDate(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(d);
+}
+
+export function buildWalletExpiryWarningEmailHtml(params: {
+  amountPaise: number;
+  expiresAt: Date | string;
+  businessName: string;
+  tagline?: string;
+  walletUrl: string;
+}): string {
+  const formattedAmount = `₹${(params.amountPaise / 100).toFixed(2)}`;
+  const formattedDate = formatIstDate(params.expiresAt);
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #111; line-height: 1.5;">
+      <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Wallet Credit Expiring Soon</h2>
+      <p style="color: #666; margin-bottom: 20px;">
+        You have <strong>${escapeHtml(formattedAmount)}</strong> in your ${escapeHtml(params.businessName)} wallet that will expire on <strong>${escapeHtml(formattedDate)}</strong> (IST).
+      </p>
+      <p style="margin: 24px 0;">
+        <a href="${escapeHtml(params.walletUrl)}" style="background-color: #111; color: #fff; text-decoration: none; padding: 10px 18px; border-radius: 4px; display: inline-block; font-size: 13px; font-weight: 500;">View Your Wallet →</a>
+      </p>
+      <p style="font-size: 12px; color: #888; text-align: center; margin-top: 24px;">
+        ${escapeHtml(params.businessName)}${params.tagline ? ` — ${escapeHtml(params.tagline)}` : ""}
+      </p>
+    </div>
+  `;
+}
+
+export async function sendWalletExpiryWarningEmail(params: {
+  to: string;
+  amountPaise: number;
+  expiresAt: Date | string;
+}) {
+  if (!resend) {
+    console.log(`[Email] RESEND_API_KEY is not set. Skipping wallet expiry warning email for ${maskEmail(params.to)}.`);
+    return { success: false, reason: "No API Key" };
+  }
+
+  try {
+    const emailInfo = await getEmailSenderInfo();
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+    const walletUrl = `${siteUrl}/account/wallet`;
+    const html = buildWalletExpiryWarningEmailHtml({
+      amountPaise: params.amountPaise,
+      expiresAt: params.expiresAt,
+      businessName: emailInfo.businessName,
+      tagline: emailInfo.tagline,
+      walletUrl,
+    });
+
+    const subjectSuffix = emailInfo.businessName ? ` — ${emailInfo.businessName}` : "";
+    const { data, error } = await resend.emails.send({
+      from: emailInfo.from,
+      to: params.to,
+      replyTo: emailInfo.replyTo,
+      subject: `Your Wallet Credit Expires Soon${subjectSuffix}`,
+      html,
+    });
+
+    if (error) {
+      console.error(`[Email] Failed to send wallet expiry warning to ${maskEmail(params.to)}:`, safeErrorSummary(error));
+      return { success: false, error };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    console.error(`[Email] Failed to send wallet expiry warning to ${maskEmail(params.to)}:`, safeErrorSummary(error));
+    return { success: false, error };
+  }
+}
+
+
 

@@ -12,6 +12,7 @@ import { productMerchandiseFields, toProductFieldData } from "@/lib/catalog/prod
 import { validateImageBuffer } from "@/lib/uploads/image-check";
 import { validateImageColor } from "@/lib/catalog/image-color";
 import { planSlugChange } from "@/lib/seo/slug-redirects";
+import { maskEmail, safeErrorSummary } from "@/lib/log-redact";
 import { z } from "zod";
 
 function slugify(name: string) {
@@ -108,7 +109,7 @@ async function uploadFileToSupabase(file: File): Promise<string> {
     });
 
   if (error) {
-    console.error("Supabase storage upload error:", error);
+    console.error("Supabase storage upload error:", safeErrorSummary(error));
     throw new Error("Failed to upload image.");
   }
 
@@ -253,7 +254,7 @@ export async function createProduct(formData: FormData) {
           },
         });
       } catch (err) {
-        console.error("Failed image upload:", err);
+        console.error("Failed image upload:", safeErrorSummary(err));
       }
     }
   }
@@ -554,7 +555,7 @@ export async function addProductImage(productId: string, formData: FormData) {
       },
     });
   } catch (err) {
-    console.error("Failed image upload on product edit:", err);
+    console.error("Failed image upload on product edit:", safeErrorSummary(err));
     throw new Error("Failed to upload image.");
   }
 
@@ -649,7 +650,7 @@ export async function deleteProductImage(imageId: string, productId: string) {
         const supabase = getSupabaseAdmin();
         await supabase.storage.from("product-images").remove([storagePath]);
       } catch (err) {
-        console.error("Failed to delete image from Supabase storage:", err);
+        console.error("Failed to delete image from Supabase storage:", safeErrorSummary(err));
       }
     }
     await prisma.productImage.delete({ where: { id: imageId } });
@@ -707,7 +708,7 @@ export async function updateVariantStock(variantId: string, stock: number) {
     for (const notif of pendingNotifications) {
       const sizeLabel = variant.color ? `${variant.size} · ${variant.color}` : variant.size;
       sendBackInStockEmail(notif.email, variant.product.name, variant.product.slug, sizeLabel).catch((err) => {
-        console.error(`Failed to send back-in-stock email to ${notif.email}:`, err);
+        console.error(`Failed to send back-in-stock email to ${maskEmail(notif.email)}:`, safeErrorSummary(err));
       });
       await prisma.stockNotification.update({
         where: { id: notif.id },

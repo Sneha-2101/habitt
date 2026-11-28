@@ -7,6 +7,7 @@ import { storefrontProductWhere } from "@/lib/catalog/visibility";
 import { CareTag } from "@/components/CareTag";
 import { ProductSwatchImage } from "@/components/ProductSwatchImage";
 import WishlistButton from "@/components/WishlistButton";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function WantlistPage() {
       orderBy: { createdAt: "desc" },
     });
   } catch (err) {
-    console.error("Wantlist query error:", err);
+    console.error("Wantlist query error:", safeErrorSummary(err));
   }
 
   const products = items.map((i) => i.product);

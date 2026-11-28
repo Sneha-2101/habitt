@@ -9,6 +9,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { MAX_CONTENT_LENGTH } from "@/lib/content/render";
 import { ALLOWED_CONTENT_KEYS, isValidCtaHref, saveContentRecord } from "@/lib/content/content";
 import { validateImageBuffer } from "@/lib/uploads/image-check";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 const MAX_ACTIVE_BANNERS = 8;
 
@@ -97,7 +98,7 @@ export async function uploadBannerImageAction(formData: FormData): Promise<{ url
     });
 
   if (error) {
-    console.error("Supabase banner upload error:", error);
+    console.error("Supabase banner upload error:", safeErrorSummary(error));
     throw new Error("Failed to upload banner image.");
   }
 

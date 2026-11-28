@@ -10,6 +10,7 @@ import { releaseOfferUsage } from "@/lib/offers/release";
 import { createCreditNoteForRefund } from "@/lib/gst/credit-note";
 import { issueRefund } from "@/lib/refunds/issue-refund";
 import { restoreWalletDebit } from "@/lib/wallet/service";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function markCodRefused(orderId: string, note?: string) {
   await requireStaff();
@@ -96,7 +97,7 @@ export async function markCodRefused(orderId: string, note?: string) {
         reason: refusalNote,
       });
     } catch (refErr) {
-      console.error("Failed to record refund ledger for COD refusal:", refErr);
+      console.error("Failed to record refund ledger for COD refusal:", safeErrorSummary(refErr));
     }
   }
 
@@ -114,7 +115,7 @@ export async function markCodRefused(orderId: string, note?: string) {
       });
     });
   } catch (cnErr) {
-    console.error(`Failed to create credit note for COD refusal on order ${order.id}:`, cnErr);
+    console.error(`Failed to create credit note for COD refusal on order ${order.id}:`, safeErrorSummary(cnErr));
     await prisma.orderStatusEvent.create({
       data: {
         orderId,

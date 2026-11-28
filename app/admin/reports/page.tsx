@@ -9,6 +9,7 @@ import {
   parseIstDateRange,
 } from "@/lib/admin/reports";
 import ReportsClient from "./ReportsClient";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export const dynamic = "force-dynamic";
 
@@ -24,14 +25,36 @@ export default async function AdminReportsPage({
   const tab = resolved.tab || "sales";
   const { fromIst, toIst } = parseIstDateRange(resolved.from, resolved.to);
 
+  let marginError = false;
   const [salesData, gstData, returnsData, stockData, offersData, marginData] =
     await Promise.all([
-      salesReport(fromIst, toIst).catch(() => null),
-      gstSummary(fromIst, toIst).catch(() => null),
-      returnsReport(fromIst, toIst).catch(() => null),
-      stockReport(staff.role).catch(() => null),
-      offersUsageReport(fromIst, toIst).catch(() => null),
-      isOwner ? marginReport(fromIst, toIst, staff.role).catch(() => null) : Promise.resolve(null),
+      salesReport(fromIst, toIst).catch((err) => {
+        console.error("Sales report error:", safeErrorSummary(err));
+        return null;
+      }),
+      gstSummary(fromIst, toIst).catch((err) => {
+        console.error("GST summary error:", safeErrorSummary(err));
+        return null;
+      }),
+      returnsReport(fromIst, toIst).catch((err) => {
+        console.error("Returns report error:", safeErrorSummary(err));
+        return null;
+      }),
+      stockReport(staff.role).catch((err) => {
+        console.error("Stock report error:", safeErrorSummary(err));
+        return null;
+      }),
+      offersUsageReport(fromIst, toIst).catch((err) => {
+        console.error("Offers usage report error:", safeErrorSummary(err));
+        return null;
+      }),
+      isOwner
+        ? marginReport(fromIst, toIst, staff.role).catch((err) => {
+            console.error("Margin report error:", safeErrorSummary(err));
+            marginError = true;
+            return null;
+          })
+        : Promise.resolve(null),
     ]);
 
   return (
@@ -56,6 +79,7 @@ export default async function AdminReportsPage({
         stockData={stockData}
         offersData={offersData}
         marginData={marginData}
+        marginError={marginError}
       />
     </main>
   );

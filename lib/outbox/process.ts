@@ -6,6 +6,7 @@ import {
   sendDeliveredEmail,
   sendTicketEventEmail,
   sendNewsletterWelcomeEmail,
+  sendWalletExpiryWarningEmail,
 } from "@/lib/email";
 import { isWhatsappMessagesLive } from "@/lib/whatsapp-flag";
 
@@ -155,6 +156,14 @@ export async function processOutboxBatch(batchSize = 25): Promise<ProcessOutboxR
             throw new Error("Missing email or couponCode in WELCOME_COUPON outbox payload");
           }
           res = await sendNewsletterWelcomeEmail(toEmail, couponCode);
+        } else if (item.type === "WALLET_EXPIRY_WARNING") {
+          const toEmail = typeof payloadObj?.email === "string" ? payloadObj.email : null;
+          const amountPaise = typeof payloadObj?.amountPaise === "number" ? payloadObj.amountPaise : null;
+          const expiresAt = typeof payloadObj?.expiresAt === "string" ? payloadObj.expiresAt : null;
+          if (!toEmail || amountPaise === null || !expiresAt) {
+            throw new Error("Missing email, amountPaise, or expiresAt in WALLET_EXPIRY_WARNING outbox payload");
+          }
+          res = await sendWalletExpiryWarningEmail({ to: toEmail, amountPaise, expiresAt });
         } else {
           // Unknown email type, treat as sent
           res = { success: true };

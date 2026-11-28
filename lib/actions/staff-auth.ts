@@ -7,6 +7,7 @@ import { getClientIp } from "@/lib/client-ip";
 import { limit } from "@/lib/ratelimit";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { mapOtpError } from "@/lib/safe-error";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function requestStaffOtpAction(
   email: string,
@@ -73,7 +74,7 @@ export async function requestStaffOtpAction(
           devMode: isProd ? undefined : sendResult.devMode,
         };
       } catch (sendErr) {
-        console.error("[Staff OTP Send Error]:", sendErr);
+        console.error("[Staff OTP Send Error]:", safeErrorSummary(sendErr));
         return {
           success: true,
           message: neutralMessage,

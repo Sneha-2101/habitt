@@ -13,6 +13,7 @@ import { organizationJsonLd, websiteJsonLd } from "@/lib/seo/jsonld";
 import JsonLd from "@/components/seo/JsonLd";
 import ProductCard from "@/components/ProductCard";
 import RecentlyViewed from "@/components/RecentlyViewed";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export const revalidate = 60;
 
@@ -59,7 +60,7 @@ export default async function HomePage() {
       orderBy: { createdAt: "desc" },
     });
   } catch (err) {
-    console.error("HomePage products fetch error:", err);
+    console.error("HomePage products fetch error:", safeErrorSummary(err));
   }
 
   const shippingText = settings.freeShippingOnPrepaid

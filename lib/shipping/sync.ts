@@ -6,6 +6,7 @@ import {
   computeShipmentEventDedupeKey,
 } from "@/lib/shipping/transitions";
 import { enqueueOutbox } from "@/lib/outbox/enqueue";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function syncShipmentsBatch(batchSize = 25): Promise<{ itemsProcessed: number }> {
   const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
@@ -126,7 +127,7 @@ export async function syncShipmentsBatch(batchSize = 25): Promise<{ itemsProcess
 
       processed++;
     } catch (err) {
-      console.error(`Failed to sync tracking for AWB ${shipment.awb}:`, err);
+      console.error(`Failed to sync tracking for AWB ${shipment.awb}:`, safeErrorSummary(err));
       await prisma.shipment.update({
         where: { id: shipment.id },
         data: { lastSyncedAt: new Date() },

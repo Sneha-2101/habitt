@@ -9,6 +9,7 @@ import { legacyStage } from "@/lib/orders/status-label";
 import { issueInvoiceForOrder } from "@/lib/gst/issue-invoice";
 import { getShippingProvider } from "@/lib/shipping/shiprocket";
 import { computeShipmentEventDedupeKey } from "@/lib/shipping/transitions";
+import { safeErrorSummary } from "@/lib/log-redact";
 
 export async function markOrderShipped(
   orderId: string,
@@ -129,7 +130,7 @@ export async function markOrderShipped(
       await issueInvoiceForOrder(invTx, orderId);
     });
   } catch (invErr) {
-    console.error(`Failed to issue invoice for order ${orderId}:`, invErr);
+    console.error(`Failed to issue invoice for order ${orderId}:`, safeErrorSummary(invErr));
     await prisma.orderStatusEvent.create({
       data: {
         orderId,
@@ -140,7 +141,7 @@ export async function markOrderShipped(
 
   // Send shipment notification email asynchronously
   sendShipmentNotificationEmail(orderId).catch((err) => {
-    console.error("Failed to send shipment notification email:", err);
+    console.error("Failed to send shipment notification email:", safeErrorSummary(err));
   });
 
   revalidatePath(`/admin/orders/${orderId}`);
@@ -338,12 +339,12 @@ export async function markOrderDelivered(orderId: string, note?: string) {
   });
 
   sendDeliveredEmail(orderId).catch((err) => {
-    console.error("Failed to send delivery email:", err);
+    console.error("Failed to send delivery email:", safeErrorSummary(err));
   });
 
   // Trigger review request email
   sendReviewRequestEmail(orderId).catch((err) => {
-    console.error("Failed to send review request email:", err);
+    console.error("Failed to send review request email:", safeErrorSummary(err));
   });
 
   revalidatePath(`/admin/orders/${orderId}`);

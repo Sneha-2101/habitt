@@ -260,6 +260,7 @@ export async function issueRefund(input: IssueRefundInput): Promise<IssueRefundR
         status: "PENDING",
         method: "RAZORPAY",
         amountPaise,
+        initiatedAt: new Date(),
         failureReason: null,
       },
     });
